@@ -23,7 +23,7 @@ namespace LethalAICrewmate
 
                 try { masked.SetMaskGlow(false); } catch { /* optional */ }
 
-                // Look like a normal crewmate (suit 0 = default orange if available)
+                // Look like a normal crewmate (match owner suit when available)
                 int suitId = 0;
                 try
                 {
@@ -48,12 +48,27 @@ namespace LethalAICrewmate
                 masked.movingTowardsTargetPlayer = false;
                 masked.inKillAnimation = false;
 
+                // Disable hands-out / crouch attack presentation if fields exist
+                try { masked.creatureAnimator?.SetBool("IsRunning", false); } catch { /* ignore */ }
+
                 if (data != null) data.Neutralized = true;
                 Plugin.Log?.LogInfo("Neutralized masked crewmate (mask hidden, suit set).");
             }
             catch (Exception ex)
             {
                 Plugin.Log?.LogError($"Neutralize: {ex}");
+            }
+        }
+
+        private static bool Guard(MaskedPlayerEnemy instance)
+        {
+            try
+            {
+                return CrewmateRegistry.IsCrewmate(instance);
+            }
+            catch
+            {
+                return false;
             }
         }
     }
@@ -90,7 +105,7 @@ namespace LethalAICrewmate
             {
                 if (CrewmateRegistry.IsCrewmate(__instance))
                 {
-                    // Skip vanilla masked Update (chase/kill), but keep agent alive via our AI
+                    // Skip vanilla masked Update (chase/kill), keep agent + hold visuals alive
                     CrewmateAI.CrewmateUpdate(__instance);
                     return false;
                 }
@@ -98,6 +113,25 @@ namespace LethalAICrewmate
             catch (Exception ex)
             {
                 Plugin.Log?.LogError($"Masked.Update patch: {ex}");
+            }
+            return true;
+        }
+    }
+
+    [HarmonyPatch(typeof(MaskedPlayerEnemy), nameof(MaskedPlayerEnemy.LateUpdate))]
+    internal static class Patch_Masked_LateUpdate
+    {
+        [HarmonyPrefix]
+        private static bool Prefix(MaskedPlayerEnemy __instance)
+        {
+            try
+            {
+                if (CrewmateRegistry.IsCrewmate(__instance))
+                    return false;
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log?.LogError($"Masked.LateUpdate patch: {ex}");
             }
             return true;
         }
@@ -179,11 +213,49 @@ namespace LethalAICrewmate
         }
     }
 
+    [HarmonyPatch(typeof(MaskedPlayerEnemy), nameof(MaskedPlayerEnemy.HitEnemy))]
+    internal static class Patch_Masked_HitEnemy
+    {
+        [HarmonyPostfix]
+        private static void Postfix(MaskedPlayerEnemy __instance)
+        {
+            try
+            {
+                if (!CrewmateRegistry.IsCrewmate(__instance)) return;
+                __instance.targetPlayer = null;
+                __instance.movingTowardsTargetPlayer = false;
+                __instance.inKillAnimation = false;
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log?.LogError($"Masked.HitEnemy post: {ex}");
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(MaskedPlayerEnemy), nameof(MaskedPlayerEnemy.DetectNoise))]
+    internal static class Patch_Masked_DetectNoise
+    {
+        [HarmonyPrefix]
+        private static bool Prefix(MaskedPlayerEnemy __instance)
+        {
+            try
+            {
+                if (CrewmateRegistry.IsCrewmate(__instance))
+                    return false;
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log?.LogError($"DetectNoise patch: {ex}");
+            }
+            return true;
+        }
+    }
+
     [HarmonyPatch(typeof(EnemyAI), nameof(EnemyAI.HitEnemy))]
     internal static class Patch_EnemyAI_HitEnemy
     {
         // Let the crewmate take damage, but never retaliate via masked kill paths.
-        // No Prefix skip — just ensure after hit it doesn't start chasing.
         [HarmonyPostfix]
         private static void Postfix(EnemyAI __instance)
         {
@@ -210,12 +282,17 @@ namespace LethalAICrewmate
         {
             try
             {
+                // Host path: already registered before Start, re-neutralize
                 if (CrewmateRegistry.TryGet(__instance, out var data))
                 {
                     CrewmateRegistry.EnsureNetworkKey(data);
                     if (!data.Neutralized)
                         MaskedNeutralizePatches.Neutralize(__instance, data);
+                    return;
                 }
+
+                // Client path: bind if host already announced this net id
+                CrewmateRegistry.TryBindKnown(__instance);
             }
             catch (Exception ex)
             {

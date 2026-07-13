@@ -10,6 +10,7 @@ namespace LethalAICrewmate
     {
         public const string MsgCrewmateChat = "LethalAICrewmate_Chat";
         public const string MsgItemAttach = "LethalAICrewmate_ItemAttach";
+        public const string MsgCrewmateSync = "LethalAICrewmate_Sync";
 
         private static bool _registered;
         private static NetworkManager _registeredOn;
@@ -29,12 +30,13 @@ namespace LethalAICrewmate
                     _registered = false;
 
                 var cmm = nm.CustomMessagingManager;
-                // Unregister first to avoid double-subscribe if possible
                 try { cmm.UnregisterNamedMessageHandler(MsgCrewmateChat); } catch { /* ok */ }
                 try { cmm.UnregisterNamedMessageHandler(MsgItemAttach); } catch { /* ok */ }
+                try { cmm.UnregisterNamedMessageHandler(MsgCrewmateSync); } catch { /* ok */ }
 
                 cmm.RegisterNamedMessageHandler(MsgCrewmateChat, OnCrewmateChat);
                 cmm.RegisterNamedMessageHandler(MsgItemAttach, OnItemAttach);
+                cmm.RegisterNamedMessageHandler(MsgCrewmateSync, OnCrewmateSync);
 
                 _registered = true;
                 _registeredOn = nm;
@@ -98,6 +100,32 @@ namespace LethalAICrewmate
             }
         }
 
+        /// <summary>Tell all clients this NetworkObjectId is (or is no longer) our AI crewmate.</summary>
+        public static void BroadcastCrewmateSync(ulong crewmateNetId, bool active)
+        {
+            try
+            {
+                TryRegisterHandlers();
+                var nm = NetworkManager.Singleton;
+                if (nm == null || nm.CustomMessagingManager == null) return;
+                if (!nm.IsServer && !nm.IsHost) return;
+
+                using (var writer = new FastBufferWriter(16, Allocator.Temp))
+                {
+                    writer.WriteValueSafe(crewmateNetId);
+                    byte flag = active ? (byte)1 : (byte)0;
+                    writer.WriteValueSafe(flag);
+                    nm.CustomMessagingManager.SendNamedMessageToAll(MsgCrewmateSync, writer, NetworkDelivery.Reliable);
+                }
+
+                Plugin.Log?.LogInfo($"Broadcast crewmate sync id={crewmateNetId} active={active}");
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log?.LogError($"BroadcastCrewmateSync: {ex}");
+            }
+        }
+
         private static void OnCrewmateChat(ulong senderId, FastBufferReader reader)
         {
             try
@@ -121,6 +149,9 @@ namespace LethalAICrewmate
         {
             try
             {
+                // Host already parented the item; skip loopback to avoid fighting host ownership.
+                if (NetworkManager.Singleton != null && NetworkManager.Singleton.IsServer) return;
+
                 reader.ReadValueSafe(out ulong crewmateNetId);
                 reader.ReadValueSafe(out ulong itemNetId);
                 reader.ReadValueSafe(out byte flag);
@@ -130,6 +161,25 @@ namespace LethalAICrewmate
             catch (Exception ex)
             {
                 Plugin.Log?.LogError($"OnItemAttach: {ex}");
+            }
+        }
+
+        private static void OnCrewmateSync(ulong senderId, FastBufferReader reader)
+        {
+            try
+            {
+                reader.ReadValueSafe(out ulong crewmateNetId);
+                reader.ReadValueSafe(out byte flag);
+                bool active = flag != 0;
+
+                if (active)
+                    CrewmateRegistry.RegisterRemote(crewmateNetId);
+                else
+                    CrewmateRegistry.UnregisterRemote(crewmateNetId);
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log?.LogError($"OnCrewmateSync: {ex}");
             }
         }
 

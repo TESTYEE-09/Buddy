@@ -1,8 +1,8 @@
 {
   "name": "LethalAICrewmate",
-  "version_number": "1.0.0",
-  "website_url": "",
-  "description": "AI crewmate NPC (Buddy) for Lethal Company. Host-spawned Masked body with follow/stay/ship/fetch commands and optional OpenRouter chat.",
+  "version_number": "1.0.1",
+  "website_url": "https://github.com/TESTYEE-09/LethalAICrewmate",
+  "description": "AI crewmate NPC (Buddy) for Lethal Company v81. Follow/stay/ship/fetch scrap + optional OpenRouter proximity chat.",
   "dependencies": [
     "BepInEx-BepInExPack-5.4.2100"
   ]

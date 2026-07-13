@@ -21,6 +21,27 @@ namespace LethalAICrewmate
         private static float _lastCallTime = -999f;
         private static Coroutine _running;
 
+        /// <summary>Clear queue + history between landings so sessions don't bleed.</summary>
+        public static void ResetSession()
+        {
+            try
+            {
+                Queue.Clear();
+                History.Clear();
+                _inFlight = false;
+                _lastCallTime = -999f;
+                if (_running != null && Plugin.Host != null)
+                {
+                    try { Plugin.Host.StopCoroutine(_running); } catch { /* ignore */ }
+                }
+                _running = null;
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log?.LogWarning($"LlmClient.ResetSession: {ex.Message}");
+            }
+        }
+
         private struct PendingRequest
         {
             public string UserContent;

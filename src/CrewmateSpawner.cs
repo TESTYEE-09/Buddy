@@ -1,15 +1,19 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using GameNetcodeStuff;
 using HarmonyLib;
 using Unity.Netcode;
 using UnityEngine;
+using UnityEngine.AI;
 
 namespace LethalAICrewmate
 {
     public static class CrewmateSpawner
     {
         private static bool _spawnedThisLanding;
+        private static bool _spawnAttemptInProgress;
+        private static Coroutine _spawnRoutine;
 
         public static void SpawnCrewmateIfNeeded()
         {
@@ -27,14 +31,77 @@ namespace LethalAICrewmate
                     return;
                 }
 
+                if (Plugin.Host == null)
+                {
+                    // Fallback: try once immediately if host MB missing
+                    TrySpawnOnce();
+                    return;
+                }
+
+                if (_spawnAttemptInProgress) return;
+                if (_spawnRoutine != null)
+                {
+                    try { Plugin.Host.StopCoroutine(_spawnRoutine); } catch { /* ignore */ }
+                }
+                _spawnRoutine = Plugin.Host.StartCoroutine(SpawnWithRetries());
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log?.LogError($"SpawnCrewmateIfNeeded: {ex}");
+            }
+        }
+
+        private static IEnumerator SpawnWithRetries()
+        {
+            _spawnAttemptInProgress = true;
+            // Short delays: NavMesh / RoundManager sometimes not ready on the landing frame
+            float[] delays = { 0.15f, 0.75f, 1.5f, 3f };
+            for (int i = 0; i < delays.Length; i++)
+            {
+                if (_spawnedThisLanding || CrewmateRegistry.GetPrimary() != null)
+                    break;
+                if (!IsHost() || StartOfRound.Instance == null || !StartOfRound.Instance.shipHasLanded)
+                    break;
+                if (StartOfRound.Instance.inShipPhase)
+                    break;
+
+                yield return new WaitForSeconds(delays[i]);
+
+                if (TrySpawnOnce())
+                    break;
+
+                Plugin.Log?.LogWarning($"Crewmate spawn attempt {i + 1}/{delays.Length} failed; retrying…");
+            }
+            _spawnAttemptInProgress = false;
+            _spawnRoutine = null;
+        }
+
+        private static bool TrySpawnOnce()
+        {
+            try
+            {
+                if (_spawnedThisLanding) return true;
+                if (CrewmateRegistry.GetPrimary() != null)
+                {
+                    _spawnedThisLanding = true;
+                    return true;
+                }
+
                 var enemyType = FindMaskedEnemyType();
                 if (enemyType == null || enemyType.enemyPrefab == null)
                 {
                     Plugin.Log?.LogWarning("Could not find MaskedPlayerEnemy EnemyType; crewmate not spawned.");
-                    return;
+                    return false;
+                }
+
+                if (RoundManager.Instance == null)
+                {
+                    Plugin.Log?.LogWarning("RoundManager missing; cannot spawn crewmate.");
+                    return false;
                 }
 
                 var spawnPos = GetSpawnPosition();
+                spawnPos = SnapToNavMesh(spawnPos, 12f);
                 var yRot = 0f;
 
                 Plugin.Log?.LogInfo($"Spawning crewmate at {spawnPos} using EnemyType '{enemyType.enemyName}'");
@@ -44,7 +111,6 @@ namespace LethalAICrewmate
 
                 if (!netRef.TryGet(out NetworkObject netObj) || netObj == null)
                 {
-                    // Resolve via NetworkManager if available
                     if (NetworkManager.Singleton != null)
                         netRef.TryGet(out netObj, NetworkManager.Singleton);
                 }
@@ -73,19 +139,45 @@ namespace LethalAICrewmate
                 if (masked == null)
                 {
                     Plugin.Log?.LogWarning("SpawnEnemyGameObject did not yield a MaskedPlayerEnemy.");
-                    return;
+                    return false;
+                }
+
+                // Snap body to navmesh after spawn
+                try
+                {
+                    var snapped = SnapToNavMesh(masked.transform.position, 15f);
+                    masked.transform.position = snapped;
+                    if (masked.agent != null)
+                    {
+                        masked.agent.enabled = true;
+                        if (masked.agent.isOnNavMesh)
+                            masked.agent.Warp(snapped);
+                        else if (NavMesh.SamplePosition(snapped, out var hit, 15f, NavMesh.AllAreas))
+                            masked.agent.Warp(hit.position);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Plugin.Log?.LogWarning($"Post-spawn NavMesh warp: {ex.Message}");
                 }
 
                 var owner = FindPreferredOwner();
                 var data = CrewmateRegistry.Register(masked, owner);
                 CrewmateRegistry.EnsureNetworkKey(data);
                 MaskedNeutralizePatches.Neutralize(masked, data);
+
+                // Clients need the net id so hostility patches apply for them too
+                if (data != null && data.NetworkObjectId != 0)
+                    NetMessenger.BroadcastCrewmateSync(data.NetworkObjectId, active: true);
+
                 _spawnedThisLanding = true;
-                Plugin.Log?.LogInfo($"Crewmate '{Plugin.CrewmateName.Value}' spawned successfully.");
+                Plugin.Log?.LogInfo($"Crewmate '{Plugin.CrewmateName.Value}' spawned successfully (netId={data?.NetworkObjectId}).");
+                return true;
             }
             catch (Exception ex)
             {
-                Plugin.Log?.LogError($"SpawnCrewmateIfNeeded: {ex}");
+                Plugin.Log?.LogError($"TrySpawnOnce: {ex}");
+                return false;
             }
         }
 
@@ -93,10 +185,11 @@ namespace LethalAICrewmate
         {
             try
             {
-                if (!IsHost()) 
+                if (!IsHost())
                 {
                     CrewmateRegistry.UnregisterAll();
                     _spawnedThisLanding = false;
+                    _spawnAttemptInProgress = false;
                     return;
                 }
 
@@ -107,6 +200,9 @@ namespace LethalAICrewmate
                     {
                         if (data.HeldItem != null)
                             CrewmateAI.DropHeldItem(data, data.Enemy != null ? data.Enemy.transform.position : Vector3.zero);
+
+                        if (data.NetworkObjectId != 0)
+                            NetMessenger.BroadcastCrewmateSync(data.NetworkObjectId, active: false);
 
                         if (data.Enemy != null && data.Enemy.IsSpawned && data.Enemy.NetworkObject != null)
                         {
@@ -126,7 +222,10 @@ namespace LethalAICrewmate
             finally
             {
                 CrewmateRegistry.UnregisterAll();
+                LlmClient.ResetSession();
                 _spawnedThisLanding = false;
+                _spawnAttemptInProgress = false;
+                _spawnRoutine = null;
             }
         }
 
@@ -144,6 +243,20 @@ namespace LethalAICrewmate
                 // ignore
             }
             return false;
+        }
+
+        private static Vector3 SnapToNavMesh(Vector3 pos, float maxDistance)
+        {
+            try
+            {
+                if (NavMesh.SamplePosition(pos, out var hit, maxDistance, NavMesh.AllAreas))
+                    return hit.position;
+            }
+            catch
+            {
+                // ignore
+            }
+            return pos;
         }
 
         private static Vector3 GetSpawnPosition()
@@ -281,7 +394,6 @@ namespace LethalAICrewmate
             {
                 if (et.enemyPrefab.GetComponent<MaskedPlayerEnemy>() != null)
                     return true;
-                // Prefab may not load components on ScriptableObject reference in editor-less context
                 if (et.enemyPrefab.name.ToLowerInvariant().Contains("masked"))
                     return true;
             }
@@ -299,6 +411,7 @@ namespace LethalAICrewmate
         {
             try
             {
+                NetMessenger.TryRegisterHandlers();
                 CrewmateSpawner.SpawnCrewmateIfNeeded();
             }
             catch (Exception ex)

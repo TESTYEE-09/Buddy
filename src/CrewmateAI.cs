@@ -79,16 +79,34 @@ namespace LethalAICrewmate
 
         public static void CrewmateUpdate(MaskedPlayerEnemy enemy)
         {
-            // Client + host: keep held scrap parented visually
+            // Client + host: keep held scrap parented, suppress hostility flags, keep agent alive
             try
             {
-                if (!CrewmateRegistry.TryGet(enemy, out var data)) return;
-                SyncHeldItemVisual(data);
+                if (enemy == null) return;
 
-                // Minimal agent maintenance without vanilla masked logic
-                if (enemy.agent != null && enemy.agent.isOnNavMesh && enemy.moveTowardsDestination)
+                // Always clear kill/chase flags so a partial vanilla path can't re-arm
+                enemy.targetPlayer = null;
+                enemy.movingTowardsTargetPlayer = false;
+                enemy.inKillAnimation = false;
+                enemy.mimickingPlayer = null;
+
+                if (!CrewmateRegistry.TryGet(enemy, out var data))
                 {
-                    // Let NavMeshAgent drive movement (vanilla EnemyAI does more; this is enough for pathing)
+                    // Known net-id only (client before full register) — still maintain agent if present
+                    EnsureAgent(enemy);
+                    return;
+                }
+
+                SyncHeldItemVisual(data);
+                EnsureAgent(enemy);
+
+                // Drive agent along destination when host AI set moveTowardsDestination
+                if (CrewmateSpawner.IsHost() && enemy.agent != null && enemy.agent.isOnNavMesh)
+                {
+                    if (enemy.moveTowardsDestination && !enemy.agent.pathPending)
+                    {
+                        enemy.agent.isStopped = false;
+                    }
                 }
             }
             catch (Exception ex)
@@ -405,7 +423,14 @@ namespace LethalAICrewmate
                     item.isInElevator = true;
                     try
                     {
-                        RoundManager.Instance?.CollectNewScrapForThisRound(item);
+                        // Avoid double-counting if a player later grabs the same scrap this round
+                        int instId = item.GetInstanceID();
+                        bool alreadyCounted = data.ScrapCountedInstanceIds.Contains(instId);
+                        if (!alreadyCounted)
+                        {
+                            RoundManager.Instance?.CollectNewScrapForThisRound(item);
+                            data.ScrapCountedInstanceIds.Add(instId);
+                        }
                     }
                     catch (Exception ex)
                     {

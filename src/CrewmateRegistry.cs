@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using GameNetcodeStuff;
-using Unity.Netcode;
 using UnityEngine;
 
 namespace LethalAICrewmate
@@ -24,12 +23,16 @@ namespace LethalAICrewmate
         public Vector3 StayPosition;
         public bool Neutralized;
         public float NextObservationAt;
+        /// <summary>Scrap already counted via CollectNewScrapForThisRound this session.</summary>
+        public readonly HashSet<int> ScrapCountedInstanceIds = new HashSet<int>();
     }
 
     public static class CrewmateRegistry
     {
         private static readonly Dictionary<ulong, CrewmateData> ById = new Dictionary<ulong, CrewmateData>();
         private static readonly HashSet<int> InstanceIds = new HashSet<int>();
+        /// <summary>Network IDs known as crewmates on clients (and host). Survives until unregister/leave.</summary>
+        private static readonly HashSet<ulong> KnownCrewmateNetIds = new HashSet<ulong>();
 
         public static IEnumerable<CrewmateData> All => ById.Values;
 
@@ -38,8 +41,13 @@ namespace LethalAICrewmate
             if (enemy == null) return false;
             try
             {
-                if (enemy.IsSpawned && ById.ContainsKey(enemy.NetworkObjectId))
-                    return true;
+                if (enemy.IsSpawned)
+                {
+                    if (ById.ContainsKey(enemy.NetworkObjectId))
+                        return true;
+                    if (KnownCrewmateNetIds.Contains(enemy.NetworkObjectId))
+                        return true;
+                }
             }
             catch
             {
@@ -98,6 +106,7 @@ namespace LethalAICrewmate
                 {
                     data.NetworkObjectId = enemy.NetworkObjectId;
                     ById[data.NetworkObjectId] = data;
+                    KnownCrewmateNetIds.Add(data.NetworkObjectId);
                 }
                 else
                 {
@@ -116,6 +125,55 @@ namespace LethalAICrewmate
             return data;
         }
 
+        /// <summary>
+        /// Client-side (or late-join) registration: mark NetworkObjectId as crewmate and neutralize if found.
+        /// </summary>
+        public static void RegisterRemote(ulong networkObjectId)
+        {
+            if (networkObjectId == 0) return;
+            KnownCrewmateNetIds.Add(networkObjectId);
+
+            try
+            {
+                if (ById.ContainsKey(networkObjectId))
+                    return;
+
+                MaskedPlayerEnemy found = null;
+                foreach (var m in Object.FindObjectsOfType<MaskedPlayerEnemy>())
+                {
+                    if (m != null && m.IsSpawned && m.NetworkObjectId == networkObjectId)
+                    {
+                        found = m;
+                        break;
+                    }
+                }
+
+                if (found == null)
+                {
+                    Plugin.Log?.LogInfo($"Remote crewmate id={networkObjectId} noted (body not found yet).");
+                    return;
+                }
+
+                if (IsCrewmate(found) && TryGet(found, out _))
+                    return;
+
+                var data = Register(found, null);
+                EnsureNetworkKey(data);
+                MaskedNeutralizePatches.Neutralize(found, data);
+                Plugin.Log?.LogInfo($"Remote crewmate id={networkObjectId} registered and neutralized.");
+            }
+            catch (System.Exception ex)
+            {
+                Plugin.Log?.LogWarning($"RegisterRemote: {ex.Message}");
+            }
+        }
+
+        public static void UnregisterRemote(ulong networkObjectId)
+        {
+            KnownCrewmateNetIds.Remove(networkObjectId);
+            Unregister(networkObjectId);
+        }
+
         public static void EnsureNetworkKey(CrewmateData data)
         {
             if (data?.Enemy == null) return;
@@ -123,13 +181,18 @@ namespace LethalAICrewmate
             {
                 if (!data.Enemy.IsSpawned) return;
                 var realId = data.Enemy.NetworkObjectId;
-                if (data.NetworkObjectId == realId && ById.ContainsKey(realId)) return;
+                if (data.NetworkObjectId == realId && ById.ContainsKey(realId))
+                {
+                    KnownCrewmateNetIds.Add(realId);
+                    return;
+                }
 
                 if (ById.ContainsKey(data.NetworkObjectId) && data.NetworkObjectId != realId)
                     ById.Remove(data.NetworkObjectId);
 
                 data.NetworkObjectId = realId;
                 ById[realId] = data;
+                KnownCrewmateNetIds.Add(realId);
             }
             catch
             {
@@ -139,6 +202,7 @@ namespace LethalAICrewmate
 
         public static void Unregister(ulong networkObjectId)
         {
+            KnownCrewmateNetIds.Remove(networkObjectId);
             if (ById.TryGetValue(networkObjectId, out var data))
             {
                 if (data.Enemy != null)
@@ -151,6 +215,7 @@ namespace LethalAICrewmate
         {
             ById.Clear();
             InstanceIds.Clear();
+            KnownCrewmateNetIds.Clear();
         }
 
         public static CrewmateData GetPrimary()
@@ -174,6 +239,25 @@ namespace LethalAICrewmate
                 data.FetchTarget = null;
             }
             Plugin.Log?.LogInfo($"Crewmate state -> {state}");
+        }
+
+        /// <summary>If a masked just spawned that matches a known remote id, register it.</summary>
+        public static void TryBindKnown(MaskedPlayerEnemy enemy)
+        {
+            if (enemy == null || !enemy.IsSpawned) return;
+            try
+            {
+                var id = enemy.NetworkObjectId;
+                if (!KnownCrewmateNetIds.Contains(id)) return;
+                if (TryGet(enemy, out var existing) && existing != null) return;
+                var data = Register(enemy, null);
+                EnsureNetworkKey(data);
+                MaskedNeutralizePatches.Neutralize(enemy, data);
+            }
+            catch
+            {
+                // ignore
+            }
         }
     }
 }
