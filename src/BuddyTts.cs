@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.IO;
 using System.Text;
 using UnityEngine;
 using UnityEngine.Networking;
@@ -7,8 +8,8 @@ using UnityEngine.Networking;
 namespace LethalAICrewmate
 {
     /// <summary>
-    /// Groq Orpheus TTS: text → WAV → 3D AudioSource near Buddy (host).
-    /// Model: canopylabs/orpheus-v1-english (max 200 chars per request).
+    /// Groq Orpheus TTS. Orpheus returns streaming WAVs (RIFF size = 0xFFFFFFFF)
+    /// which break Unity's decoder — we normalize sizes then play PCM.
     /// </summary>
     public static class BuddyTts
     {
@@ -36,10 +37,8 @@ namespace LethalAICrewmate
 
                 string cleaned = SanitizeForTts(text);
                 if (string.IsNullOrEmpty(cleaned)) return;
-
-                // Orpheus hard limit: 200 characters
                 if (cleaned.Length > MaxChars)
-                    cleaned = cleaned.Substring(0, MaxChars - 1).TrimEnd() + "…";
+                    cleaned = cleaned.Substring(0, MaxChars - 1).TrimEnd() + ".";
 
                 Plugin.Host.StartCoroutine(RequestAndPlay(cleaned, worldPos));
             }
@@ -52,20 +51,16 @@ namespace LethalAICrewmate
         private static string SanitizeForTts(string text)
         {
             if (string.IsNullOrEmpty(text)) return "";
-            // Strip leftover command tags
             text = text.Replace("[FOLLOW]", "").Replace("[STAY]", "")
-                .Replace("[SHIP]", "").Replace("[FETCH]", "");
-            text = text.Trim();
-            // Slight nervous crewmate flavor if no direction already present
+                .Replace("[SHIP]", "").Replace("[FETCH]", "").Trim();
+
             if (text.IndexOf('[') < 0)
             {
                 string dir = Plugin.TtsDirection?.Value ?? "";
                 if (!string.IsNullOrWhiteSpace(dir))
                 {
-                    dir = dir.Trim();
-                    if (!dir.StartsWith("[")) dir = "[" + dir + "]";
-                    // directions count toward 200-char limit
-                    string withDir = dir + " " + text;
+                    dir = dir.Trim().Trim('[', ']');
+                    string withDir = "[" + dir + "] " + text;
                     if (withDir.Length <= MaxChars)
                         text = withDir;
                 }
@@ -73,16 +68,37 @@ namespace LethalAICrewmate
             return text;
         }
 
+        /// <summary>Chat/STT models must never hit /audio/speech — Orpheus only.</summary>
+        private static string ResolveTtsModel()
+        {
+            string m = Plugin.TtsModel?.Value;
+            if (string.IsNullOrWhiteSpace(m) ||
+                m.IndexOf("orpheus", StringComparison.OrdinalIgnoreCase) < 0 ||
+                m.IndexOf("canopy", StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                if (!string.IsNullOrWhiteSpace(m) &&
+                    m.IndexOf("orpheus", StringComparison.OrdinalIgnoreCase) < 0)
+                {
+                    Plugin.Log?.LogWarning($"TtsModel '{m}' is not Orpheus; forcing canopylabs/orpheus-v1-english");
+                }
+                return "canopylabs/orpheus-v1-english";
+            }
+            return m.Trim();
+        }
+
         private static IEnumerator RequestAndPlay(string input, Vector3 worldPos)
         {
             _inFlight = true;
-            string model = Plugin.TtsModel?.Value ?? "canopylabs/orpheus-v1-english";
+            string model = ResolveTtsModel();
             string voice = Plugin.TtsVoice?.Value ?? "troy";
+            if (string.IsNullOrWhiteSpace(voice)) voice = "troy";
 
             string body = "{\"model\":\"" + LlmClient.Escape(model) +
                           "\",\"voice\":\"" + LlmClient.Escape(voice) +
                           "\",\"input\":\"" + LlmClient.Escape(input) +
                           "\",\"response_format\":\"wav\"}";
+
+            byte[] audioBytes = null;
 
             using (var uwr = new UnityWebRequest(Endpoint, "POST"))
             {
@@ -91,73 +107,145 @@ namespace LethalAICrewmate
                 uwr.downloadHandler = new DownloadHandlerBuffer();
                 uwr.SetRequestHeader("Content-Type", "application/json");
                 uwr.SetRequestHeader("Authorization", "Bearer " + Plugin.ApiKey.Value);
+                uwr.timeout = 30;
 
-                Plugin.Log?.LogInfo($"Orpheus TTS → voice={voice} chars={input.Length}");
+                Plugin.Log?.LogInfo($"Orpheus TTS → model={model} voice={voice} chars={input.Length}");
                 yield return uwr.SendWebRequest();
 
-                try
+                if (!string.IsNullOrEmpty(uwr.error) || uwr.responseCode < 200 || uwr.responseCode >= 300)
                 {
-                    bool ok = string.IsNullOrEmpty(uwr.error)
-                              && uwr.responseCode >= 200
-                              && uwr.responseCode < 300;
-                    if (!ok)
-                    {
-                        Plugin.Log?.LogWarning(
-                            $"Orpheus TTS HTTP {uwr.responseCode}: {uwr.error} {uwr.downloadHandler?.text}");
-                    }
-                    else
-                    {
-                        byte[] wav = uwr.downloadHandler.data;
-                        if (wav != null && wav.Length > 44)
-                            PlayWav(wav, worldPos);
-                        else
-                            Plugin.Log?.LogWarning("Orpheus TTS: empty audio body");
-                    }
+                    Plugin.Log?.LogWarning($"Orpheus TTS HTTP {uwr.responseCode}: {uwr.error} {uwr.downloadHandler?.text}");
+                    _inFlight = false;
+                    yield break;
                 }
-                catch (Exception ex)
-                {
-                    Plugin.Log?.LogError($"TTS play: {ex}");
-                }
+                audioBytes = uwr.downloadHandler?.data;
+            }
+
+            if (audioBytes == null || audioBytes.Length < 64)
+            {
+                Plugin.Log?.LogWarning("Orpheus TTS: empty body");
+                _inFlight = false;
+                yield break;
+            }
+
+            if (audioBytes[0] == (byte)'{')
+            {
+                Plugin.Log?.LogWarning("Orpheus TTS returned JSON: " + Encoding.UTF8.GetString(audioBytes));
+                _inFlight = false;
+                yield break;
+            }
+
+            // Fix streaming WAV (size fields 0xFFFFFFFF) then decode
+            byte[] fixedWav = NormalizeWavSizes(audioBytes);
+            Plugin.Log?.LogInfo($"Orpheus TTS {audioBytes.Length} bytes → normalized {fixedWav.Length}");
+
+            if (TryParseWav(fixedWav, out int sampleRate, out int channels, out float[] samples)
+                && samples != null && samples.Length > 0 && channels > 0)
+            {
+                int frames = samples.Length / channels;
+                var clip = AudioClip.Create("BuddyOrpheus", frames, channels, sampleRate, false);
+                clip.SetData(samples, 0);
+                PlayClip(clip, worldPos);
+            }
+            else
+            {
+                Plugin.Log?.LogWarning("TTS: PCM parse failed after normalize");
             }
 
             _inFlight = false;
         }
 
-        private static void PlayWav(byte[] wav, Vector3 worldPos)
+        /// <summary>
+        /// Orpheus sends RIFF/data chunk sizes as 0xFFFFFFFF (streaming). Rewrite real sizes.
+        /// </summary>
+        internal static byte[] NormalizeWavSizes(byte[] data)
         {
-            if (!TryParseWav(wav, out int sampleRate, out int channels, out float[] samples))
+            if (data == null || data.Length < 44) return data;
+            byte[] copy = (byte[])data.Clone();
+
+            // RIFF chunk size = file length - 8
+            WriteInt32(copy, 4, copy.Length - 8);
+
+            int offset = 12;
+            while (offset + 8 <= copy.Length)
             {
-                Plugin.Log?.LogWarning("Orpheus TTS: failed to parse WAV");
-                return;
+                string id = Encoding.ASCII.GetString(copy, offset, 4);
+                uint rawSize = BitConverter.ToUInt32(copy, offset + 4);
+                int payloadStart = offset + 8;
+
+                if (id == "data")
+                {
+                    // Rest of file is PCM (streaming size is 0xFFFFFFFF)
+                    int realSize = copy.Length - payloadStart;
+                    if (rawSize == 0xFFFFFFFFu || rawSize > (uint)realSize || rawSize == 0)
+                        WriteInt32(copy, offset + 4, realSize);
+                    break;
+                }
+
+                int size;
+                if (rawSize == 0xFFFFFFFFu || payloadStart + (int)rawSize > copy.Length)
+                {
+                    // Malformed / streaming mid-chunk — can't advance safely
+                    if (id == "fmt ")
+                    {
+                        // Standard PCM fmt is 16 bytes
+                        size = 16;
+                        WriteInt32(copy, offset + 4, size);
+                    }
+                    else
+                        break;
+                }
+                else
+                    size = (int)rawSize;
+
+                offset = payloadStart + size;
+                if ((size & 1) != 0) offset++;
             }
 
+            // Recompute RIFF size after any writes
+            WriteInt32(copy, 4, copy.Length - 8);
+            return copy;
+        }
+
+        private static void WriteInt32(byte[] buf, int o, int v)
+        {
+            buf[o] = (byte)(v & 0xff);
+            buf[o + 1] = (byte)((v >> 8) & 0xff);
+            buf[o + 2] = (byte)((v >> 16) & 0xff);
+            buf[o + 3] = (byte)((v >> 24) & 0xff);
+        }
+
+        private static void PlayClip(AudioClip clip, Vector3 worldPos)
+        {
             EnsureAudioSource();
 
-            // Follow Buddy if still around
+            // Unparent and play as nearly-2D so ship audio mixers don't mute him
+            _audioGo.transform.SetParent(null, true);
             var primary = CrewmateRegistry.GetPrimary();
             if (primary?.Enemy != null)
-                worldPos = primary.Enemy.transform.position + Vector3.up * 1.6f;
-
+                worldPos = primary.Enemy.transform.position + Vector3.up * 1.7f;
             _audioGo.transform.position = worldPos;
 
-            var clip = AudioClip.Create(
-                "BuddyOrpheus",
-                samples.Length / channels,
-                channels,
-                sampleRate,
-                false);
-            clip.SetData(samples, 0);
-
             _source.Stop();
+            if (_source.clip != null)
+            {
+                var old = _source.clip;
+                _source.clip = null;
+                UnityEngine.Object.Destroy(old);
+            }
+
             _source.clip = clip;
-            _source.spatialBlend = 1f; // 3D
-            _source.minDistance = 2f;
-            _source.maxDistance = Mathf.Max(8f, Plugin.ChatHearRange?.Value ?? 25f);
-            _source.rolloffMode = AudioRolloffMode.Linear;
-            _source.volume = Mathf.Clamp01(Plugin.TtsVolume?.Value ?? 0.85f);
+            _source.spatialBlend = 0f; // full 2D — always hear Buddy
+            _source.volume = Mathf.Clamp01(Plugin.TtsVolume?.Value ?? 1f);
+            _source.mute = false;
+            _source.bypassListenerEffects = true;
+            _source.bypassEffects = true;
+            _source.bypassReverbZones = true;
+            _source.dopplerLevel = 0f;
+            _source.priority = 0;
             _source.Play();
 
-            Plugin.Log?.LogInfo($"Playing Buddy TTS ({samples.Length / channels} samples @ {sampleRate}Hz)");
+            Plugin.Log?.LogInfo($"Playing Buddy TTS samples={clip.samples} freq={clip.frequency} ch={clip.channels} vol={_source.volume}");
         }
 
         private static void EnsureAudioSource()
@@ -168,18 +256,16 @@ namespace LethalAICrewmate
             _source = _audioGo.AddComponent<AudioSource>();
             _source.playOnAwake = false;
             _source.loop = false;
-            _source.spatialize = false; // built-in 3D attenuation without spatializer plugin
+            _source.spatialize = false;
+            _source.priority = 0;
         }
 
-        /// <summary>Minimal PCM WAV parser (16-bit PCM, mono/stereo).</summary>
         internal static bool TryParseWav(byte[] data, out int sampleRate, out int channels, out float[] samples)
         {
             sampleRate = 0;
             channels = 0;
             samples = null;
             if (data == null || data.Length < 44) return false;
-
-            // RIFF....WAVE
             if (data[0] != 'R' || data[1] != 'I' || data[2] != 'F' || data[3] != 'F') return false;
             if (data[8] != 'W' || data[9] != 'A' || data[10] != 'V' || data[11] != 'E') return false;
 
@@ -187,54 +273,125 @@ namespace LethalAICrewmate
             int dataOffset = -1;
             int dataSize = 0;
             short bitsPerSample = 16;
+            short audioFormat = 1;
             channels = 1;
             sampleRate = 48000;
 
             while (offset + 8 <= data.Length)
             {
                 string id = Encoding.ASCII.GetString(data, offset, 4);
-                int size = BitConverter.ToInt32(data, offset + 4);
-                offset += 8;
-                if (offset + size > data.Length) break;
+                uint rawSize = BitConverter.ToUInt32(data, offset + 4);
+                int payloadStart = offset + 8;
+                int remaining = data.Length - payloadStart;
 
-                if (id == "fmt ")
+                int size;
+                if (rawSize == 0xFFFFFFFFu || rawSize > (uint)remaining)
+                    size = remaining;
+                else
+                    size = (int)rawSize;
+
+                if (id == "fmt " && size >= 16)
                 {
-                    short audioFormat = BitConverter.ToInt16(data, offset);
-                    channels = BitConverter.ToInt16(data, offset + 2);
-                    sampleRate = BitConverter.ToInt32(data, offset + 4);
-                    bitsPerSample = BitConverter.ToInt16(data, offset + 14);
-                    if (audioFormat != 1)
-                    {
-                        Plugin.Log?.LogWarning($"WAV format {audioFormat} not PCM");
-                        return false;
-                    }
+                    audioFormat = BitConverter.ToInt16(data, payloadStart);
+                    channels = BitConverter.ToInt16(data, payloadStart + 2);
+                    sampleRate = BitConverter.ToInt32(data, payloadStart + 4);
+                    bitsPerSample = BitConverter.ToInt16(data, payloadStart + 14);
+                    if (audioFormat == unchecked((short)0xFFFE) && size >= 40)
+                        audioFormat = BitConverter.ToInt16(data, payloadStart + 24);
                 }
                 else if (id == "data")
                 {
-                    dataOffset = offset;
+                    dataOffset = payloadStart;
                     dataSize = size;
                     break;
                 }
 
-                offset += size;
-                if ((size & 1) != 0) offset++; // word align
+                // Advance by declared size when known; else skip padded
+                if (rawSize != 0xFFFFFFFFu && rawSize <= (uint)remaining)
+                {
+                    offset = payloadStart + (int)rawSize;
+                    if (((int)rawSize & 1) != 0) offset++;
+                }
+                else if (id == "fmt ")
+                {
+                    offset = payloadStart + 16;
+                    if (offset < data.Length && data[offset] == 0) { /* pad */ }
+                    // find next chunk by scanning for known ids is hard; use 16-byte fmt
+                    offset = payloadStart + 16;
+                }
+                else
+                    break;
             }
 
-            if (dataOffset < 0 || dataSize <= 0) return false;
-            if (bitsPerSample != 16)
+            // Fallback: search for "data" magic
+            if (dataOffset < 0)
             {
-                Plugin.Log?.LogWarning($"WAV bits {bitsPerSample} unsupported (need 16)");
+                for (int i = 12; i < data.Length - 8; i++)
+                {
+                    if (data[i] == 'd' && data[i + 1] == 'a' && data[i + 2] == 't' && data[i + 3] == 'a')
+                    {
+                        dataOffset = i + 8;
+                        uint rs = BitConverter.ToUInt32(data, i + 4);
+                        dataSize = (rs == 0xFFFFFFFFu || rs > data.Length - dataOffset)
+                            ? data.Length - dataOffset
+                            : (int)rs;
+                        break;
+                    }
+                }
+            }
+
+            if (dataOffset < 0 || dataSize <= 0 || channels <= 0 || sampleRate <= 0)
+            {
+                Plugin.Log?.LogWarning($"WAV incomplete fmt={audioFormat} bits={bitsPerSample} dataOff={dataOffset} dataSize={dataSize}");
                 return false;
             }
 
-            int sampleCount = dataSize / 2;
-            samples = new float[sampleCount];
-            for (int i = 0; i < sampleCount; i++)
+            dataSize = Math.Min(dataSize, data.Length - dataOffset);
+
+            try
             {
-                short s = BitConverter.ToInt16(data, dataOffset + i * 2);
-                samples[i] = s / 32768f;
+                if (audioFormat == 1 && bitsPerSample == 16)
+                {
+                    int sampleCount = dataSize / 2;
+                    samples = new float[sampleCount];
+                    for (int i = 0; i < sampleCount; i++)
+                    {
+                        short s = BitConverter.ToInt16(data, dataOffset + i * 2);
+                        samples[i] = s / 32768f;
+                    }
+                    return sampleCount > 0;
+                }
+
+                if (audioFormat == 3 && bitsPerSample == 32)
+                {
+                    int sampleCount = dataSize / 4;
+                    samples = new float[sampleCount];
+                    for (int i = 0; i < sampleCount; i++)
+                        samples[i] = BitConverter.ToSingle(data, dataOffset + i * 4);
+                    return sampleCount > 0;
+                }
+
+                if (audioFormat == 1 && bitsPerSample == 32)
+                {
+                    // Sometimes 32-bit int PCM
+                    int sampleCount = dataSize / 4;
+                    samples = new float[sampleCount];
+                    for (int i = 0; i < sampleCount; i++)
+                    {
+                        int s = BitConverter.ToInt32(data, dataOffset + i * 4);
+                        samples[i] = s / 2147483648f;
+                    }
+                    return sampleCount > 0;
+                }
             }
-            return samples.Length > 0 && channels > 0 && sampleRate > 0;
+            catch (Exception ex)
+            {
+                Plugin.Log?.LogWarning($"WAV decode: {ex.Message}");
+                return false;
+            }
+
+            Plugin.Log?.LogWarning($"Unsupported WAV fmt={audioFormat} bits={bitsPerSample}");
+            return false;
         }
     }
 }

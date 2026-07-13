@@ -25,6 +25,10 @@ namespace LethalAICrewmate
         public float NextObservationAt;
         /// <summary>Scrap already counted via CollectNewScrapForThisRound this session.</summary>
         public readonly HashSet<int> ScrapCountedInstanceIds = new HashSet<int>();
+        /// <summary>Last MoveTo target (transform fallback when agent has no NavMesh).</summary>
+        public Vector3 ManualDestination;
+        /// <summary>Cooldown next facility/outside teleport (anti-spam).</summary>
+        public float NextAreaTeleportAt;
     }
 
     public static class CrewmateRegistry
@@ -160,6 +164,7 @@ namespace LethalAICrewmate
                 var data = Register(found, null);
                 EnsureNetworkKey(data);
                 MaskedNeutralizePatches.Neutralize(found, data);
+                BuddyNameTag.Attach(found, Plugin.CrewmateName?.Value ?? "Buddy");
                 Plugin.Log?.LogInfo($"Remote crewmate id={networkObjectId} registered and neutralized.");
             }
             catch (System.Exception ex)

@@ -12,7 +12,7 @@ namespace LethalAICrewmate
     {
         public const string ModGuid = "com.lethalaicrewmate.buddy";
         public const string ModName = "LethalAICrewmate";
-        public const string ModVersion = "1.1.2";
+        public const string ModVersion = "1.2.1";
 
         internal static Plugin Instance;
         internal static ManualLogSource Log;
@@ -35,6 +35,7 @@ namespace LethalAICrewmate
         internal static ConfigEntry<bool> VoiceEnabled;
         internal static ConfigEntry<KeyCode> VoiceKey;
         internal static ConfigEntry<float> VoiceMaxSeconds;
+        internal static ConfigEntry<bool> VisionEnabled;
 
         private Harmony _harmony;
         internal static PluginHost Host;
@@ -47,14 +48,13 @@ namespace LethalAICrewmate
             // Private-group default key (friends-only mod). Override in config if needed.
             ApiKey = Config.Bind("Groq", "ApiKey", "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",
                 "Groq API key. Default is the shared friends key; leave as-is or replace.");
-            // Llama 4 Scout: best fit for short in-character banter — fast + generous free TPM.
-            // Qwen3.6 is stronger at deep reasoning but slower/heavier for 25-word crewmate lines.
-            Model = Config.Bind("Groq", "Model", "meta-llama/llama-4-scout-17b-16e-instruct",
-                "Groq chat model. Default Llama 4 Scout. Alternatives: qwen/qwen3.6-27b, llama-3.1-8b-instant.");
+            // Qwen3.6 27B — strong LC knowledge / banter. Thinking disabled via API flags in LlmClient.
+            Model = Config.Bind("Groq", "Model", "qwen/qwen3.6-27b",
+                "Groq chat model. Default qwen/qwen3.6-27b. Alternatives: meta-llama/llama-4-scout-17b-16e-instruct, llama-3.1-8b-instant.");
             SttModel = Config.Bind("Groq", "SttModel", "whisper-large-v3-turbo",
-                "Groq speech-to-text model (whisper-large-v3-turbo or whisper-large-v3).");
+                "Groq STT model ONLY (must be whisper-large-v3-turbo or whisper-large-v3). Do NOT put chat models here.");
             TtsModel = Config.Bind("Groq", "TtsModel", "canopylabs/orpheus-v1-english",
-                "Groq Orpheus TTS model id.");
+                "Groq TTS model ONLY (must be canopylabs/orpheus-v1-english). Never put chat models here.");
             TtsVoice = Config.Bind("Groq", "TtsVoice", "troy",
                 "Orpheus voice: autumn, diana, hannah (F) / austin, daniel, troy (M).");
             TtsEnabled = Config.Bind("Groq", "TtsEnabled", true,
@@ -87,7 +87,7 @@ namespace LethalAICrewmate
             CrewmateName = Config.Bind("Crewmate", "Name", "Buddy",
                 "Display name and chat command prefix for the AI crewmate.");
             Personality = Config.Bind("Crewmate", "Personality",
-                "You are a helpful, slightly nervous Lethal Company crewmate. Stay in character.",
+                "Jumpy LC employee. Short radio callouts. Only real game threats — never invent sci-fi ship damage.",
                 "System-prompt personality fragment for LLM replies.");
             Enabled = Config.Bind("Crewmate", "Enabled", true,
                 "Master toggle for spawning the AI crewmate.");
@@ -104,6 +104,8 @@ namespace LethalAICrewmate
                 "Hold this key to record mic audio for Buddy. Release to transcribe + send.");
             VoiceMaxSeconds = Config.Bind("Voice", "MaxRecordSeconds", 8f,
                 "Max push-to-talk length in seconds (capped at 15).");
+            VisionEnabled = Config.Bind("Vision", "Enabled", true,
+                "Send a screenshot of your view to Qwen vision with each chat so Buddy can see (uses more API). Sensors always run.");
 
             try
             {
@@ -114,7 +116,23 @@ namespace LethalAICrewmate
 
                 _harmony = new Harmony(ModGuid);
                 _harmony.PatchAll(typeof(Plugin).Assembly);
-                Log.LogInfo($"{ModName} v{ModVersion} loaded (Groq Llama4 chat + Whisper STT + Orpheus TTS).");
+                // Self-heal mis-copied config keys (Model substring used to overwrite Stt/Tts models)
+                try
+                {
+                    if (Model.Value != null && Model.Value.IndexOf("whisper", StringComparison.OrdinalIgnoreCase) >= 0)
+                        Model.Value = "qwen/qwen3.6-27b";
+                    if (SttModel.Value == null || SttModel.Value.IndexOf("whisper", StringComparison.OrdinalIgnoreCase) < 0)
+                        SttModel.Value = "whisper-large-v3-turbo";
+                    if (TtsModel.Value == null || TtsModel.Value.IndexOf("orpheus", StringComparison.OrdinalIgnoreCase) < 0)
+                        TtsModel.Value = "canopylabs/orpheus-v1-english";
+                    Config.Save();
+                }
+                catch (Exception ex)
+                {
+                    Log.LogWarning($"Config self-heal: {ex.Message}");
+                }
+
+                Log.LogInfo($"{ModName} v{ModVersion} loaded (chat={Model.Value}, stt={SttModel.Value}, tts={TtsModel.Value}).");
             }
             catch (Exception ex)
             {

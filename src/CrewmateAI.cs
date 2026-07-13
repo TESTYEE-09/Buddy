@@ -9,22 +9,40 @@ namespace LethalAICrewmate
 {
     public static class CrewmateAI
     {
-        private const float FollowDistance = 3f;
+        private const float FollowDistance = 7f;      // stop this far from player (was 3 — too clingy)
+        private const float FollowResumeDistance = 9f; // only start walking again when farther than this
         private const float PickupRange = 2f;
         private const float ShipDropRange = 4f;
-        private const float AgentSpeed = 5.5f;
+        private const float AgentSpeed = 5.0f;
+        private const float AiTickInterval = 0.12f;
+
+        private static float _nextAiTick;
 
         public static void HostUpdate()
         {
             if (!CrewmateSpawner.IsHost()) return;
+
+            // CRITICAL: vanilla DoAIInterval is driven from Masked.Update, which we skip.
+            // Drive our own AI tick here so Buddy actually moves / fetches.
+            bool runAi = Time.time >= _nextAiTick;
+            if (runAi)
+                _nextAiTick = Time.time + AiTickInterval;
 
             foreach (var data in CrewmateRegistry.All)
             {
                 try
                 {
                     if (data?.Enemy == null) continue;
+                    if (data.Enemy.isEnemyDead) continue;
+
                     CrewmateRegistry.EnsureNetworkKey(data);
                     SyncHeldItemVisual(data);
+
+                    if (runAi)
+                        DoAIInterval(data.Enemy);
+
+                    // Every frame: keep agent moving + simple transform fallback
+                    DriveMovementFrame(data);
                     MaybeObserve(data);
                 }
                 catch (Exception ex)
@@ -32,6 +50,40 @@ namespace LethalAICrewmate
                     Plugin.Log?.LogError($"HostUpdate crewmate: {ex}");
                 }
             }
+        }
+
+        private static void DriveMovementFrame(CrewmateData data)
+        {
+            var enemy = data.Enemy;
+            if (enemy == null) return;
+            EnsureAgent(enemy);
+
+            if (enemy.agent != null && enemy.agent.enabled && enemy.agent.isOnNavMesh)
+            {
+                if (enemy.moveTowardsDestination && !enemy.agent.isStopped)
+                {
+                    // NavMeshAgent drives position; nudge sync fields
+                    enemy.moveTowardsDestination = true;
+                }
+                return;
+            }
+
+            // Fallback: no navmesh (rare) — walk transform toward destination
+            if (!enemy.moveTowardsDestination) return;
+            if (data.ManualDestination == Vector3.zero) return;
+
+            Vector3 pos = enemy.transform.position;
+            Vector3 dest = data.ManualDestination;
+            dest.y = pos.y;
+            float step = AgentSpeed * Time.deltaTime;
+            enemy.transform.position = Vector3.MoveTowards(pos, dest, step);
+            Vector3 look = dest - pos;
+            look.y = 0f;
+            if (look.sqrMagnitude > 0.01f)
+                enemy.transform.rotation = Quaternion.Slerp(
+                    enemy.transform.rotation,
+                    Quaternion.LookRotation(look.normalized),
+                    10f * Time.deltaTime);
         }
 
         public static void DoAIInterval(MaskedPlayerEnemy enemy)
@@ -122,7 +174,7 @@ namespace LethalAICrewmate
             {
                 if (!enemy.agent.enabled) enemy.agent.enabled = true;
                 enemy.agent.speed = AgentSpeed;
-                enemy.agent.stoppingDistance = 0.5f;
+                enemy.agent.stoppingDistance = 2.5f;
                 if (!enemy.agent.isOnNavMesh)
                 {
                     if (NavMesh.SamplePosition(enemy.transform.position, out var hit, 10f, NavMesh.AllAreas))
@@ -148,14 +200,150 @@ namespace LethalAICrewmate
             }
 
             data.Owner = target;
+
+            // Facility / outside are separate navmeshes — warp through when owner changes area
+            SyncAreaWithOwner(data, target);
+
             float dist = Vector3.Distance(enemy.transform.position, target.transform.position);
+            // Hysteresis: stop inside FollowDistance, only resume after FollowResumeDistance
+            // so he doesn't micro-adjust into your personal space
             if (dist <= FollowDistance)
             {
                 StopMoving(enemy);
                 return;
             }
+            if (dist < FollowResumeDistance && !enemy.moveTowardsDestination)
+            {
+                // already stopped, not far enough to bother walking again
+                return;
+            }
 
-            MoveTo(enemy, target.transform.position);
+            // Far separation (owner teleported / entrance) — hard follow
+            if (dist > 28f && Time.time >= data.NextAreaTeleportAt)
+            {
+                TeleportBesidePlayer(enemy, target, enemy.isOutside);
+                data.NextAreaTeleportAt = Time.time + 1.5f;
+                return;
+            }
+
+            // Walk toward a point offset behind the player, not into their feet
+            Vector3 followPoint = target.transform.position
+                                  - target.transform.forward * 2.5f
+                                  + target.transform.right * 0.6f;
+            MoveTo(enemy, followPoint);
+        }
+
+        /// <summary>
+        /// LC indoor/outdoor are different NavMeshes. Match owner's factory/exterior state
+        /// via Masked SetEnemyOutside + teleport next to them.
+        /// </summary>
+        private static void SyncAreaWithOwner(CrewmateData data, PlayerControllerB owner)
+        {
+            if (data?.Enemy == null || owner == null) return;
+            if (Time.time < data.NextAreaTeleportAt) return;
+
+            try
+            {
+                var enemy = data.Enemy;
+                bool ownerInFactory = owner.isInsideFactory;
+                bool buddyOutside = enemy.isOutside;
+
+                // Owner entered complex — Buddy still outside
+                if (ownerInFactory && buddyOutside)
+                {
+                    Plugin.Log?.LogInfo("Buddy following into facility…");
+                    TeleportBesidePlayer(enemy, owner, setOutside: false);
+                    data.NextAreaTeleportAt = Time.time + 2f;
+                    return;
+                }
+
+                // Owner left complex to exterior — Buddy still inside
+                if (!ownerInFactory && !buddyOutside && !owner.isInHangarShipRoom)
+                {
+                    Plugin.Log?.LogInfo("Buddy following out of facility…");
+                    TeleportBesidePlayer(enemy, owner, setOutside: true);
+                    data.NextAreaTeleportAt = Time.time + 2f;
+                    return;
+                }
+
+                // Owner on ship, Buddy still deep in facility / far away
+                if (owner.isInHangarShipRoom && !buddyOutside)
+                {
+                    float d = Vector3.Distance(enemy.transform.position, owner.transform.position);
+                    if (d > 35f)
+                    {
+                        Plugin.Log?.LogInfo("Buddy warping to ship with owner…");
+                        TeleportBesidePlayer(enemy, owner, setOutside: false);
+                        data.NextAreaTeleportAt = Time.time + 2f;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log?.LogWarning($"SyncAreaWithOwner: {ex.Message}");
+            }
+        }
+
+        private static void TeleportBesidePlayer(MaskedPlayerEnemy enemy, PlayerControllerB owner, bool setOutside)
+        {
+            if (enemy == null || owner == null) return;
+            try
+            {
+                Vector3 dest = owner.transform.position
+                               + owner.transform.right * 1.1f
+                               + owner.transform.forward * -0.4f
+                               + Vector3.up * 0.1f;
+
+                if (NavMesh.SamplePosition(dest, out var hit, 10f, NavMesh.AllAreas))
+                    dest = hit.position;
+                else if (NavMesh.SamplePosition(owner.transform.position, out hit, 12f, NavMesh.AllAreas))
+                    dest = hit.position;
+
+                // Preferred Masked API (syncs to clients)
+                bool teleported = false;
+                try
+                {
+                    enemy.TeleportMaskedEnemyAndSync(dest, setOutside);
+                    teleported = true;
+                }
+                catch
+                {
+                    try
+                    {
+                        enemy.TeleportMaskedEnemy(dest, setOutside);
+                        teleported = true;
+                    }
+                    catch
+                    {
+                        try { enemy.SetEnemyOutside(setOutside); } catch { /* ignore */ }
+                    }
+                }
+
+                if (!teleported)
+                {
+                    try { enemy.SetEnemyOutside(setOutside); } catch { /* ignore */ }
+                    enemy.transform.position = dest;
+                    if (enemy.agent != null)
+                    {
+                        enemy.agent.enabled = true;
+                        try { enemy.agent.Warp(dest); } catch { /* ignore */ }
+                    }
+                }
+
+                try { enemy.SyncPositionToClients(); } catch { /* ignore */ }
+
+                // Face owner
+                var look = owner.transform.position - enemy.transform.position;
+                look.y = 0f;
+                if (look.sqrMagnitude > 0.01f)
+                    enemy.transform.rotation = Quaternion.LookRotation(look.normalized);
+
+                Plugin.Log?.LogInfo($"Buddy teleported beside owner (outside={setOutside}) at {dest}");
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log?.LogError($"TeleportBesidePlayer: {ex}");
+            }
         }
 
         private static void TickStay(CrewmateData data)
@@ -222,14 +410,37 @@ namespace LethalAICrewmate
         {
             try
             {
+                if (CrewmateRegistry.TryGet(enemy, out var data) && data != null)
+                    data.ManualDestination = worldPos;
+
                 enemy.moveTowardsDestination = true;
                 enemy.movingTowardsTargetPlayer = false;
                 enemy.targetPlayer = null;
-                enemy.SetDestinationToPosition(worldPos, checkForPath: false);
-                if (enemy.agent != null && enemy.agent.isOnNavMesh)
+
+                EnsureAgent(enemy);
+
+                // Prefer snapping dest onto navmesh
+                Vector3 dest = worldPos;
+                if (NavMesh.SamplePosition(worldPos, out var hit, 8f, NavMesh.AllAreas))
+                    dest = hit.position;
+
+                try { enemy.SetDestinationToPosition(dest, checkForPath: false); }
+                catch { /* ignore */ }
+
+                if (enemy.agent != null)
                 {
-                    enemy.agent.isStopped = false;
-                    enemy.agent.SetDestination(worldPos);
+                    if (!enemy.agent.enabled) enemy.agent.enabled = true;
+                    if (!enemy.agent.isOnNavMesh)
+                    {
+                        if (NavMesh.SamplePosition(enemy.transform.position, out var here, 12f, NavMesh.AllAreas))
+                            enemy.agent.Warp(here.position);
+                    }
+                    if (enemy.agent.isOnNavMesh)
+                    {
+                        enemy.agent.isStopped = false;
+                        enemy.agent.speed = AgentSpeed;
+                        enemy.agent.SetDestination(dest);
+                    }
                 }
             }
             catch (Exception ex)
@@ -242,6 +453,9 @@ namespace LethalAICrewmate
         {
             try
             {
+                if (CrewmateRegistry.TryGet(enemy, out var data) && data != null)
+                    data.ManualDestination = Vector3.zero;
+
                 enemy.moveTowardsDestination = false;
                 enemy.movingTowardsTargetPlayer = false;
                 if (enemy.agent != null && enemy.agent.isOnNavMesh)
@@ -260,7 +474,8 @@ namespace LethalAICrewmate
         {
             try
             {
-                if (data.Owner != null && !data.Owner.isPlayerDead && data.Owner.isPlayerControlled)
+                // isPlayerControlled can be false for host in some states — only require alive
+                if (data.Owner != null && !data.Owner.isPlayerDead)
                     return data.Owner;
 
                 // Nearest living player
@@ -571,10 +786,14 @@ namespace LethalAICrewmate
         {
             if (string.IsNullOrEmpty(message)) return;
             var data = CrewmateRegistry.GetPrimary();
-            if (data == null) return;
+            if (data == null)
+            {
+                Plugin.Log?.LogWarning("Command ignored: no crewmate registered.");
+                return;
+            }
 
             var lower = message.ToLowerInvariant();
-            if (lower.Contains("follow"))
+            if (lower.Contains("follow") || lower.Contains("come") || lower == "here")
                 ApplyCommand(data, "FOLLOW");
             else if (lower.Contains("stay") || lower.Contains("wait") || lower.Contains("stop"))
                 ApplyCommand(data, "STAY");
@@ -582,6 +801,8 @@ namespace LethalAICrewmate
                 ApplyCommand(data, "SHIP");
             else if (lower.Contains("fetch") || lower.Contains("collect") || lower.Contains("scrap") || lower.Contains("loot"))
                 ApplyCommand(data, "FETCH");
+            else
+                Plugin.Log?.LogInfo($"No command keyword in: '{message}'");
         }
 
         /// <summary>Client-side attach/detach mirror for held scrap visuals.</summary>

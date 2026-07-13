@@ -235,26 +235,51 @@ namespace LethalAICrewmate
                     return false;
                 }
 
+                var owner = FindPreferredOwner();
+
+                // Force position beside player inside the ship (spawn APIs often drop outside)
                 try
                 {
-                    var snapped = SnapToNavMesh(masked.transform.position, 15f);
-                    masked.transform.position = snapped;
+                    Vector3 shipSide = GetSpawnPosition();
+                    if (shipSide == Vector3.zero && owner != null)
+                        shipSide = owner.transform.position + owner.transform.right * 1.15f;
+
+                    shipSide = SnapToNavMesh(shipSide, 8f);
+                    masked.transform.position = shipSide;
+
+                    // Mark as inside ship so pathing / exterior AI doesn't yank him out
+                    try { masked.SetEnemyOutside(false); } catch { /* optional */ }
+                    try { masked.isOutside = false; } catch { /* field may not exist */ }
+
                     if (masked.agent != null)
                     {
                         masked.agent.enabled = true;
-                        if (NavMesh.SamplePosition(snapped, out var hit, 15f, NavMesh.AllAreas))
+                        if (NavMesh.SamplePosition(shipSide, out var hit, 8f, NavMesh.AllAreas))
                             masked.agent.Warp(hit.position);
+                        else
+                            masked.agent.Warp(shipSide);
                     }
+
+                    // Face the player
+                    if (owner != null)
+                    {
+                        var look = owner.transform.position - masked.transform.position;
+                        look.y = 0f;
+                        if (look.sqrMagnitude > 0.01f)
+                            masked.transform.rotation = Quaternion.LookRotation(look.normalized);
+                    }
+
+                    Plugin.Log?.LogInfo($"Post-spawn placed beside player in ship at {masked.transform.position}");
                 }
                 catch (Exception ex)
                 {
-                    Plugin.Log?.LogWarning($"Post-spawn NavMesh warp: {ex.Message}");
+                    Plugin.Log?.LogWarning($"Post-spawn ship place: {ex.Message}");
                 }
 
-                var owner = FindPreferredOwner();
                 var data = CrewmateRegistry.Register(masked, owner);
                 CrewmateRegistry.EnsureNetworkKey(data);
                 MaskedNeutralizePatches.Neutralize(masked, data);
+                BuddyNameTag.Attach(masked, Plugin.CrewmateName?.Value ?? "Buddy");
 
                 if (data != null && data.NetworkObjectId != 0)
                     NetMessenger.BroadcastCrewmateSync(data.NetworkObjectId, active: true);
@@ -372,35 +397,66 @@ namespace LethalAICrewmate
             return pos;
         }
 
+        /// <summary>
+        /// Spawn next to the host player inside the ship (not outside on the moon).
+        /// </summary>
         private static Vector3 GetSpawnPosition()
         {
             try
             {
                 var sor = StartOfRound.Instance;
-                if (sor != null)
-                {
-                    // Prefer near the local/host player so Buddy is visible immediately
-                    var owner = FindPreferredOwner();
-                    if (owner != null)
-                    {
-                        var near = owner.transform.position + owner.transform.forward * 2.5f + Vector3.up * 0.2f;
-                        return SnapToNavMesh(near, 10f);
-                    }
 
-                    if (sor.outsideShipSpawnPosition != null)
-                        return sor.outsideShipSpawnPosition.position + Vector3.forward * 2f + Vector3.up * 0.5f;
-                    if (sor.middleOfShipNode != null)
-                        return sor.middleOfShipNode.position + Vector3.forward * 3f;
+                // 1) Beside the host/local player (inside ship after land)
+                var owner = FindPreferredOwner();
+                if (owner != null)
+                {
+                    // Stand at player's right shoulder — close, visible, less door-clipping
+                    Vector3 beside = owner.transform.position
+                                     + owner.transform.right * 1.15f
+                                     + owner.transform.forward * 0.35f
+                                     + Vector3.up * 0.05f;
+                    Vector3 snapped = SnapToNavMesh(beside, 6f);
+                    Plugin.Log?.LogInfo($"Spawn beside player '{owner.playerUsername}' at {snapped}");
+                    return snapped;
                 }
 
-                if (RoundManager.Instance != null)
+                // 2) Ship interior anchors
+                if (sor != null)
+                {
+                    if (sor.middleOfShipNode != null)
+                    {
+                        var mid = SnapToNavMesh(sor.middleOfShipNode.position, 8f);
+                        Plugin.Log?.LogInfo($"Spawn at middleOfShipNode {mid}");
+                        return mid;
+                    }
+
+                    if (sor.insideShipPositions != null && sor.insideShipPositions.Length > 0)
+                    {
+                        foreach (var t in sor.insideShipPositions)
+                        {
+                            if (t == null) continue;
+                            var p = SnapToNavMesh(t.position, 6f);
+                            Plugin.Log?.LogInfo($"Spawn at insideShipPosition {p}");
+                            return p;
+                        }
+                    }
+
+                    if (sor.shipInnerRoomBounds != null)
+                    {
+                        var c = sor.shipInnerRoomBounds.bounds.center;
+                        c.y = sor.shipInnerRoomBounds.bounds.min.y + 0.1f;
+                        var p = SnapToNavMesh(c, 8f);
+                        Plugin.Log?.LogInfo($"Spawn at shipInnerRoomBounds {p}");
+                        return p;
+                    }
+                }
+
+                // 3) Last resort (still prefer ship-side over moon exterior)
+                if (RoundManager.Instance != null && sor?.middleOfShipNode != null)
                 {
                     var pos = RoundManager.Instance.GetNavMeshPosition(
-                        sor != null && sor.outsideShipSpawnPosition != null
-                            ? sor.outsideShipSpawnPosition.position
-                            : Vector3.zero,
-                        default, 5f, -1);
-                    if (pos != Vector3.zero) return pos + Vector3.up * 0.2f;
+                        sor.middleOfShipNode.position, default, 8f, -1);
+                    if (pos != Vector3.zero) return pos;
                 }
             }
             catch (Exception ex)

@@ -63,40 +63,77 @@ namespace LethalAICrewmate
             var lower = msg.ToLowerInvariant();
             var nameLower = name.ToLowerInvariant();
 
+            Plugin.Log?.LogInfo($"Chat observed: '{msg}' (playerId={playerId})");
+
             bool addressed =
                 lower.StartsWith(nameLower) ||
                 lower.StartsWith("buddy") ||
                 lower.Contains(nameLower) ||
                 lower.Contains("buddy");
 
-            bool isCommand = false;
-            if (addressed || lower.StartsWith(nameLower) || lower.StartsWith("buddy"))
-            {
-                // Strip name prefix for command parse
-                string rest = msg;
-                if (lower.StartsWith(nameLower))
-                    rest = msg.Substring(name.Length).TrimStart(' ', ',', ':', '-');
-                else if (lower.StartsWith("buddy"))
-                    rest = msg.Substring(5).TrimStart(' ', ',', ':', '-');
+            // Bare commands also work: "follow", "stay", "fetch scrap", "go to ship"
+            string rest = msg;
+            if (lower.StartsWith(nameLower))
+                rest = msg.Substring(name.Length).TrimStart(' ', ',', ':', '-');
+            else if (lower.StartsWith("buddy"))
+                rest = msg.Substring(5).TrimStart(' ', ',', ':', '-');
 
-                string restLower = rest.ToLowerInvariant();
-                if (restLower.Contains("follow") || restLower.Contains("stay") ||
-                    restLower.Contains("wait") || restLower.Contains("ship") ||
-                    restLower.Contains("fetch") || restLower.Contains("collect") ||
-                    restLower.Contains("scrap") || restLower.Contains("go to ship") ||
-                    restLower.Contains("go home"))
+            string restLower = rest.ToLowerInvariant();
+
+            // Ignore system / join messages (was false-triggering on "joined the ship")
+            if (lower.Contains("joined the") || lower.Contains("left the") ||
+                lower.Contains("was kicked") || playerId < 0)
+            {
+                return;
+            }
+
+            // Terminal / orbit commands (route, buy, moons) — host, preferably in space
+            if (addressed || restLower.StartsWith("route") || restLower.StartsWith("buy") ||
+                restLower == "moons" || restLower.StartsWith("terminal") || restLower == "store" ||
+                restLower == "credits")
+            {
+                string termResult = TerminalBuddy.HandleChatCommand(msg);
+                if (!string.IsNullOrEmpty(termResult))
                 {
-                    isCommand = true;
-                    CrewmateAI.ApplyCommandFromChat(rest);
+                    Plugin.Log?.LogInfo($"Terminal cmd: {termResult}");
+                    try
+                    {
+                        if (HUDManager.Instance != null)
+                            HUDManager.Instance.AddChatMessage(termResult, name);
+                    }
+                    catch { /* ignore */ }
+                    // still let LLM acknowledge if addressed
                 }
+            }
+
+            bool looksLikeCommand =
+                restLower.Contains("follow") || restLower == "stay" || restLower.StartsWith("stay ") ||
+                restLower.Contains("wait") || restLower == "stop" ||
+                restLower.Contains("go to ship") || restLower.Contains("go home") ||
+                restLower == "ship" || restLower.StartsWith("ship ") ||
+                restLower.Contains("fetch") || restLower.Contains("collect scrap") ||
+                restLower.Contains("scrap") || restLower.Contains("loot") ||
+                restLower.Contains("come here") || restLower == "here" || restLower.Contains("come on");
+
+            bool isCommand = false;
+            if (looksLikeCommand && (addressed ||
+                restLower.StartsWith("follow") || restLower.StartsWith("stay") ||
+                restLower.StartsWith("fetch") || restLower.StartsWith("ship") ||
+                restLower.StartsWith("go ") || restLower.StartsWith("come") ||
+                restLower == "here" || restLower == "stop" || restLower.StartsWith("wait")))
+            {
+                isCommand = true;
+                Plugin.Log?.LogInfo($"Command parsed from chat: '{rest}'");
+                CrewmateAI.ApplyCommandFromChat(rest);
             }
 
             bool shouldReply = false;
             if (addressed)
                 shouldReply = true;
+            else if (isCommand)
+                shouldReply = true;
             else if (msg.TrimEnd().EndsWith("?"))
             {
-                // Question within ChatTriggerRange of crewmate
                 var data = CrewmateRegistry.GetPrimary();
                 var player = GetPlayerById(playerId);
                 if (data?.Enemy != null && player != null)
