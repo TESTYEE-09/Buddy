@@ -1,0 +1,9 @@
+{
+  "name": "LethalAICrewmate",
+  "version_number": "1.0.0",
+  "website_url": "",
+  "description": "AI crewmate NPC (Buddy) for Lethal Company. Host-spawned Masked body with follow/stay/ship/fetch commands and optional OpenRouter chat.",
+  "dependencies": [
+    "BepInEx-BepInExPack-5.4.2100"
+  ]
+}
