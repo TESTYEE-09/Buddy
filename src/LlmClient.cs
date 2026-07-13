@@ -9,10 +9,10 @@ namespace LethalAICrewmate
 {
     public static class LlmClient
     {
-        private const string Endpoint = "https://openrouter.ai/api/v1/chat/completions";
+        private const string GroqChatEndpoint = "https://api.groq.com/openai/v1/chat/completions";
         private const int MaxHistory = 12;
         private const int MaxQueue = 3;
-        private const float MinInterval = 5f;
+        private const float MinInterval = 1.5f; // Groq is fast
         private const int MaxTokens = 150;
 
         private static readonly Queue<PendingRequest> Queue = new Queue<PendingRequest>();
@@ -21,7 +21,6 @@ namespace LethalAICrewmate
         private static float _lastCallTime = -999f;
         private static Coroutine _running;
 
-        /// <summary>Clear queue + history between landings so sessions don't bleed.</summary>
         public static void ResetSession()
         {
             try
@@ -54,13 +53,12 @@ namespace LethalAICrewmate
             public string Content;
         }
 
+        public static bool HasApiKey => !string.IsNullOrEmpty(Plugin.ApiKey?.Value);
+
         public static void EnqueuePlayerMessage(string playerName, string message, bool isCommand)
         {
-            if (string.IsNullOrEmpty(Plugin.ApiKey?.Value))
-            {
-                // Silent NPC mode: still executed commands above; no chat reply
+            if (!HasApiKey)
                 return;
-            }
 
             string content = $"{playerName} says: {message}";
             if (isCommand)
@@ -71,7 +69,7 @@ namespace LethalAICrewmate
 
         public static void EnqueueObservation(string summary)
         {
-            if (string.IsNullOrEmpty(Plugin.ApiKey?.Value)) return;
+            if (!HasApiKey) return;
             Enqueue($"[Observation] {summary}", isObservation: true);
         }
 
@@ -92,7 +90,7 @@ namespace LethalAICrewmate
                 if (_inFlight) return;
                 if (Queue.Count == 0) return;
                 if (Plugin.Host == null) return;
-                if (string.IsNullOrEmpty(Plugin.ApiKey?.Value))
+                if (!HasApiKey)
                 {
                     Queue.Clear();
                     return;
@@ -120,17 +118,17 @@ namespace LethalAICrewmate
             TrimHistory();
 
             string body = BuildRequestJson(systemPrompt, History);
+            string model = Plugin.Model?.Value ?? "llama-3.1-8b-instant";
 
-            using (var uwr = new UnityWebRequest(Endpoint, "POST"))
+            using (var uwr = new UnityWebRequest(GroqChatEndpoint, "POST"))
             {
                 byte[] raw = Encoding.UTF8.GetBytes(body);
                 uwr.uploadHandler = new UploadHandlerRaw(raw);
                 uwr.downloadHandler = new DownloadHandlerBuffer();
                 uwr.SetRequestHeader("Content-Type", "application/json");
                 uwr.SetRequestHeader("Authorization", "Bearer " + Plugin.ApiKey.Value);
-                uwr.SetRequestHeader("HTTP-Referer", "https://github.com/lethalaicrewmate");
-                uwr.SetRequestHeader("X-Title", "LethalAICrewmate");
 
+                Plugin.Log?.LogInfo($"Groq chat → model={model}");
                 yield return uwr.SendWebRequest();
 
                 try
@@ -141,7 +139,7 @@ namespace LethalAICrewmate
 
                     if (!ok)
                     {
-                        Plugin.Log?.LogWarning($"OpenRouter HTTP {uwr.responseCode}: {uwr.error} {uwr.downloadHandler?.text}");
+                        Plugin.Log?.LogWarning($"Groq chat HTTP {uwr.responseCode}: {uwr.error} {uwr.downloadHandler?.text}");
                     }
                     else
                     {
@@ -149,6 +147,8 @@ namespace LethalAICrewmate
                         string content = ParseAssistantContent(responseText);
                         if (!string.IsNullOrEmpty(content))
                             HandleAssistantReply(content);
+                        else
+                            Plugin.Log?.LogWarning("Groq chat: empty assistant content");
                     }
                 }
                 catch (Exception ex)
@@ -176,7 +176,6 @@ namespace LethalAICrewmate
 
         private static void TrimHistory()
         {
-            // Keep last MaxHistory turns (user+assistant pairs ~ 2*6)
             while (History.Count > MaxHistory)
                 History.RemoveAt(0);
         }
@@ -184,8 +183,9 @@ namespace LethalAICrewmate
         private static string BuildRequestJson(string systemPrompt, List<ChatTurn> history)
         {
             var sb = new StringBuilder(1024);
-            sb.Append("{\"model\":\"").Append(Escape(Plugin.Model?.Value ?? "openai/gpt-oss-20b:free")).Append("\",");
+            sb.Append("{\"model\":\"").Append(Escape(Plugin.Model?.Value ?? "llama-3.1-8b-instant")).Append("\",");
             sb.Append("\"max_tokens\":").Append(MaxTokens).Append(',');
+            sb.Append("\"temperature\":0.7,");
             sb.Append("\"messages\":[");
             sb.Append("{\"role\":\"system\",\"content\":\"").Append(Escape(systemPrompt)).Append("\"}");
             foreach (var turn in history)
@@ -222,14 +222,10 @@ namespace LethalAICrewmate
             return sb.ToString();
         }
 
-        /// <summary>
-        /// Minimal hand-rolled parse: find "content":"..." inside the first message, respecting escapes.
-        /// </summary>
         internal static string ParseAssistantContent(string json)
         {
             if (string.IsNullOrEmpty(json)) return null;
 
-            // Prefer choices[0].message.content
             int msgIdx = json.IndexOf("\"message\"", StringComparison.Ordinal);
             int searchFrom = msgIdx >= 0 ? msgIdx : 0;
             int contentKey = json.IndexOf("\"content\"", searchFrom, StringComparison.Ordinal);
@@ -242,7 +238,7 @@ namespace LethalAICrewmate
             int i = colon + 1;
             while (i < json.Length && char.IsWhiteSpace(json[i])) i++;
             if (i >= json.Length || json[i] != '"') return null;
-            i++; // past opening quote
+            i++;
 
             var sb = new StringBuilder();
             while (i < json.Length)
@@ -308,7 +304,6 @@ namespace LethalAICrewmate
             string name = Plugin.CrewmateName?.Value ?? "Buddy";
 
             NetMessenger.BroadcastCrewmateChat(name, display, pos, netId);
-            // Host also shows locally via same proximity rules
             ProximityChat.TryShowLocal(name, display, pos);
         }
 
@@ -320,7 +315,7 @@ namespace LethalAICrewmate
                 int idx = display.IndexOf(t, StringComparison.OrdinalIgnoreCase);
                 if (idx >= 0)
                 {
-                    tag = t.Substring(1, t.Length - 2); // FOLLOW etc.
+                    tag = t.Substring(1, t.Length - 2);
                     display = (display.Substring(0, idx) + display.Substring(idx + t.Length)).Trim();
                     return;
                 }

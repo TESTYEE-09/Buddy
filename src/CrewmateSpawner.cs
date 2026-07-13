@@ -14,36 +14,62 @@ namespace LethalAICrewmate
         private static bool _spawnedThisLanding;
         private static bool _spawnAttemptInProgress;
         private static Coroutine _spawnRoutine;
+        private static float _lastPollLog;
+        private static int _pollAttempts;
 
-        public static void SpawnCrewmateIfNeeded()
+        /// <summary>Called from land patches and periodic poll.</summary>
+        public static void SpawnCrewmateIfNeeded(string reason = "unknown")
         {
             try
             {
-                if (Plugin.Enabled == null || !Plugin.Enabled.Value) return;
-                if (!IsHost()) return;
-                if (_spawnedThisLanding) return;
-                if (StartOfRound.Instance == null || !StartOfRound.Instance.shipHasLanded) return;
-                if (StartOfRound.Instance.inShipPhase) return;
-
+                if (Plugin.Enabled == null || !Plugin.Enabled.Value)
+                {
+                    LogOnce($"skip spawn ({reason}): Disabled");
+                    return;
+                }
+                if (!IsHost())
+                {
+                    LogOnce($"skip spawn ({reason}): not host");
+                    return;
+                }
+                if (_spawnedThisLanding)
+                    return;
                 if (CrewmateRegistry.GetPrimary() != null)
                 {
                     _spawnedThisLanding = true;
                     return;
                 }
 
+                var sor = StartOfRound.Instance;
+                if (sor == null)
+                {
+                    LogOnce($"skip spawn ({reason}): StartOfRound null");
+                    return;
+                }
+
+                // Prefer landed state; allow land-event reasons to proceed even if flags lag one frame
+                bool looksLanded = sor.shipHasLanded && !sor.inShipPhase;
+                bool forceFromEvent = reason.StartsWith("event:", StringComparison.Ordinal);
+                if (!looksLanded && !forceFromEvent)
+                {
+                    return; // quiet — poll will retry
+                }
+
                 if (Plugin.Host == null)
                 {
-                    // Fallback: try once immediately if host MB missing
-                    TrySpawnOnce();
+                    Plugin.Log?.LogWarning($"Host MB missing; immediate spawn ({reason})");
+                    TrySpawnOnce(reason);
                     return;
                 }
 
                 if (_spawnAttemptInProgress) return;
+
                 if (_spawnRoutine != null)
                 {
                     try { Plugin.Host.StopCoroutine(_spawnRoutine); } catch { /* ignore */ }
                 }
-                _spawnRoutine = Plugin.Host.StartCoroutine(SpawnWithRetries());
+                Plugin.Log?.LogInfo($"Crewmate spawn requested ({reason}); starting retries…");
+                _spawnRoutine = Plugin.Host.StartCoroutine(SpawnWithRetries(reason));
             }
             catch (Exception ex)
             {
@@ -51,32 +77,72 @@ namespace LethalAICrewmate
             }
         }
 
-        private static IEnumerator SpawnWithRetries()
+        /// <summary>1–2 Hz poll from PluginHost while on a moon.</summary>
+        public static void PollSpawn()
+        {
+            try
+            {
+                if (_spawnedThisLanding || _spawnAttemptInProgress) return;
+                if (Plugin.Enabled == null || !Plugin.Enabled.Value) return;
+                if (!IsHost()) return;
+
+                var sor = StartOfRound.Instance;
+                if (sor == null) return;
+                if (!sor.shipHasLanded || sor.inShipPhase) return;
+                if (CrewmateRegistry.GetPrimary() != null)
+                {
+                    _spawnedThisLanding = true;
+                    return;
+                }
+
+                _pollAttempts++;
+                SpawnCrewmateIfNeeded($"poll#{_pollAttempts}");
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log?.LogError($"PollSpawn: {ex}");
+            }
+        }
+
+        private static void LogOnce(string msg)
+        {
+            if (Time.unscaledTime - _lastPollLog < 8f) return;
+            _lastPollLog = Time.unscaledTime;
+            Plugin.Log?.LogInfo(msg);
+        }
+
+        private static IEnumerator SpawnWithRetries(string reason)
         {
             _spawnAttemptInProgress = true;
-            // Short delays: NavMesh / RoundManager sometimes not ready on the landing frame
-            float[] delays = { 0.15f, 0.75f, 1.5f, 3f };
+            float[] delays = { 0.05f, 0.5f, 1.0f, 2.0f, 4.0f, 7.0f };
             for (int i = 0; i < delays.Length; i++)
             {
                 if (_spawnedThisLanding || CrewmateRegistry.GetPrimary() != null)
                     break;
-                if (!IsHost() || StartOfRound.Instance == null || !StartOfRound.Instance.shipHasLanded)
+
+                var sor = StartOfRound.Instance;
+                if (!IsHost() || sor == null)
                     break;
-                if (StartOfRound.Instance.inShipPhase)
+                // Abort only if clearly back in orbit
+                if (sor.inShipPhase && !sor.shipHasLanded)
                     break;
 
                 yield return new WaitForSeconds(delays[i]);
 
-                if (TrySpawnOnce())
+                if (TrySpawnOnce($"{reason} try{i + 1}"))
                     break;
 
                 Plugin.Log?.LogWarning($"Crewmate spawn attempt {i + 1}/{delays.Length} failed; retrying…");
             }
+
+            if (!_spawnedThisLanding && CrewmateRegistry.GetPrimary() == null)
+                Plugin.Log?.LogError("Crewmate failed to spawn after all retries. Check FindMaskedEnemyType / RoundManager logs.");
+
             _spawnAttemptInProgress = false;
             _spawnRoutine = null;
         }
 
-        private static bool TrySpawnOnce()
+        private static bool TrySpawnOnce(string reason)
         {
             try
             {
@@ -90,40 +156,49 @@ namespace LethalAICrewmate
                 var enemyType = FindMaskedEnemyType();
                 if (enemyType == null || enemyType.enemyPrefab == null)
                 {
-                    Plugin.Log?.LogWarning("Could not find MaskedPlayerEnemy EnemyType; crewmate not spawned.");
+                    Plugin.Log?.LogWarning($"[{reason}] Could not find MaskedPlayerEnemy EnemyType; crewmate not spawned.");
+                    DumpEnemyTypeHints();
                     return false;
                 }
 
                 if (RoundManager.Instance == null)
                 {
-                    Plugin.Log?.LogWarning("RoundManager missing; cannot spawn crewmate.");
+                    Plugin.Log?.LogWarning($"[{reason}] RoundManager missing; cannot spawn crewmate.");
                     return false;
                 }
 
                 var spawnPos = GetSpawnPosition();
-                spawnPos = SnapToNavMesh(spawnPos, 12f);
+                spawnPos = SnapToNavMesh(spawnPos, 15f);
                 var yRot = 0f;
 
-                Plugin.Log?.LogInfo($"Spawning crewmate at {spawnPos} using EnemyType '{enemyType.enemyName}'");
-
-                NetworkObjectReference netRef =
-                    RoundManager.Instance.SpawnEnemyGameObject(spawnPos, yRot, -1, enemyType);
-
-                if (!netRef.TryGet(out NetworkObject netObj) || netObj == null)
-                {
-                    if (NetworkManager.Singleton != null)
-                        netRef.TryGet(out netObj, NetworkManager.Singleton);
-                }
+                Plugin.Log?.LogInfo($"[{reason}] Spawning crewmate at {spawnPos} using EnemyType '{enemyType.enemyName}' prefab='{enemyType.enemyPrefab?.name}'");
 
                 MaskedPlayerEnemy masked = null;
-                if (netObj != null)
-                    masked = netObj.GetComponent<MaskedPlayerEnemy>();
+
+                try
+                {
+                    NetworkObjectReference netRef =
+                        RoundManager.Instance.SpawnEnemyGameObject(spawnPos, yRot, -1, enemyType);
+
+                    if (!netRef.TryGet(out NetworkObject netObj) || netObj == null)
+                    {
+                        if (NetworkManager.Singleton != null)
+                            netRef.TryGet(out netObj, NetworkManager.Singleton);
+                    }
+
+                    if (netObj != null)
+                        masked = netObj.GetComponent<MaskedPlayerEnemy>();
+                }
+                catch (Exception ex)
+                {
+                    Plugin.Log?.LogWarning($"SpawnEnemyGameObject threw: {ex.Message}");
+                }
 
                 if (masked == null)
                 {
-                    // Fallback: find nearest newly spawned masked near spawn pos
+                    // Fallback: nearest newly spawned masked near spawn pos
                     var all = UnityEngine.Object.FindObjectsOfType<MaskedPlayerEnemy>();
-                    float best = 25f;
+                    float best = 30f;
                     foreach (var m in all)
                     {
                         if (m == null) continue;
@@ -136,13 +211,30 @@ namespace LethalAICrewmate
                     }
                 }
 
+                // Last resort: instantiate prefab + network spawn (host)
+                if (masked == null && enemyType.enemyPrefab != null)
+                {
+                    try
+                    {
+                        Plugin.Log?.LogWarning($"[{reason}] Falling back to Instantiate+Spawn of Masked prefab");
+                        var go = UnityEngine.Object.Instantiate(enemyType.enemyPrefab, spawnPos, Quaternion.identity);
+                        var net = go.GetComponent<NetworkObject>();
+                        masked = go.GetComponent<MaskedPlayerEnemy>();
+                        if (net != null && !net.IsSpawned)
+                            net.Spawn(true);
+                    }
+                    catch (Exception ex)
+                    {
+                        Plugin.Log?.LogError($"Instantiate spawn fallback failed: {ex}");
+                    }
+                }
+
                 if (masked == null)
                 {
-                    Plugin.Log?.LogWarning("SpawnEnemyGameObject did not yield a MaskedPlayerEnemy.");
+                    Plugin.Log?.LogWarning($"[{reason}] Spawn did not yield a MaskedPlayerEnemy.");
                     return false;
                 }
 
-                // Snap body to navmesh after spawn
                 try
                 {
                     var snapped = SnapToNavMesh(masked.transform.position, 15f);
@@ -150,9 +242,7 @@ namespace LethalAICrewmate
                     if (masked.agent != null)
                     {
                         masked.agent.enabled = true;
-                        if (masked.agent.isOnNavMesh)
-                            masked.agent.Warp(snapped);
-                        else if (NavMesh.SamplePosition(snapped, out var hit, 15f, NavMesh.AllAreas))
+                        if (NavMesh.SamplePosition(snapped, out var hit, 15f, NavMesh.AllAreas))
                             masked.agent.Warp(hit.position);
                     }
                 }
@@ -166,18 +256,39 @@ namespace LethalAICrewmate
                 CrewmateRegistry.EnsureNetworkKey(data);
                 MaskedNeutralizePatches.Neutralize(masked, data);
 
-                // Clients need the net id so hostility patches apply for them too
                 if (data != null && data.NetworkObjectId != 0)
                     NetMessenger.BroadcastCrewmateSync(data.NetworkObjectId, active: true);
 
                 _spawnedThisLanding = true;
-                Plugin.Log?.LogInfo($"Crewmate '{Plugin.CrewmateName.Value}' spawned successfully (netId={data?.NetworkObjectId}).");
+                Plugin.Log?.LogInfo($"Crewmate '{Plugin.CrewmateName.Value}' spawned successfully (netId={data?.NetworkObjectId}, reason={reason}).");
                 return true;
             }
             catch (Exception ex)
             {
                 Plugin.Log?.LogError($"TrySpawnOnce: {ex}");
                 return false;
+            }
+        }
+
+        private static void DumpEnemyTypeHints()
+        {
+            try
+            {
+                var all = Resources.FindObjectsOfTypeAll<EnemyType>();
+                int n = 0;
+                foreach (var et in all)
+                {
+                    if (et == null) continue;
+                    string nm = et.enemyName ?? et.name ?? "?";
+                    if (n < 40)
+                        Plugin.Log?.LogInfo($"  EnemyType candidate: '{nm}' prefab={(et.enemyPrefab != null ? et.enemyPrefab.name : "null")}");
+                    n++;
+                }
+                Plugin.Log?.LogInfo($"EnemyType scan total: {n}");
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log?.LogWarning($"DumpEnemyTypeHints: {ex.Message}");
             }
         }
 
@@ -190,6 +301,7 @@ namespace LethalAICrewmate
                     CrewmateRegistry.UnregisterAll();
                     _spawnedThisLanding = false;
                     _spawnAttemptInProgress = false;
+                    _pollAttempts = 0;
                     return;
                 }
 
@@ -226,6 +338,7 @@ namespace LethalAICrewmate
                 _spawnedThisLanding = false;
                 _spawnAttemptInProgress = false;
                 _spawnRoutine = null;
+                _pollAttempts = 0;
             }
         }
 
@@ -266,6 +379,14 @@ namespace LethalAICrewmate
                 var sor = StartOfRound.Instance;
                 if (sor != null)
                 {
+                    // Prefer near the local/host player so Buddy is visible immediately
+                    var owner = FindPreferredOwner();
+                    if (owner != null)
+                    {
+                        var near = owner.transform.position + owner.transform.forward * 2.5f + Vector3.up * 0.2f;
+                        return SnapToNavMesh(near, 10f);
+                    }
+
                     if (sor.outsideShipSpawnPosition != null)
                         return sor.outsideShipSpawnPosition.position + Vector3.forward * 2f + Vector3.up * 0.5f;
                     if (sor.middleOfShipNode != null)
@@ -296,7 +417,6 @@ namespace LethalAICrewmate
                 var sor = StartOfRound.Instance;
                 if (sor?.allPlayerScripts == null) return null;
 
-                // Prefer host local player, else first living player
                 PlayerControllerB firstLiving = null;
                 foreach (var p in sor.allPlayerScripts)
                 {
@@ -317,7 +437,6 @@ namespace LethalAICrewmate
         {
             try
             {
-                // 1) Current level enemy lists
                 var level = RoundManager.Instance != null
                     ? RoundManager.Instance.currentLevel
                     : StartOfRound.Instance?.currentLevel;
@@ -325,7 +444,6 @@ namespace LethalAICrewmate
                 var found = SearchLevelForMasked(level);
                 if (found != null) return found;
 
-                // 2) All StartOfRound levels
                 if (StartOfRound.Instance?.levels != null)
                 {
                     foreach (var lvl in StartOfRound.Instance.levels)
@@ -335,7 +453,6 @@ namespace LethalAICrewmate
                     }
                 }
 
-                // 3) QuickMenuManager testAllEnemiesLevel
                 var qmm = UnityEngine.Object.FindObjectOfType<QuickMenuManager>();
                 if (qmm != null && qmm.testAllEnemiesLevel != null)
                 {
@@ -343,14 +460,22 @@ namespace LethalAICrewmate
                     if (found != null) return found;
                 }
 
-                // 4) Resources scan for EnemyType with Masked prefab
                 var allTypes = Resources.FindObjectsOfTypeAll<EnemyType>();
+                EnemyType byName = null;
+                EnemyType byPrefab = null;
                 foreach (var et in allTypes)
                 {
                     if (et == null) continue;
-                    if (IsMaskedType(et))
-                        return et;
+                    if (et.enemyPrefab != null && et.enemyPrefab.GetComponent<MaskedPlayerEnemy>() != null)
+                    {
+                        byPrefab = et;
+                        break;
+                    }
+                    if (IsMaskedType(et) && byName == null)
+                        byName = et;
                 }
+                if (byPrefab != null) return byPrefab;
+                if (byName != null) return byName;
             }
             catch (Exception ex)
             {
@@ -392,8 +517,12 @@ namespace LethalAICrewmate
             }
             if (et.enemyPrefab != null)
             {
-                if (et.enemyPrefab.GetComponent<MaskedPlayerEnemy>() != null)
-                    return true;
+                try
+                {
+                    if (et.enemyPrefab.GetComponent<MaskedPlayerEnemy>() != null)
+                        return true;
+                }
+                catch { /* ignore */ }
                 if (et.enemyPrefab.name.ToLowerInvariant().Contains("masked"))
                     return true;
             }
@@ -411,12 +540,32 @@ namespace LethalAICrewmate
         {
             try
             {
+                Plugin.Log?.LogInfo("Hook: OnShipLandedMiscEvents");
                 NetMessenger.TryRegisterHandlers();
-                CrewmateSpawner.SpawnCrewmateIfNeeded();
+                CrewmateSpawner.SpawnCrewmateIfNeeded("event:OnShipLandedMiscEvents");
             }
             catch (Exception ex)
             {
                 Plugin.Log?.LogError($"OnShipLandedMiscEvents patch: {ex}");
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(StartOfRound), nameof(StartOfRound.OpenShipDoors))]
+    internal static class Patch_OpenShipDoors
+    {
+        [HarmonyPostfix]
+        private static void Postfix()
+        {
+            try
+            {
+                Plugin.Log?.LogInfo("Hook: OpenShipDoors");
+                NetMessenger.TryRegisterHandlers();
+                CrewmateSpawner.SpawnCrewmateIfNeeded("event:OpenShipDoors");
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log?.LogError($"OpenShipDoors patch: {ex}");
             }
         }
     }
