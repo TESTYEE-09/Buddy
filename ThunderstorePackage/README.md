@@ -1,58 +1,51 @@
 # LethalAICrewmate
 
-AI crewmate NPC (**Buddy**) for **Lethal Company v81**. Host spawns a neutralized Masked body that follows, stays, returns to ship, fetches scrap, chats via **Groq**, and listens via **Groq Whisper** push-to-talk.
+AI crewmate NPC (**Buddy**) for **Lethal Company v81**. Follows, stays, returns to ship, fetches scrap. **Llama 4 Scout** for chat, **Whisper** for listening, **Orpheus** for speaking.
 
 ## Install
 
-1. BepInExPack + this mod (r2modman / Gale / manual DLL into `BepInEx/plugins/`).
-2. **Host must install** the mod. Clients should too (chat, attach visuals, hostility suppress).
-3. Get a free key: [console.groq.com/keys](https://console.groq.com/keys)
-4. Set in `BepInEx/config/com.lethalaicrewmate.buddy.cfg`:
+1. BepInExPack + this mod (r2modman / Gale / drop DLL in `BepInEx/plugins/`).
+2. **Host must install** the mod. Clients should too (chat, attach, hostility suppress).
+3. Free key: [console.groq.com/keys](https://console.groq.com/keys)
+4. Config `BepInEx/config/com.lethalaicrewmate.buddy.cfg`:
 
 ```ini
 [Groq]
 ApiKey = gsk_your_key_here
-Model = llama-3.1-8b-instant
+Model = meta-llama/llama-4-scout-17b-16e-instruct
 SttModel = whisper-large-v3-turbo
+TtsModel = canopylabs/orpheus-v1-english
+TtsVoice = troy
+TtsEnabled = true
+TtsDirection = nervous
 ```
 
-## Commands (text chat)
+## Why Llama 4 (not Qwen 3.6)
 
-| Command | Effect |
-|---------|--------|
+| | Llama 4 Scout | Qwen 3.6 27B |
+|--|---------------|--------------|
+| Fit for Buddy | Short in-character lines | Deep reasoning |
+| Speed / free TPM | Strong free-tier limits | Heavier |
+| Pick | **Default** | Set `Model = qwen/qwen3.6-27b` if you want |
+
+## Commands
+
+| Chat | Effect |
+|------|--------|
 | `buddy follow` | Follow you |
 | `buddy stay` | Hold position |
 | `buddy go to ship` | Path to ship |
 | `buddy fetch scrap` | Deliver nearest scrap |
 
-## Voice (host)
+## Voice pipeline
 
-**You → Buddy (STT):** Hold **V**, speak, release → Whisper transcript → Buddy.
+```
+You hold V → Whisper STT → Llama 4 reply → Orpheus TTS (spoken near Buddy)
+```
 
-**Buddy → You (TTS):** After each LLM reply, Orpheus speaks near Buddy in 3D (host only).  
-Voices: `troy` `austin` `daniel` (M) / `autumn` `diana` `hannah` (F).  
-Orpheus max **200 characters** per line (mod truncates + asks for short replies).
-
-Disable mic: `Voice.Enabled = false`. Disable speech: `Groq.TtsEnabled = false`.
-
-## Spawn
-
-Buddy spawns after you **land on a moon** (host). Spawns near you. Check `BepInEx/LogOutput.log` for:
-
-- `Crewmate spawn requested`
-- `spawned successfully`
-
-If spawn fails, the log lists available `EnemyType` names.
-
-## Config highlights
-
-| Key | Default | Notes |
-|-----|---------|--------|
-| Groq.ApiKey | empty | Silent NPC without key; commands still work |
-| Groq.Model | llama-3.1-8b-instant | Fast free-tier chat |
-| Groq.SttModel | whisper-large-v3-turbo | Free STT |
-| Voice.PushToTalkKey | V | Hold to talk |
-| Crewmate.Enabled | true | Master spawn toggle |
+- **STT:** hold `Voice.PushToTalkKey` (default **V**), speak, release.
+- **TTS:** `canopylabs/orpheus-v1-english`, max **200 chars** per line. Host hears **3D** audio at Buddy.
+- Voices: `troy` `austin` `daniel` (M) · `autumn` `diana` `hannah` (F).
 
 ## Source
 
