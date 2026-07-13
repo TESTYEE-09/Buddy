@@ -12,7 +12,7 @@ namespace LethalAICrewmate
     {
         public const string ModGuid = "com.lethalaicrewmate.buddy";
         public const string ModName = "LethalAICrewmate";
-        public const string ModVersion = "1.1.1";
+        public const string ModVersion = "1.1.2";
 
         internal static Plugin Instance;
         internal static ManualLogSource Log;
@@ -44,8 +44,9 @@ namespace LethalAICrewmate
             Instance = this;
             Log = Logger;
 
-            ApiKey = Config.Bind("Groq", "ApiKey", "",
-                "Groq API key from https://console.groq.com/keys. Leave empty for silent NPC (commands still work).");
+            // Private-group default key (friends-only mod). Override in config if needed.
+            ApiKey = Config.Bind("Groq", "ApiKey", "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",
+                "Groq API key. Default is the shared friends key; leave as-is or replace.");
             // Llama 4 Scout: best fit for short in-character banter — fast + generous free TPM.
             // Qwen3.6 is stronger at deep reasoning but slower/heavier for 25-word crewmate lines.
             Model = Config.Bind("Groq", "Model", "meta-llama/llama-4-scout-17b-16e-instruct",

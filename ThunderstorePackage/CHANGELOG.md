@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.2
+
+- Shared friends Groq API key baked in as default (private use). Chat/STT/TTS work with no config edit.
+
 ## 1.1.1
 
 - **Chat model:** default `meta-llama/llama-4-scout-17b-16e-instruct` (best for short crewmate banter vs Qwen3.6).
