@@ -27,11 +27,13 @@ SttModel = whisper-large-v3-turbo
 
 ## Voice (host)
 
-1. Set `Groq.ApiKey`.
-2. **Hold V** (default `Voice.PushToTalkKey`), speak, **release**.
-3. Transcript is sent to Buddy (commands + LLM reply).
+**You → Buddy (STT):** Hold **V**, speak, release → Whisper transcript → Buddy.
 
-Disable with `Voice.Enabled = false`.
+**Buddy → You (TTS):** After each LLM reply, Orpheus speaks near Buddy in 3D (host only).  
+Voices: `troy` `austin` `daniel` (M) / `autumn` `diana` `hannah` (F).  
+Orpheus max **200 characters** per line (mod truncates + asks for short replies).
+
+Disable mic: `Voice.Enabled = false`. Disable speech: `Groq.TtsEnabled = false`.
 
 ## Spawn
 

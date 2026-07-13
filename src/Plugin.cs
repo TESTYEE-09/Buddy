@@ -12,15 +12,20 @@ namespace LethalAICrewmate
     {
         public const string ModGuid = "com.lethalaicrewmate.buddy";
         public const string ModName = "LethalAICrewmate";
-        public const string ModVersion = "1.1.0";
+        public const string ModVersion = "1.1.1";
 
         internal static Plugin Instance;
         internal static ManualLogSource Log;
 
-        // Groq (chat + speech-to-text). OpenRouter keys still accepted as legacy alias.
+        // Groq (chat + STT + Orpheus TTS). OpenRouter keys still accepted as legacy alias.
         internal static ConfigEntry<string> ApiKey;
         internal static ConfigEntry<string> Model;
         internal static ConfigEntry<string> SttModel;
+        internal static ConfigEntry<string> TtsModel;
+        internal static ConfigEntry<string> TtsVoice;
+        internal static ConfigEntry<bool> TtsEnabled;
+        internal static ConfigEntry<string> TtsDirection;
+        internal static ConfigEntry<float> TtsVolume;
         internal static ConfigEntry<string> CrewmateName;
         internal static ConfigEntry<string> Personality;
         internal static ConfigEntry<bool> Enabled;
@@ -41,10 +46,22 @@ namespace LethalAICrewmate
 
             ApiKey = Config.Bind("Groq", "ApiKey", "",
                 "Groq API key from https://console.groq.com/keys. Leave empty for silent NPC (commands still work).");
-            Model = Config.Bind("Groq", "Model", "llama-3.1-8b-instant",
-                "Groq chat model id (fast default: llama-3.1-8b-instant). Also good: llama-3.3-70b-versatile, openai/gpt-oss-20b.");
+            // Llama 4 Scout: best fit for short in-character banter — fast + generous free TPM.
+            // Qwen3.6 is stronger at deep reasoning but slower/heavier for 25-word crewmate lines.
+            Model = Config.Bind("Groq", "Model", "meta-llama/llama-4-scout-17b-16e-instruct",
+                "Groq chat model. Default Llama 4 Scout. Alternatives: qwen/qwen3.6-27b, llama-3.1-8b-instant.");
             SttModel = Config.Bind("Groq", "SttModel", "whisper-large-v3-turbo",
                 "Groq speech-to-text model (whisper-large-v3-turbo or whisper-large-v3).");
+            TtsModel = Config.Bind("Groq", "TtsModel", "canopylabs/orpheus-v1-english",
+                "Groq Orpheus TTS model id.");
+            TtsVoice = Config.Bind("Groq", "TtsVoice", "troy",
+                "Orpheus voice: autumn, diana, hannah (F) / austin, daniel, troy (M).");
+            TtsEnabled = Config.Bind("Groq", "TtsEnabled", true,
+                "Speak Buddy replies with Orpheus TTS (host hears 3D audio near Buddy).");
+            TtsDirection = Config.Bind("Groq", "TtsDirection", "nervous",
+                "Optional Orpheus vocal direction (no brackets), e.g. nervous, cheerful, whisper. Empty = natural.");
+            TtsVolume = Config.Bind("Groq", "TtsVolume", 0.85f,
+                "Buddy voice volume 0–1.");
 
             // Migrate older OpenRouter section if present and Groq key empty
             try
@@ -96,7 +113,7 @@ namespace LethalAICrewmate
 
                 _harmony = new Harmony(ModGuid);
                 _harmony.PatchAll(typeof(Plugin).Assembly);
-                Log.LogInfo($"{ModName} v{ModVersion} loaded (Groq chat + STT).");
+                Log.LogInfo($"{ModName} v{ModVersion} loaded (Groq Llama4 chat + Whisper STT + Orpheus TTS).");
             }
             catch (Exception ex)
             {

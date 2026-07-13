@@ -118,7 +118,7 @@ namespace LethalAICrewmate
             TrimHistory();
 
             string body = BuildRequestJson(systemPrompt, History);
-            string model = Plugin.Model?.Value ?? "llama-3.1-8b-instant";
+            string model = Plugin.Model?.Value ?? "meta-llama/llama-4-scout-17b-16e-instruct";
 
             using (var uwr = new UnityWebRequest(GroqChatEndpoint, "POST"))
             {
@@ -168,7 +168,7 @@ namespace LethalAICrewmate
             var sb = new StringBuilder();
             sb.Append("You are ").Append(name).Append(", an AI crewmate in Lethal Company. ");
             sb.Append(personality).Append(' ');
-            sb.Append("Reply in character in under 25 words. No markdown. ");
+            sb.Append("Reply in character in under 20 words (spoken aloud, keep it short). No markdown. ");
             sb.Append("If the player asked for an action, include exactly one tag at the end: ");
             sb.Append("[FOLLOW], [STAY], [SHIP], or [FETCH]. Otherwise do not include tags.");
             return sb.ToString();
@@ -183,7 +183,7 @@ namespace LethalAICrewmate
         private static string BuildRequestJson(string systemPrompt, List<ChatTurn> history)
         {
             var sb = new StringBuilder(1024);
-            sb.Append("{\"model\":\"").Append(Escape(Plugin.Model?.Value ?? "llama-3.1-8b-instant")).Append("\",");
+            sb.Append("{\"model\":\"").Append(Escape(Plugin.Model?.Value ?? "meta-llama/llama-4-scout-17b-16e-instruct")).Append("\",");
             sb.Append("\"max_tokens\":").Append(MaxTokens).Append(',');
             sb.Append("\"temperature\":0.7,");
             sb.Append("\"messages\":[");
@@ -305,6 +305,9 @@ namespace LethalAICrewmate
 
             NetMessenger.BroadcastCrewmateChat(name, display, pos, netId);
             ProximityChat.TryShowLocal(name, display, pos);
+
+            // Spoken reply via Groq Orpheus (host, 3D at Buddy)
+            BuddyTts.Speak(display, pos + Vector3.up * 1.6f);
         }
 
         private static void ExtractTag(ref string display, ref string tag)

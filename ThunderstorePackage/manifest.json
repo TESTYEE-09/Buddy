@@ -1,8 +1,8 @@
 {
   "name": "LethalAICrewmate",
-  "version_number": "1.1.0",
+  "version_number": "1.1.1",
   "website_url": "https://github.com/TESTYEE-09/LethalAICrewmate",
-  "description": "AI crewmate (Buddy) for LC v81. Groq chat + free Whisper STT push-to-talk. Follow/stay/ship/fetch scrap.",
+  "description": "AI crewmate Buddy: Llama 4 chat, Whisper STT, Orpheus TTS voice. Follow/stay/ship/fetch scrap.",
   "dependencies": [
     "BepInEx-BepInExPack-5.4.2100"
   ]
