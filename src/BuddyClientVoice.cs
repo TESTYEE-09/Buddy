@@ -22,12 +22,13 @@ namespace LethalAICrewmate
         private const string MsgVoiceChunk = "LethalAICrewmate_VoiceChunk";
         private const string GroqSttEndpoint = "https://api.groq.com/openai/v1/audio/transcriptions";
         private const int SampleRate = 16000;
-        private const int MaxVoiceBytes = 400 * 1024;
+        private const int MaxVoiceBytes = 300 * 1024;
         private const int VoiceChunkBytes = 7000;
         private const int MaxQueuedRemoteClips = 3;
         private const float MinRms = 0.008f;
         private const float TransferExpirySeconds = 15f;
-        private const float SenderCooldownSeconds = 0.65f;
+        private const float SenderCooldownSeconds = 3f;
+        private const int MaxIncomingTransfers = 4;
 
         private sealed class IncomingVoice
         {
@@ -184,7 +185,9 @@ namespace LethalAICrewmate
             try
             {
                 try { Microphone.End(_clientMicDevice); } catch { }
-                _clientMicDevice = PickClientMicDevice();
+                // Use the player's Windows default recording device; name heuristics can select a
+                // physically present but inactive microphone and produce valid-looking silence.
+                _clientMicDevice = null;
                 int length = Mathf.Clamp(Mathf.CeilToInt(maxSec) + 1, 2, 13);
                 _clientClip = Microphone.Start(_clientMicDevice, false, length, SampleRate);
                 if (_clientClip == null)
@@ -310,7 +313,7 @@ namespace LethalAICrewmate
             try
             {
                 var nm = NetworkManager.Singleton;
-                if (nm == null || !nm.IsServer || senderId == NetworkManager.ServerClientId ||
+                if (nm == null || !nm.IsServer || Plugin.AllowRemoteVoice?.Value != true || senderId == NetworkManager.ServerClientId ||
                     nm.CustomMessagingManager == null || !IsConnectedRemote(nm, senderId))
                     return;
                 if (!NetMessenger.IsCompatibleClient(senderId))
@@ -319,6 +322,8 @@ namespace LethalAICrewmate
                 reader.ReadValueSafe(out ulong transferId);
                 reader.ReadValueSafe(out int totalBytes);
                 if (transferId == 0 || totalBytes < 1000 || totalBytes > MaxVoiceBytes)
+                    return;
+                if (!IncomingBySender.ContainsKey(senderId) && IncomingBySender.Count >= MaxIncomingTransfers)
                     return;
 
                 float now = Time.unscaledTime;
@@ -346,7 +351,7 @@ namespace LethalAICrewmate
             try
             {
                 var nm = NetworkManager.Singleton;
-                if (nm == null || !nm.IsServer || senderId == NetworkManager.ServerClientId ||
+                if (nm == null || !nm.IsServer || Plugin.AllowRemoteVoice?.Value != true || senderId == NetworkManager.ServerClientId ||
                     !IsConnectedRemote(nm, senderId) || !NetMessenger.IsCompatibleClient(senderId))
                     return;
                 if (!IncomingBySender.TryGetValue(senderId, out var incoming) || incoming == null)
@@ -410,7 +415,7 @@ namespace LethalAICrewmate
         {
             if (_hostBusy || HostQueue.Count == 0 || Plugin.Host == null)
                 return;
-            if (string.IsNullOrWhiteSpace(Plugin.ApiKey?.Value))
+            if (!GroqSecrets.HasKey)
             {
                 HostQueue.Clear();
                 return;
@@ -420,12 +425,6 @@ namespace LethalAICrewmate
             if (request != null) QueuedSenders.Remove(request.SenderId);
             if (request?.Wav == null || request.Wav.Length < 1000)
                 return;
-
-            if (!IsSenderInBuddyRange(request.SenderId))
-            {
-                Plugin.Log?.LogInfo($"Ignored remote Buddy voice from client {request.SenderId}: outside configured listening range.");
-                return;
-            }
 
             _hostBusy = true;
             Plugin.Host.StartCoroutine(TranscribeRemote(request));
@@ -449,7 +448,7 @@ namespace LethalAICrewmate
                 {
                     uwr.uploadHandler = new UploadHandlerRaw(body);
                     uwr.downloadHandler = new DownloadHandlerBuffer();
-                    uwr.SetRequestHeader("Authorization", "Bearer " + Plugin.ApiKey.Value);
+                    uwr.SetRequestHeader("Authorization", "Bearer " + GroqSecrets.CurrentKey);
                     uwr.SetRequestHeader("Content-Type", "multipart/form-data; boundary=" + boundary);
                     uwr.timeout = 20;
 
@@ -497,27 +496,6 @@ namespace LethalAICrewmate
 
             Plugin.Log?.LogInfo($"Remote STT client={senderId} player='{player.playerUsername}': {text}");
             ChatObserver.OnServerChat(message, (int)player.playerClientId);
-        }
-
-        private static bool IsSenderInBuddyRange(ulong senderId)
-        {
-            try
-            {
-                float range = Plugin.ChatTriggerRange?.Value ?? 60f;
-                if (range <= 0f)
-                    return true;
-
-                var player = ResolveRemotePlayer(senderId);
-                var buddy = CrewmateRegistry.GetPrimary();
-                if (player == null || buddy?.Enemy == null)
-                    return false;
-
-                return Vector3.Distance(player.transform.position, buddy.Enemy.transform.position) <= range;
-            }
-            catch
-            {
-                return false;
-            }
         }
 
         private static PlayerControllerB ResolveRemotePlayer(ulong senderId)

@@ -38,20 +38,19 @@ namespace LethalAICrewmate
         {
             if (source == null) return;
             source.volume = Mathf.Clamp01(Plugin.TtsVolume?.Value ?? 1f);
-            source.priority = 8;
-            float range = Plugin.ChatHearRange?.Value ?? HearRange;
-            if (range <= 0f)
-            {
-                source.spatialBlend = 0f;
-                return;
-            }
-            source.spatialBlend = 1f;
+            source.priority = 0;
+            source.mute = false;
+            source.enabled = true;
+            source.ignoreListenerPause = true;
+            source.outputAudioMixerGroup = null;
+            source.bypassEffects = true;
+            source.bypassListenerEffects = true;
+            source.bypassReverbZones = true;
+
+            // Buddy speech is dialogue, so make it listener-relative. This avoids scene mixer,
+            // indoor/outdoor and stale world-position failures that could make a valid clip silent.
+            source.spatialBlend = 0f;
             source.spatialize = false;
-            source.rolloffMode = AudioRolloffMode.Linear;
-            source.maxDistance = Mathf.Max(8f, range);
-            source.minDistance = Mathf.Clamp(range * 0.32f, 14f, 24f);
-            if (source.minDistance >= source.maxDistance)
-                source.minDistance = Mathf.Max(2f, source.maxDistance * 0.55f);
         }
 
         internal static void MigrateLegacyConfig()
@@ -82,6 +81,11 @@ namespace LethalAICrewmate
                     (Mathf.Approximately(Plugin.ChatTriggerRange.Value, 25f) || Mathf.Approximately(Plugin.ChatTriggerRange.Value, 45f)))
                 {
                     Plugin.ChatTriggerRange.Value = TriggerRange;
+                    changed = true;
+                }
+                if (Plugin.VoiceKey != null && Plugin.VoiceKey.Value == KeyCode.V)
+                {
+                    Plugin.VoiceKey.Value = KeyCode.B;
                     changed = true;
                 }
                 if (changed)
