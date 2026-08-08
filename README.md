@@ -1,6 +1,6 @@
 # LethalAICrewmate
 
-Buddy is an AI crewmate for **Lethal Company v81**. He joins the crew as a friendly networked Masked, follows players, answers chat, takes simple orders, fetches scrap and can speak with Groq TTS.
+Buddy is an AI crewmate for **Lethal Company v81**. He joins the crew as a friendly networked Masked, follows players, answers chat, takes simple orders, fetches scrap and speaks with Groq TTS.
 
 ## Install
 
@@ -13,19 +13,19 @@ Buddy is an AI crewmate for **Lethal Company v81**. He joins the crew as a frien
 
 Only the host needs a Groq key. The key stays in the host's local BepInEx config and is never sent to other players.
 
-## Multiplayer safety
+## Multiplayer safety and sync
 
 LethalAICrewmate is host-authoritative.
 
 - Every peer registers the mod networking handlers automatically.
 - Clients handshake with the host using an exact mod-version + wire-protocol check.
 - Buddy does **not** spawn while any connected player is unmodded, still loading the mod, or running an incompatible version.
-- If an incompatible player joins during a round, Buddy is despawned until the lobby is safe again.
 - Clients accept Buddy state only from the server.
-- Late joiners request the current Buddy ID and held-item state.
-- Held-item sync is retried briefly if the client's network objects are still spawning.
-- Buddy chat is replicated to compatible clients.
-- Buddy TTS is generated once by the host, downsampled, chunked and replicated to compatible clients. Clients do not need a Groq key.
+- Buddy's position, rotation and indoor/outdoor state are continuously replicated from the host, including facility transitions and recovery teleports.
+- Late joiners recover Buddy identity and held-item state.
+- Buddy chat and speech are replicated to compatible clients.
+- The host generates TTS once and distributes bounded PCM audio; clients never receive the Groq key.
+- A host-side movement watchdog rebuilds stalled NavMesh paths and can safely recover Buddy beside his follow target after a persistent stall.
 
 For multiplayer, **all players must use the same release**.
 
@@ -46,17 +46,23 @@ You can also talk to Buddy normally or ask him a question near him.
 
 Buddy is conversation-first: he responds to what players actually say instead of dumping sensor/entity facts. Harmless wildlife such as Manticoils and Roaming Locusts is treated as background unless the player asks about it.
 
-Buddy can very rarely make a subtle fourth-wall joke when the moment fits. The rare beat is rate-limited in game code rather than being part of every prompt, so it should stay surprising instead of becoming his gimmick.
+Buddy can very rarely make a subtle fourth-wall joke when the moment fits. The rare beat is rate-limited in game code so it stays surprising instead of becoming his gimmick.
 
 ## Voice
 
-The **host** can hold **V** by default to talk to Buddy:
+**Every modded player** can hold **V** by default to talk to Buddy.
+
+Host path:
 
 `host mic -> Groq Whisper -> Buddy reply -> Groq Orpheus -> synced Buddy voice`
 
-Normal text chat works for every player.
+Client path:
 
-v1.4.2 uses a brighter stock TTS setup, a small limited PCM gain, and a wider 3D falloff curve so Buddy is easier to hear without making his voice global.
+`client mic -> bounded/chunked relay to host -> host Groq Whisper -> Buddy reply -> synced Buddy voice`
+
+Clients do not need a Groq key. Remote microphone audio is captured only while the player holds the Buddy push-to-talk key, is size/rate limited, and is accepted only from connected matching clients. The stock nearby PTT range is 60m.
+
+v1.4.3 keeps Austin + `friendly`, increases the bounded host-side PCM gain to roughly 1.44x total, widens the near-full-volume 3D bubble, and raises the stock speech/chat hearing range to 70m.
 
 ## Groq setup
 
@@ -89,8 +95,8 @@ The main-menu **Test** button validates the host key against Groq before a lobby
 [Crewmate]
 Name = Buddy
 Enabled = true
-ChatHearRange = 50
-ChatTriggerRange = 45
+ChatHearRange = 70
+ChatTriggerRange = 60
 ObservationIntervalSeconds = 0
 
 [Voice]
@@ -99,15 +105,16 @@ PushToTalkKey = V
 MaxRecordSeconds = 8
 ```
 
-`ChatHearRange = 0` makes Buddy chat/voice global instead of proximity-based.
+`ChatHearRange = 0` makes Buddy chat/voice global instead of proximity-based. `ChatTriggerRange = 0` makes nearby unaddressed questions/client Buddy PTT range-unlimited.
 
-Existing untouched v1.4.1 stock settings (`troy`, blank direction, volume 0.85, 25m ranges) are migrated automatically to the v1.4.2 defaults. Custom values are otherwise left alone where possible.
+Untouched v1.4.2 stock 50m/45m distance settings automatically migrate to v1.4.3's 70m/60m defaults. Custom distance values are otherwise retained.
 
 ## Privacy and API usage
 
 - The Groq key is stored locally in `BepInEx/config/com.lethalaicrewmate.buddy.cfg` on the host.
 - The key is never included in multiplayer messages.
-- Host push-to-talk audio is sent to Groq only when the host uses the voice key.
+- Host push-to-talk audio goes directly to Groq when the host uses the Buddy voice key.
+- Client push-to-talk audio is relayed to the host only while that client uses the Buddy voice key; the host then sends it to Groq Whisper.
 - If Vision is enabled, a screenshot of the host view can be attached to a Groq chat request.
 - Generated Buddy speech is sent from the host to compatible clients as downsampled PCM audio.
 
@@ -122,7 +129,7 @@ dotnet build src/LethalAICrewmate.csproj -c Release
 
 `pack.ps1` builds the DLL and creates the Thunderstore ZIP.
 
-GitHub Actions also performs release checks, compiles with warnings treated as errors, checks for Groq-key-shaped secrets in source and the compiled DLL, validates package/version consistency, creates a SHA-256 checksum and uploads the ready-to-install ZIP.
+GitHub Actions performs release checks, compiles with warnings treated as errors, checks for Groq-key-shaped secrets in source and the compiled DLL, validates package/version consistency, creates a SHA-256 checksum and uploads the ready-to-install ZIP.
 
 Generated DLLs and release ZIPs are intentionally not committed to the source tree.
 
