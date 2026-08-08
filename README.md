@@ -42,6 +42,12 @@ Type these in normal Lethal Company chat:
 
 You can also talk to Buddy normally or ask him a question near him.
 
+## Personality
+
+Buddy is conversation-first: he responds to what players actually say instead of dumping sensor/entity facts. Harmless wildlife such as Manticoils and Roaming Locusts is treated as background unless the player asks about it.
+
+Buddy can very rarely make a subtle fourth-wall joke when the moment fits. The rare beat is rate-limited in game code rather than being part of every prompt, so it should stay surprising instead of becoming his gimmick.
+
 ## Voice
 
 The **host** can hold **V** by default to talk to Buddy:
@@ -50,9 +56,11 @@ The **host** can hold **V** by default to talk to Buddy:
 
 Normal text chat works for every player.
 
+v1.4.2 uses a brighter stock TTS setup, a small limited PCM gain, and a wider 3D falloff curve so Buddy is easier to hear without making his voice global.
+
 ## Groq setup
 
-New installs default to the production chat model:
+New installs default to:
 
 ```ini
 [Groq]
@@ -60,9 +68,10 @@ ApiKey =
 Model = llama-3.3-70b-versatile
 SttModel = whisper-large-v3-turbo
 TtsModel = canopylabs/orpheus-v1-english
-TtsVoice = troy
+TtsVoice = austin
 TtsEnabled = true
-TtsDirection = nervous
+TtsDirection = friendly
+TtsVolume = 1
 ```
 
 Optional vision is off by default for reliability and cost. To enable it, choose a vision-capable Groq model such as `qwen/qwen3.6-27b` and set:
@@ -80,8 +89,8 @@ The main-menu **Test** button validates the host key against Groq before a lobby
 [Crewmate]
 Name = Buddy
 Enabled = true
-ChatHearRange = 25
-ChatTriggerRange = 25
+ChatHearRange = 50
+ChatTriggerRange = 45
 ObservationIntervalSeconds = 0
 
 [Voice]
@@ -91,6 +100,8 @@ MaxRecordSeconds = 8
 ```
 
 `ChatHearRange = 0` makes Buddy chat/voice global instead of proximity-based.
+
+Existing untouched v1.4.1 stock settings (`troy`, blank direction, volume 0.85, 25m ranges) are migrated automatically to the v1.4.2 defaults. Custom values are otherwise left alone where possible.
 
 ## Privacy and API usage
 
