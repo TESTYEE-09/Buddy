@@ -59,6 +59,10 @@ namespace LethalAICrewmate
                         .Replace("moon ", "")
                         .Replace("go to ", "")
                         .Trim();
+                    // Accept "route to titan" / "route us to titan" phrasing too.
+                    if (moon.StartsWith("to ", StringComparison.Ordinal) ||
+                        moon.StartsWith("us to ", StringComparison.Ordinal))
+                        moon = moon.Substring(moon.IndexOf("to ", StringComparison.Ordinal) + 3).Trim();
                     return RouteMoon(moon);
                 }
 

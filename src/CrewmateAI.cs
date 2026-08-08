@@ -295,6 +295,19 @@ namespace LethalAICrewmate
                         data.NextAreaTeleportAt = Time.time + 2f;
                     }
                 }
+
+                // Owner on ship while Buddy is outside far away — bring him to the ship exterior
+                // instead of leaving him wandering the moon.
+                if (owner.isInHangarShipRoom && buddyOutside)
+                {
+                    float d = Vector3.Distance(enemy.transform.position, owner.transform.position);
+                    if (d > 35f)
+                    {
+                        Plugin.Log?.LogInfo("Buddy warping to ship exterior with owner…");
+                        TeleportBesidePlayer(enemy, owner, setOutside: true);
+                        data.NextAreaTeleportAt = Time.time + 2f;
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -312,10 +325,26 @@ namespace LethalAICrewmate
                                + owner.transform.forward * -0.4f
                                + Vector3.up * 0.1f;
 
+                // Only ever teleport to a position that exists on a NavMesh. If neither the
+                // offset nor the owner's position resolve (owner falling into the void, or a
+                // scene where no mesh is baked yet), skip the teleport entirely — warping to a
+                // raw world position would drop Buddy into the void with the owner.
+                bool anchored = false;
                 if (NavMesh.SamplePosition(dest, out var hit, 10f, NavMesh.AllAreas))
+                {
                     dest = hit.position;
+                    anchored = true;
+                }
                 else if (NavMesh.SamplePosition(owner.transform.position, out hit, 12f, NavMesh.AllAreas))
+                {
                     dest = hit.position;
+                    anchored = true;
+                }
+                if (!anchored)
+                {
+                    Plugin.Log?.LogWarning($"Buddy teleport skipped: no NavMesh near owner at {owner.transform.position}.");
+                    return;
+                }
 
                 // Preferred Masked API (syncs to clients)
                 bool teleported = false;

@@ -276,7 +276,17 @@ namespace LethalAICrewmate
         [HarmonyPrefix]
         private static bool Prefix(EnemyAI __instance)
         {
-            return !CrewmateRegistry.IsCrewmate(__instance);
+            try
+            {
+                return !CrewmateRegistry.IsCrewmate(__instance);
+            }
+            catch (Exception ex)
+            {
+                // This prefix runs for every enemy kill in the game. Never let a registry
+                // exception abort vanilla KillEnemy; default to allowing the original method.
+                Plugin.Log?.LogError($"KillEnemy guard patch: {ex}");
+                return true;
+            }
         }
     }
 

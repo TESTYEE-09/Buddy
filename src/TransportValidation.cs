@@ -34,12 +34,48 @@ namespace LethalAICrewmate
                 return false;
             }
 
-            int channels = wav[22] | (wav[23] << 8);
-            int sampleRate = BitConverter.ToInt32(wav, 24);
-            int bits = wav[34] | (wav[35] << 8);
-            int dataBytes = BitConverter.ToInt32(wav, 40);
-            if (channels != 1 || bits != 16 || sampleRate < 8000 || sampleRate > 48000 ||
-                dataBytes <= 0 || dataBytes != wav.Length - 44 || (dataBytes & 1) != 0)
+            // Walk the RIFF chunks instead of assuming the data chunk sits at offset 44.
+            // Valid encoders may emit LIST/INFO or other chunks before it.
+            int dataOffset = -1;
+            int dataBytes = -1;
+            int channels = 0;
+            int sampleRate = 0;
+            int bits = 0;
+            for (int at = 12; at + 8 <= wav.Length;)
+            {
+                int size = BitConverter.ToInt32(wav, at + 4);
+                if (size < 0 || at + 8 + size > wav.Length)
+                {
+                    reason = "corrupt RIFF chunk";
+                    return false;
+                }
+                if (wav[at] == 'd' && wav[at + 1] == 'a' && wav[at + 2] == 't' && wav[at + 3] == 'a')
+                {
+                    dataOffset = at + 8;
+                    dataBytes = size;
+                    break;
+                }
+                if (wav[at] == 'f' && wav[at + 1] == 'm' && wav[at + 2] == 't' && wav[at + 3] == ' ' && size >= 16)
+                {
+                    int format = BitConverter.ToInt16(wav, at + 8);
+                    channels = BitConverter.ToInt16(wav, at + 10);
+                    sampleRate = BitConverter.ToInt32(wav, at + 12);
+                    bits = BitConverter.ToInt16(wav, at + 22);
+                    if (format != 1)
+                    {
+                        reason = "non-PCM WAV format";
+                        return false;
+                    }
+                }
+                at += 8 + size + (size & 1);
+            }
+
+            if (dataOffset < 0 || dataBytes <= 0 || dataOffset + dataBytes > wav.Length)
+            {
+                reason = "missing or inconsistent data chunk";
+                return false;
+            }
+            if (channels != 1 || bits != 16 || sampleRate < 8000 || sampleRate > 48000 || (dataBytes & 1) != 0)
             {
                 reason = "unsupported or inconsistent WAV format";
                 return false;
@@ -56,7 +92,7 @@ namespace LethalAICrewmate
             int count = dataBytes / 2;
             for (int i = 0; i < count; i++)
             {
-                short sample = BitConverter.ToInt16(wav, 44 + i * 2);
+                short sample = BitConverter.ToInt16(wav, dataOffset + i * 2);
                 float value = sample / 32768f;
                 sum += value * value;
             }

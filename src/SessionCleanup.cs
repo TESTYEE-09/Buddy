@@ -25,6 +25,9 @@ namespace LethalAICrewmate
                 if (managerChanged || disconnected)
                 {
                     OpenAiRealtimeVoiceClient.ResetSession();
+                    BuddyTts.ResetSession();
+                    LlmClient.ResetSession();
+                    ResponseJournal.ResetSession();
                     CrewmateSpawner.DespawnAll();
                     Plugin.Log?.LogInfo("Cleared LethalAICrewmate session state after network disconnect/change.");
                 }

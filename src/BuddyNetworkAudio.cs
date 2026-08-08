@@ -28,7 +28,16 @@ namespace LethalAICrewmate
 
         internal static void StopPlayback()
         {
-            if (_source != null) _source.Stop();
+            if (_source != null)
+            {
+                _source.Stop();
+                if (_source.clip != null)
+                {
+                    AudioClip old = _source.clip;
+                    _source.clip = null;
+                    UnityEngine.Object.Destroy(old);
+                }
+            }
             while (PlaybackQueue.Count > 0)
             {
                 AudioClip clip = PlaybackQueue.Dequeue().Clip;

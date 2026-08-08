@@ -15,6 +15,9 @@ namespace LethalAICrewmate
         private const int MaxQueue = 3;
         private const float MinInterval = 0.2f;
         private const int MaxTokens = 64;
+        // The Responses path (Luna) counts reasoning tokens against the cap, so give it more
+        // headroom: 64 would truncate a multi-sentence strategy answer mid-word.
+        private const int MaxResponseTokens = 160;
         private const float DuplicateWindowSeconds = 2f;
         private const float HardRequestCeilingSeconds = 45f;
 
@@ -376,7 +379,7 @@ namespace LethalAICrewmate
             var sb = new StringBuilder(8192);
             sb.Append("{\"model\":\"").Append(Escape(model)).Append("\",");
             sb.Append("\"instructions\":\"").Append(Escape(systemPrompt)).Append("\",");
-            sb.Append("\"max_output_tokens\":").Append(MaxTokens).Append(',');
+            sb.Append("\"max_output_tokens\":").Append(MaxResponseTokens).Append(',');
             sb.Append("\"reasoning\":{\"effort\":\"low\",\"context\":\"current_turn\"},");
             sb.Append("\"text\":{\"verbosity\":\"low\"},\"service_tier\":\"fast\",\"store\":false,\"input\":[");
             for (int i = 0; i < history.Count; i++)

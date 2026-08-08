@@ -88,10 +88,11 @@ namespace LethalAICrewmate
             string restLower = rest.ToLowerInvariant();
 
             // Explicit terminal/orbit actions are deterministic player commands. The LLM is never
-            // allowed to execute these side effects.
-            if (addressed || restLower.StartsWith("route") || restLower.StartsWith("buy") || restLower.Contains("spawn") ||
-                restLower == "moons" || restLower.StartsWith("terminal") || restLower == "store" ||
-                restLower == "credits")
+            // allowed to execute these side effects, and they only run when Buddy is addressed
+            // (or when the message is an explicitly pleaded spawn request, which stays sandboxed
+            // by plea + item validation + quantity caps). Plain chat like "buy 3 flashlights" or
+            // "route titan" must never spend credits or move the ship by itself.
+            if (addressed || restLower.Contains("spawn"))
             {
                 string termResult = TerminalBuddy.HandleChatCommand(msg, playerId);
                 if (!string.IsNullOrEmpty(termResult))

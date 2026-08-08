@@ -12,7 +12,7 @@ namespace LethalAICrewmate
     {
         public const string ModGuid = "com.lethalaicrewmate.buddy";
         public const string ModName = "LethalAICrewmate";
-        public const string ModVersion = "2.4.0";
+        public const string ModVersion = "2.4.1";
 
         internal static Plugin Instance;
         internal static ManualLogSource Log;
@@ -166,14 +166,20 @@ namespace LethalAICrewmate
                     // model back to the fast cost-focused Luna stack; preserve custom choices.
                     if (ConfigRevision.Value < 5)
                     {
-                        if (string.Equals(Provider.Value?.Trim(), "OpenAI", StringComparison.OrdinalIgnoreCase) &&
-                            (string.IsNullOrWhiteSpace(Model.Value) ||
-                             Model.Value.StartsWith("gpt-realtime", StringComparison.OrdinalIgnoreCase)))
-                            Model.Value = "gpt-5.6-luna";
-                        SttModel.Value = "gpt-4o-mini-transcribe";
-                        TtsModel.Value = "tts-1";
-                        TtsVoice.Value = "alloy";
-                        TtsDirection.Value = "";
+                        // v1.7.0 migrated stock OpenAI installs to the fast cost-focused stack.
+                        // The model clobber must be provider-guarded: Groq users keep their
+                        // Whisper/Orpheus selections instead of getting OpenAI models forced
+                        // onto Groq endpoints.
+                        if (string.Equals(Provider.Value?.Trim(), "OpenAI", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (string.IsNullOrWhiteSpace(Model.Value) ||
+                                Model.Value.StartsWith("gpt-realtime", StringComparison.OrdinalIgnoreCase))
+                                Model.Value = "gpt-5.6-luna";
+                            SttModel.Value = "gpt-4o-mini-transcribe";
+                            TtsModel.Value = "tts-1";
+                            TtsVoice.Value = "alloy";
+                            TtsDirection.Value = "";
+                        }
                         ConfigRevision.Value = 5;
                     }
                     // v1.7.1 gives untouched OpenAI installs the lighter coworker voice and
@@ -244,28 +250,10 @@ namespace LethalAICrewmate
                         Model.Value = "openai/gpt-oss-120b";
                     if (string.IsNullOrWhiteSpace(VisionModel.Value))
                         VisionModel.Value = "qwen/qwen3.6-27b";
-                    // Apply 1.4.7 defaults once. After this marker is written, users can turn
-                    // vision off or restore positional replies without those choices being reset.
-                    if (ConfigRevision.Value < 1)
-                    {
-                        if (!VisionEnabled.Value)
-                            VisionEnabled.Value = true;
-                        if (Mathf.Approximately(ChatHearRange.Value, 70f))
-                            ChatHearRange.Value = 0f;
-                        ConfigRevision.Value = 1;
-                    }
-                    // v1.5.3 switches the stock experience to text-only GPT-OSS. Migrate only
-                    // the prior stock Qwen model; preserve any other custom chat-model choice.
-                    if (ConfigRevision.Value < 2)
-                    {
-                        if (string.Equals(Model.Value?.Trim(), "qwen/qwen3.6-27b", StringComparison.OrdinalIgnoreCase))
-                            Model.Value = "openai/gpt-oss-120b";
-                        VisionEnabled.Value = false;
-                        ConfigRevision.Value = 2;
-                    }
-                    // Stock v1.5.3 is deliberately text-only: never capture the host screen,
-                    // including when an older config previously opted into vision.
-                    VisionEnabled.Value = false;
+                    // v1.4.7/v1.5.3 revision-1/2 migrations were removed: the revision chain
+                    // above already advances past them on every load, so they were unreachable.
+                    // Vision is default-off for stock installs (config bind default false) and
+                    // is now honored if a host explicitly enables it — no unconditional reset.
                     if (string.IsNullOrWhiteSpace(SttModel.Value))
                         SttModel.Value = GroqSecrets.IsOpenAi ? "gpt-live-transcribe" : "whisper-large-v3-turbo";
                     if (string.IsNullOrWhiteSpace(TtsModel.Value))

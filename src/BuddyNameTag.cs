@@ -8,12 +8,26 @@ namespace LethalAICrewmate
     /// </summary>
     public static class BuddyNameTag
     {
+        private static string SanitizeName(string displayName)
+        {
+            if (string.IsNullOrWhiteSpace(displayName)) return "Buddy";
+            var sb = new System.Text.StringBuilder(displayName.Length);
+            foreach (char c in displayName)
+            {
+                if (c == '\n' || c == '\r' || c == '\t' || char.IsControl(c)) continue;
+                sb.Append(c);
+            }
+            string name = sb.ToString().Trim();
+            if (name.Length > 24) name = name.Substring(0, 24).TrimEnd();
+            return string.IsNullOrEmpty(name) ? "Buddy" : name;
+        }
+
         public static void Attach(MaskedPlayerEnemy enemy, string displayName)
         {
             if (enemy == null) return;
             try
             {
-                string name = string.IsNullOrEmpty(displayName) ? "Buddy" : displayName;
+                string name = SanitizeName(displayName);
 
                 // Scanner / Z label
                 try
