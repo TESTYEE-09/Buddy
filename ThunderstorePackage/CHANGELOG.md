@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.4.0
+
+- Makes command execution genuinely agentic: the system prompt now has an explicit command catalogue (stay/stay in place, follow, move/go forward, scout, fetch, ship, terminal, facility codes, polite spawn) and a hard execution contract. On voice Buddy must call `execute_game_command` for any command instead of talking about it; on text chat he may only acknowledge the confirmed result. Ambiguous phrases default to calling the tool, so commands can no longer be lost to conversation.
+- Fixes `stay in place`, `stay put`, `stay right here`, `stand by` and `freeze` not being recognized as stay commands by the deterministic parser.
+- Raises the native Realtime output token ceiling so a preamble, tool call and spoken reply fit without truncation, making voice commands more reliable.
+- Stops Buddy performing joke demands (laugh, yell, pretend) as if they were commands: one dry refusal, then back to the job.
+- Grounds scrap/monster answers strictly in the live sensor block: Buddy reports the real loose-scrap count within 25 m and names only entities the host actually sees.
+- Adds a response journal: every Buddy reply (chat, voice, deterministic commands, danger callouts) is written with its paired player input to `BepInEx/LethalAICrewmate-responses.log`, so the exact exchanges can be reviewed. Disable with `[Logging] SaveResponses = false`.
+
 ## 2.3.0
 
 - Completes the dry, practical coworker release: the stock personality setting and the OpenAI speech instructions now match Buddy's v2.2.3 prompt voice, and untouched installs still on the old goofy default migrate once (custom personality text is preserved).

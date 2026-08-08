@@ -11,5 +11,6 @@
     <Compile Include="..\..\src\VisionIntent.cs" Link="VisionIntent.cs" />
     <Compile Include="..\..\src\ShipCommandParsing.cs" Link="ShipCommandParsing.cs" />
     <Compile Include="..\..\src\MovementCommandParsing.cs" Link="MovementCommandParsing.cs" />
+    <Compile Include="..\..\src\ResponseJournal.cs" Link="ResponseJournal.cs" />
   </ItemGroup>
 </Project>

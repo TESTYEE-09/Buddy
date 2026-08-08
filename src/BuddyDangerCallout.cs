@@ -72,6 +72,7 @@ namespace LethalAICrewmate
                 ProximityChat.TryShowLocal(buddyName, display, position);
                 NetMessenger.BroadcastCrewmateChat(buddyName, display, position, netId);
                 BuddyTts.Speak(distance <= DangerDistance ? "[shout] " + display : display, position);
+                ResponseJournal.RecordReply(display, "deterministic danger callout");
                 Plugin.Log?.LogWarning($"Buddy danger callout: {enemyName} within {distance:F1}m.");
             }
             catch (Exception ex)

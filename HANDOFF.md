@@ -1,10 +1,10 @@
-# HANDOFF — LethalAICrewmate v2.3.0
+# HANDOFF — LethalAICrewmate v2.4.0
 
 ## Current status
 
 LethalAICrewmate is a BepInEx 5 mod for **Lethal Company v81** adding a friendly AI crewmate named Buddy.
 
-Release target: **v2.3.0** (wire protocol **7**).
+Release target: **v2.4.0** (wire protocol **7**).
 
 Automated release requirements:
 
@@ -27,6 +27,7 @@ Automated release requirements:
 - Late joins recover Buddy + held-item state.
 - Buddy text and generated TTS audio are replicated to compatible clients.
 - Native OpenAI Realtime voice (hold-to-talk, Ash voice) runs over an authenticated host WebSocket with a deterministic `execute_game_command` tool.
+- Every Buddy reply is journaled with its paired player input to `BepInEx/LethalAICrewmate-responses.log` (host only; `[Logging] SaveResponses` toggle).
 
 ## AI providers
 
@@ -55,7 +56,7 @@ Persistent keys: `LETHAL_AI_OPENAI_API_KEY` / `LETHAL_AI_GROQ_API_KEY` environme
 - `buddy buy <qty> <item>`, `buddy open door <code>`, `buddy disable turret <code>`, `buddy open ship doors`, `buddy turn ship lights off`, `buddy status`
 - `please spawn <item>` (bounded polite item spawner; hard per-round cap)
 
-Explicit player commands are handled deterministically on the host. LLM-produced terminal tags are stripped and cannot spend credits or route the ship.
+Explicit player commands are handled deterministically on the host. LLM-produced terminal tags are stripped and cannot spend credits or route the ship. On voice, the Realtime model must call `execute_game_command` for any catalogue command (the prompt makes ambiguous phrases default to the tool); on text chat the host executes before the LLM turn, so Buddy may only acknowledge confirmed results.
 
 ## Build
 

@@ -27,6 +27,7 @@ namespace LethalAICrewmate
         private static ClientWebSocket _socket;
         private static CancellationTokenSource _sessionCancel;
         private static readonly SemaphoreSlim SendLock = new SemaphoreSlim(1, 1);
+        private static string _lastToolResult;
 
         private sealed class VoiceTurn
         {
@@ -55,8 +56,7 @@ namespace LethalAICrewmate
             string livePrompt = BuddyConversationPrompt.Build() +
                 "\n\nCURRENT VOICE TURN\nSpeaker: " + (playerName ?? "Player") +
                 " (player id " + playerId + ").\n" + GameSensors.BuildLiveContext() +
-                "\nFor an actual game action or live status query, call execute_game_command with the speaker's exact intent. " +
-                "Never claim an action happened until its function output confirms it.";
+                "\nCOMMAND RULE: if the speaker gives a command (stay/stay in place, follow, move or go forward, scout ahead, fetch scrap, go to ship, open door CODE, disable turret/mine CODE, buy items, ship controls, status, or a polite spawn plea), you MUST call execute_game_command with their exact intent — never answer a command with talk. If unsure whether it is a command, call the tool anyway; a non-command marker means answer conversationally. Never claim an action happened without its confirmed result.";
             lock (Gate)
             {
                 if (Pending.Count >= MaxQueuedTurns) Pending.Dequeue();
@@ -332,9 +332,9 @@ namespace LethalAICrewmate
                    "\"noise_reduction\":{\"type\":\"far_field\"}," +
                    "\"transcription\":{\"model\":\"" + LlmClient.Escape(ResolveTranscriptionModel()) + "\"},\"turn_detection\":null}," +
                    "\"output\":{\"format\":{\"type\":\"audio/pcm\",\"rate\":24000},\"voice\":\"ash\"}}," +
-                   "\"reasoning\":{\"effort\":\"low\"},\"max_output_tokens\":96," +
+                   "\"reasoning\":{\"effort\":\"low\"},\"max_output_tokens\":256," +
                    "\"tool_choice\":\"auto\",\"tools\":[{\"type\":\"function\",\"name\":\"execute_game_command\"," +
-                   "\"description\":\"Execute an explicit Lethal Company movement, scouting, scrap, ship, terminal, purchase, facility, status, or polite spawn command. Do not call for ordinary conversation.\"," +
+                   "\"description\":\"Execute a Lethal Company game command for the speaker. Call this for ANY explicit command: movement (stay, stay in place, stay put, follow me, come here, move forward, go forward, walk forward, scout ahead N metres, check ahead, lead the way, take point, go to ship, return to ship, fetch/collect/get scrap), terminal (buy N item, route moon, moons, status), ship controls (lights on/off, ship doors), facility codes (open door CODE, disable turret CODE, disable mine CODE), or a polite spawn plea (please/begging for a real item). Do NOT call for ordinary conversation, questions about the game world, jokes, or replies that need no game action. Include the speaker's exact target, quantity, door code, distance and politeness in the command string.\"," +
                    "\"parameters\":{\"type\":\"object\",\"properties\":{\"command\":{\"type\":\"string\",\"description\":\"The speaker's exact command including target, quantity, code and politeness.\"}},\"required\":[\"command\"]}}]}}";
         }
 
@@ -349,8 +349,18 @@ namespace LethalAICrewmate
             var done = new TaskCompletionSource<string>();
             MainThread.Enqueue(() =>
             {
-                try { done.TrySetResult(ChatObserver.ExecuteDeterministicOnly(command, playerId)); }
-                catch (Exception ex) { done.TrySetResult("Command failed: " + ex.Message); }
+                try
+                {
+                    string result = ChatObserver.ExecuteDeterministicOnly(command, playerId);
+                    _lastToolResult = result;
+                    done.TrySetResult(result);
+                }
+                catch (Exception ex)
+                {
+                    string failure = "Command failed: " + ex.Message;
+                    _lastToolResult = failure;
+                    done.TrySetResult(failure);
+                }
             });
             return await done.Task.ConfigureAwait(false);
         }
@@ -360,6 +370,7 @@ namespace LethalAICrewmate
             MainThread.Enqueue(() =>
             {
                 Plugin.Log?.LogInfo("Realtime voice transcript " + playerName + ": " + transcript);
+                ResponseJournal.NoteInput("voice", playerName, transcript);
                 HUDManager.Instance?.AddChatMessage(transcript, playerName + " (voice)");
             });
         }
@@ -384,6 +395,8 @@ namespace LethalAICrewmate
             string name = Plugin.CrewmateName?.Value ?? "Buddy";
             NetMessenger.BroadcastCrewmateChat(name, transcript, pos, netId);
             ProximityChat.TryShowLocal(name, transcript, pos);
+            ResponseJournal.RecordReply(transcript, _lastToolResult);
+            _lastToolResult = null;
         }
 
         private static void QueueHint(string message) => MainThread.Enqueue(() =>

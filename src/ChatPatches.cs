@@ -99,6 +99,7 @@ namespace LethalAICrewmate
                     Plugin.Log?.LogInfo($"Terminal cmd: {termResult}");
                     // Replicate deterministic ship/terminal feedback to every matching player and
                     // speak it once. Do not ask the LLM to paraphrase or repeat a side effect.
+                    ResponseJournal.NoteInput("command", GetPlayerName(playerId), msg);
                     LlmClient.PublishLocalReply(termResult);
                     return;
                 }
@@ -115,6 +116,7 @@ namespace LethalAICrewmate
                     deterministicCommand = CommandName(movement.Kind);
                 else if (!string.IsNullOrWhiteSpace(failure))
                 {
+                    ResponseJournal.NoteInput("command", GetPlayerName(playerId), msg);
                     LlmClient.PublishLocalReply(failure);
                     return;
                 }
@@ -138,15 +140,18 @@ namespace LethalAICrewmate
             {
                 if (CrewmateRegistry.GetPrimary() == null && !string.IsNullOrWhiteSpace(NetMessenger.HostCompatibilityWarning))
                 {
+                    ResponseJournal.NoteInput("command", GetPlayerName(playerId), msg);
                     LlmClient.PublishLocalReply(NetMessenger.HostCompatibilityWarning);
                     return;
                 }
                 if (!string.IsNullOrEmpty(deterministicCommand))
                 {
+                    ResponseJournal.NoteInput("command", GetPlayerName(playerId), msg);
                     LlmClient.PublishLocalReply(BuildCommandAcknowledgement(deterministicCommand));
                     return;
                 }
                 string playerName = GetPlayerName(playerId);
+                ResponseJournal.NoteInput("chat", playerName, msg);
                 LlmClient.EnqueuePlayerMessage(playerName, msg, isCommand);
             }
         }
