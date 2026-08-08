@@ -12,12 +12,12 @@ namespace LethalAICrewmate
     {
         public const string ModGuid = "com.lethalaicrewmate.buddy";
         public const string ModName = "LethalAICrewmate";
-        public const string ModVersion = "1.2.1";
+        public const string ModVersion = "1.3.0";
 
         internal static Plugin Instance;
         internal static ManualLogSource Log;
 
-        // Groq (chat + STT + Orpheus TTS). OpenRouter keys still accepted as legacy alias.
+        // Groq (chat + STT + Orpheus TTS). OpenRouter keys still accepted as a legacy alias.
         internal static ConfigEntry<string> ApiKey;
         internal static ConfigEntry<string> Model;
         internal static ConfigEntry<string> SttModel;
@@ -45,10 +45,8 @@ namespace LethalAICrewmate
             Instance = this;
             Log = Logger;
 
-            // Private-group default key (friends-only mod). Override in config if needed.
-            ApiKey = Config.Bind("Groq", "ApiKey", "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",
-                "Groq API key. Default is the shared friends key; leave as-is or replace.");
-            // Qwen3.6 27B — strong LC knowledge / banter. Thinking disabled via API flags in LlmClient.
+            ApiKey = Config.Bind("Groq", "ApiKey", "",
+                "Groq API key. The host can set it from the Lethal Company main menu or this config file.");
             Model = Config.Bind("Groq", "Model", "qwen/qwen3.6-27b",
                 "Groq chat model. Default qwen/qwen3.6-27b. Alternatives: meta-llama/llama-4-scout-17b-16e-instruct, llama-3.1-8b-instant.");
             SttModel = Config.Bind("Groq", "SttModel", "whisper-large-v3-turbo",
@@ -64,7 +62,7 @@ namespace LethalAICrewmate
             TtsVolume = Config.Bind("Groq", "TtsVolume", 0.85f,
                 "Buddy voice volume 0–1.");
 
-            // Migrate older OpenRouter section if present and Groq key empty
+            // Migrate older OpenRouter section if present and Groq key empty.
             try
             {
                 var legacyKey = Config.Bind("OpenRouter", "ApiKey", "", "Legacy — use Groq.ApiKey instead.");
@@ -79,7 +77,7 @@ namespace LethalAICrewmate
                     legacyModel.Value.IndexOf("openrouter", StringComparison.OrdinalIgnoreCase) < 0 &&
                     !legacyModel.Value.EndsWith(":free", StringComparison.OrdinalIgnoreCase))
                 {
-                    // keep groq default unless they had a non-openrouter model
+                    // Keep the Groq default unless they had a non-OpenRouter model.
                 }
             }
             catch { /* ignore migration issues */ }
@@ -105,7 +103,7 @@ namespace LethalAICrewmate
             VoiceMaxSeconds = Config.Bind("Voice", "MaxRecordSeconds", 8f,
                 "Max push-to-talk length in seconds (capped at 15).");
             VisionEnabled = Config.Bind("Vision", "Enabled", true,
-                "Send a screenshot of your view to Qwen vision with each chat so Buddy can see (uses more API). Sensors always run.");
+                "Send a screenshot of the host view to Qwen vision with each chat so Buddy can see (uses more API). Sensors always run.");
 
             try
             {
@@ -113,10 +111,12 @@ namespace LethalAICrewmate
                 DontDestroyOnLoad(hostGo);
                 hostGo.hideFlags = HideFlags.HideAndDontSave;
                 Host = hostGo.AddComponent<PluginHost>();
+                hostGo.AddComponent<GroqKeyMenu>();
 
                 _harmony = new Harmony(ModGuid);
                 _harmony.PatchAll(typeof(Plugin).Assembly);
-                // Self-heal mis-copied config keys (Model substring used to overwrite Stt/Tts models)
+
+                // Self-heal mis-copied config keys (Model substring used to overwrite Stt/Tts models).
                 try
                 {
                     if (Model.Value != null && Model.Value.IndexOf("whisper", StringComparison.OrdinalIgnoreCase) >= 0)
@@ -142,7 +142,7 @@ namespace LethalAICrewmate
     }
 
     /// <summary>
-    /// Persistent MonoBehaviour used for coroutines (LLM/STT) and late Update ticks.
+    /// Persistent MonoBehaviour used for networking, coroutines (LLM/STT), and update ticks.
     /// </summary>
     public class PluginHost : MonoBehaviour
     {
@@ -152,7 +152,10 @@ namespace LethalAICrewmate
         {
             try
             {
-                // Reliable spawn path: poll while landed (land events are easy to miss)
+                // Every peer needs its named-message handlers registered, not only the host.
+                NetMessenger.Tick();
+
+                // Reliable spawn path: poll while landed (land events are easy to miss).
                 if (Time.unscaledTime >= _nextSpawnPoll)
                 {
                     _nextSpawnPoll = Time.unscaledTime + 1.25f;
