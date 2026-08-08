@@ -1,0 +1,178 @@
+using System;
+using HarmonyLib;
+using UnityEngine;
+
+namespace LethalAICrewmate
+{
+    /// <summary>
+    /// Plays Buddy speech consistently on every peer and converts the host's generated clip into
+    /// compact 16 kHz mono PCM for multiplayer replication. The Groq key/audio request stays host-only.
+    /// </summary>
+    public static class BuddyNetworkAudio
+    {
+        private const int NetworkSampleRate = 16000;
+        private const int MaxNetworkSeconds = 15;
+
+        private static GameObject _audioGo;
+        private static AudioSource _source;
+
+        public static void PlayHostClipAndReplicate(AudioClip clip, Vector3 worldPos)
+        {
+            if (clip == null) return;
+
+            PlayClip(clip, worldPos);
+
+            try
+            {
+                if (!CrewmateSpawner.IsHost()) return;
+                byte[] pcm = BuildNetworkPcm16(clip);
+                if (pcm != null && pcm.Length > 0)
+                    NetMessenger.BroadcastTtsPcm(pcm, NetworkSampleRate, ResolveBuddyPosition(worldPos));
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log?.LogWarning($"Buddy TTS network encode: {ex.Message}");
+            }
+        }
+
+        public static void PlayReplicatedPcm(byte[] pcm16, int sampleRate, Vector3 worldPos)
+        {
+            try
+            {
+                if (pcm16 == null || pcm16.Length < 2 || (pcm16.Length & 1) != 0) return;
+                if (sampleRate < 8000 || sampleRate > 48000) return;
+
+                int sampleCount = pcm16.Length / 2;
+                float[] samples = new float[sampleCount];
+                for (int i = 0; i < sampleCount; i++)
+                {
+                    int o = i * 2;
+                    short s = (short)(pcm16[o] | (pcm16[o + 1] << 8));
+                    samples[i] = s / 32768f;
+                }
+
+                var clip = AudioClip.Create("BuddyNetworkVoice", sampleCount, 1, sampleRate, false);
+                clip.SetData(samples, 0);
+                PlayClip(clip, worldPos);
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log?.LogWarning($"Buddy replicated TTS playback: {ex.Message}");
+            }
+        }
+
+        private static byte[] BuildNetworkPcm16(AudioClip clip)
+        {
+            if (clip == null || clip.samples <= 0 || clip.channels <= 0 || clip.frequency <= 0)
+                return null;
+
+            int channels = Mathf.Max(1, clip.channels);
+            int sourceFrames = clip.samples;
+            float[] source = new float[sourceFrames * channels];
+            if (!clip.GetData(source, 0))
+                return null;
+
+            double ratio = (double)clip.frequency / NetworkSampleRate;
+            int outputFrames = Math.Min(
+                (int)Math.Ceiling(sourceFrames / ratio),
+                NetworkSampleRate * MaxNetworkSeconds);
+            if (outputFrames <= 0)
+                return null;
+
+            byte[] pcm = new byte[outputFrames * 2];
+            for (int i = 0; i < outputFrames; i++)
+            {
+                int frame = Math.Min(sourceFrames - 1, (int)(i * ratio));
+                int baseIndex = frame * channels;
+                float mono = 0f;
+                for (int ch = 0; ch < channels; ch++)
+                    mono += source[baseIndex + ch];
+                mono /= channels;
+                mono = Mathf.Clamp(mono, -1f, 1f);
+
+                short sample = (short)Mathf.RoundToInt(mono * 32767f);
+                int o = i * 2;
+                pcm[o] = (byte)(sample & 0xff);
+                pcm[o + 1] = (byte)((sample >> 8) & 0xff);
+            }
+            return pcm;
+        }
+
+        private static Vector3 ResolveBuddyPosition(Vector3 fallback)
+        {
+            try
+            {
+                var primary = CrewmateRegistry.GetPrimary();
+                if (primary?.Enemy != null)
+                    return primary.Enemy.transform.position + Vector3.up * 1.7f;
+            }
+            catch { /* use fallback */ }
+            return fallback;
+        }
+
+        private static void PlayClip(AudioClip clip, Vector3 worldPos)
+        {
+            EnsureAudioSource();
+            worldPos = ResolveBuddyPosition(worldPos);
+            _audioGo.transform.position = worldPos;
+
+            _source.Stop();
+            if (_source.clip != null && _source.clip != clip)
+            {
+                var old = _source.clip;
+                _source.clip = null;
+                UnityEngine.Object.Destroy(old);
+            }
+
+            _source.clip = clip;
+            _source.volume = Mathf.Clamp01(Plugin.TtsVolume?.Value ?? 0.85f);
+            _source.mute = false;
+            _source.loop = false;
+            _source.playOnAwake = false;
+            _source.dopplerLevel = 0f;
+            _source.priority = 32;
+            _source.bypassEffects = false;
+            _source.bypassListenerEffects = false;
+            _source.bypassReverbZones = false;
+
+            float range = Plugin.ChatHearRange?.Value ?? 25f;
+            if (range <= 0f)
+            {
+                _source.spatialBlend = 0f;
+            }
+            else
+            {
+                _source.spatialBlend = 1f;
+                _source.spatialize = false;
+                _source.rolloffMode = AudioRolloffMode.Linear;
+                _source.minDistance = 3f;
+                _source.maxDistance = Mathf.Max(6f, range);
+            }
+
+            _source.Play();
+        }
+
+        private static void EnsureAudioSource()
+        {
+            if (_audioGo != null && _source != null) return;
+            _audioGo = new GameObject("LethalAICrewmate_NetworkVoice");
+            UnityEngine.Object.DontDestroyOnLoad(_audioGo);
+            _source = _audioGo.AddComponent<AudioSource>();
+        }
+    }
+
+    /// <summary>
+    /// Replace the old host-only/2D BuddyTts playback path with the multiplayer-aware player.
+    /// BuddyTts still owns Groq request/decoding; this patch only takes over final playback.
+    /// </summary>
+    [HarmonyPatch(typeof(BuddyTts), "PlayClip")]
+    internal static class Patch_BuddyTts_PlayClip_Multiplayer
+    {
+        [HarmonyPrefix]
+        private static bool Prefix(AudioClip clip, Vector3 worldPos)
+        {
+            BuddyNetworkAudio.PlayHostClipAndReplicate(clip, worldPos);
+            return false;
+        }
+    }
+}

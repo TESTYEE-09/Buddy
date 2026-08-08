@@ -258,10 +258,12 @@ namespace LethalAICrewmate
                 var data = Register(enemy, null);
                 EnsureNetworkKey(data);
                 MaskedNeutralizePatches.Neutralize(enemy, data);
+                BuddyNameTag.Attach(enemy, Plugin.CrewmateName?.Value ?? "Buddy");
+                Plugin.Log?.LogInfo($"Late-bound remote crewmate id={id}.");
             }
-            catch
+            catch (System.Exception ex)
             {
-                // ignore
+                Plugin.Log?.LogWarning($"TryBindKnown: {ex.Message}");
             }
         }
     }

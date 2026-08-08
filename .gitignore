@@ -2,3 +2,8 @@ bin/
 obj/
 *.user
 .vs/
+_ts_staging/
+_ts_verify/
+SHA256SUMS.txt
+LethalAICrewmate-*.zip
+ThunderstorePackage/LethalAICrewmate.dll

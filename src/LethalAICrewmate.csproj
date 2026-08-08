@@ -3,11 +3,12 @@
   <PropertyGroup>
     <TargetFramework>netstandard2.1</TargetFramework>
     <AssemblyName>LethalAICrewmate</AssemblyName>
-    <Description>AI crewmate for Lethal Company powered by OpenRouter, speaks in proximity chat</Description>
-    <Version>1.2.1</Version>
+    <Description>Host-authoritative multiplayer AI crewmate for Lethal Company powered by Groq</Description>
+    <Version>1.4.0</Version>
     <LangVersion>latest</LangVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Nullable>disable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <RestoreAdditionalProjectSources>
       https://api.nuget.org/v3/index.json;
       https://nuget.bepinex.dev/v3/index.json
@@ -21,7 +22,6 @@
     <PackageReference Include="UnityEngine.Modules" Version="2022.3.62" IncludeAssets="compile" PrivateAssets="all" />
   </ItemGroup>
 
-  <!-- LC uses new Input System; pull from GameLibs package -->
   <ItemGroup>
     <Reference Include="Unity.InputSystem">
       <HintPath>$(UserProfile)\.nuget\packages\lethalcompany.gamelibs.steam\81.0.5-ngd.0\ref\netstandard2.1\Unity.InputSystem.dll</HintPath>
