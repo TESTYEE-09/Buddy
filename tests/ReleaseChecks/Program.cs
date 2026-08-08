@@ -24,6 +24,14 @@ static class Program
         Buffer.BlockCopy(audible, 0, truncated, 0, truncated.Length);
         Check(!TransportValidation.TryValidateMonoPcm16Wav(truncated, 400 * 1024, 0.35f, 12.5f, 0.008f, out _), "reject inconsistent data length");
 
+        Check(VoiceSignalMath.HasUsableSignal(0.0011f), "accept observed quiet microphone signal");
+        Check(!VoiceSignalMath.HasUsableSignal(0.0001f), "reject true silence floor");
+        float quietGain = VoiceSignalMath.CalculateGain(0.0011f, 0.01f);
+        Check(quietGain > 10f && quietGain <= 30f, "adaptively amplify quiet microphone");
+        Check(VisionIntent.IsVisualQuestion("Buddy, what am I looking at?"), "detect looking-at vision request");
+        Check(VisionIntent.IsVisualQuestion("Can you see my screen?"), "detect screen vision request");
+        Check(!VisionIntent.IsVisualQuestion("Buddy follow me"), "avoid screenshots for normal commands");
+
         Console.WriteLine($"Release checks passed: {_checks}");
         return 0;
     }

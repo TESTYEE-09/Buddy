@@ -23,7 +23,7 @@ namespace LethalAICrewmate
         public const string MsgTtsChunk = "LethalAICrewmate_TtsChunk";
 
         // Increment whenever a wire format becomes incompatible.
-        public const int ProtocolVersion = 5;
+        public const int ProtocolVersion = 6;
 
         private const float HelloIntervalSeconds = 2.5f;
         private const float MissingModGraceSeconds = 8f;
@@ -236,11 +236,11 @@ namespace LethalAICrewmate
                     float age = Time.unscaledTime - peer.FirstSeenAt;
                     warning = age < MissingModGraceSeconds
                         ? $"Waiting for client {id} to load LethalAICrewmate..."
-                        : $"Buddy disabled: client {id} has not loaded LethalAICrewmate {Plugin.ModVersion}.";
+                        : $"Buddy cannot spawn: client {id} is missing LethalAICrewmate {Plugin.ModVersion}. Install the same ZIP on every player and restart the lobby.";
                 }
                 else
                 {
-                    warning = $"Buddy disabled: client {id} has mod {peer.Version}/protocol {peer.Protocol}; host is {Plugin.ModVersion}/{ProtocolVersion}.";
+                    warning = $"Buddy cannot spawn: client {id} has {peer.Version}, host has {Plugin.ModVersion}. Install the same ZIP on every player and restart the lobby.";
                 }
                 break;
             }
@@ -265,7 +265,11 @@ namespace LethalAICrewmate
             try
             {
                 if (HUDManager.Instance != null)
+                {
                     HUDManager.Instance.AddChatMessage(warning, "LethalAICrewmate");
+                    if (warning.StartsWith("Buddy cannot spawn", StringComparison.Ordinal))
+                        HUDManager.Instance.DisplayTip("Buddy mod mismatch", warning, true, false, "BuddyCompatibilityTip");
+                }
             }
             catch { /* HUD may not exist yet */ }
         }

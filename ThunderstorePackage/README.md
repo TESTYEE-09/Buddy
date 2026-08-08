@@ -27,7 +27,7 @@ Buddy is a friendly AI crewmate for **Lethal Company v81**. He follows the crew,
 - `buddy go to ship`
 - `buddy fetch scrap`
 
-You can also talk to Buddy normally in text chat or hold **V** to use Buddy push-to-talk.
+You can also talk to Buddy normally in text chat or hold **B** to use Buddy push-to-talk.
 
 ## Personality
 
@@ -43,21 +43,21 @@ Client:
 
 `client mic -> host relay -> host Whisper -> Buddy reply -> synced Buddy voice`
 
-v1.4.6 uses Austin with a light `friendly` direction and reliable listener-relative playback on every peer. New Groq keys entered in the menu are session-only by default; use `LETHAL_AI_GROQ_API_KEY` for persistent host setup. Matching friends can use PTT by default, while public-lobby hosts can set `[Security] AllowRemoteVoice = false`. Buddy also shouts “RUN!” without prompting when a real hostile creature gets within 6m of a living player.
+v1.4.7 adaptively amplifies quiet microphones before Whisper, delivers replies globally to matching clients, and automatically captures a clearer host screenshot for visual questions. New Groq keys entered in the menu are session-only by default; use `LETHAL_AI_GROQ_API_KEY` for persistent host setup. Public-lobby hosts can set `[Security] AllowRemoteVoice = false`.
 
 Groq requires the organization owner to accept the Orpheus model terms once in its playground before speech audio can be generated. Buddy shows an in-game notice if this approval is missing; text replies continue normally.
 
 ## Defaults
 
-- Chat: `llama-3.3-70b-versatile`
+- Chat and visual questions: `qwen/qwen3.6-27b`
 - STT: `whisper-large-v3-turbo`
 - TTS: `canopylabs/orpheus-v1-english`
 - TTS voice: `austin`
 - TTS direction: `friendly`
 - TTS volume: `1.0`
-- Buddy chat/voice range: `70m`
+- Buddy chat/voice range: global
 - Nearby question/client PTT range: `60m`
-- Vision: off by default; opt in with a vision-capable model such as `qwen/qwen3.6-27b`
+- Vision: automatic for clear visual questions; 1280px JPEG at quality 72
 
 Config file: `BepInEx/config/com.lethalaicrewmate.buddy.cfg`
 
