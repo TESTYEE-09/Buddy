@@ -1,4 +1,7 @@
 using System;
+using System.IO;
+using BepInEx;
+using BepInEx.Configuration;
 using LethalAICrewmate;
 
 static class Program
@@ -59,6 +62,12 @@ static class Program
         Check(MovementCommandParsing.Parse("stop following me").Kind == MovementCommandKind.Stay, "stop following is not follow");
         Check(MovementCommandParsing.Parse("stay still").Kind == MovementCommandKind.Stay, "parse verbatim stay-still command");
         Check(MovementCommandParsing.Parse("do not move").Kind == MovementCommandKind.Stay, "preserve negation in stay command");
+        Check(MovementCommandParsing.Parse("stay in place").Kind == MovementCommandKind.Stay, "parse stay-in-place command");
+        Check(MovementCommandParsing.Parse("stay put").Kind == MovementCommandKind.Stay, "parse stay-put command");
+        Check(MovementCommandParsing.Parse("stay right here").Kind == MovementCommandKind.Stay, "parse stay-right-here command");
+        Check(MovementCommandParsing.Parse("stand by").Kind == MovementCommandKind.Stay, "parse stand-by command");
+        Check(MovementCommandParsing.Parse("freeze").Kind == MovementCommandKind.Stay, "parse freeze command");
+        Check(MovementCommandParsing.IsDirectDirective("stay in place"), "stay in place is a direct directive");
         Check(MovementCommandParsing.Parse("move forwards").Kind == MovementCommandKind.ScoutAhead, "parse verbatim move-forwards command");
         Check(MovementCommandParsing.Parse("go to the ship").Kind == MovementCommandKind.ReturnToShip, "ship return is not moon route");
         Check(MovementCommandParsing.Parse("what is scrap?").Kind == MovementCommandKind.None, "scrap question is not fetch command");
@@ -66,6 +75,41 @@ static class Program
         Check(MovementCommandParsing.Parse("ship").Kind == MovementCommandKind.ReturnToShip, "retain short ship command");
         Check(MovementCommandParsing.Parse("no, get off the ship and follow us").Kind == MovementCommandKind.Follow, "parse follow-us correction");
         Check(MovementCommandParsing.Parse("you are not following us").Kind == MovementCommandKind.None, "complaint is not a fresh follow order");
+
+        // Response journal behavior: file creation, input/reply pairing, FIFO ordering, config suppression.
+        string journalDir = Path.Combine(Path.GetTempPath(), "lethal-ai-journal-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(journalDir);
+        try
+        {
+            Paths.BepInExRootPath = journalDir;
+            Plugin.SaveResponses = new ConfigEntry<bool> { Value = true };
+            Plugin.CrewmateName = new ConfigEntry<string> { Value = "Buddy" };
+
+            ResponseJournal.NoteInput("voice", "eamon", "stay in place");
+            ResponseJournal.RecordReply("Parked. Try not to miss me.");
+            string journalPath = Path.Combine(journalDir, "LethalAICrewmate-responses.log");
+            Check(File.Exists(journalPath), "journal file created");
+            string text = File.ReadAllText(journalPath);
+            Check(text.Contains("voice | eamon: \"stay in place\"") && text.Contains("Parked. Try not to miss me."),
+                  "journal pairs input with reply");
+
+            ResponseJournal.NoteInput("chat", "sam", "where's the scrap?");
+            ResponseJournal.RecordReply("Two bits of scrap. Worth carrying.");
+            ResponseJournal.NoteInput("command", "sam", "open door c7");
+            ResponseJournal.RecordReply("Door's open. Hope it was worth it.");
+            text = File.ReadAllText(journalPath);
+            Check(text.Contains("chat | sam: \"where's the scrap?\"") && text.Contains("command | sam: \"open door c7\""),
+                  "journal preserves FIFO input pairing");
+
+            ResponseJournal.NoteInput("chat", "sam", "say something secret");
+            Plugin.SaveResponses.Value = false;
+            ResponseJournal.RecordReply("silent reply");
+            Check(!File.ReadAllText(journalPath).Contains("silent reply"), "journal suppressed by SaveResponses config");
+        }
+        finally
+        {
+            try { Directory.Delete(journalDir, true); } catch { /* ignore */ }
+        }
 
         Console.WriteLine($"Release checks passed: {_checks}");
         return 0;

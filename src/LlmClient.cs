@@ -634,6 +634,7 @@ namespace LethalAICrewmate
             NetMessenger.BroadcastCrewmateChat(name, display, pos, netId);
             ProximityChat.TryShowLocal(name, display, pos);
             BuddyTts.Speak(display, pos + Vector3.up * 1.6f);
+            ResponseJournal.RecordReply(display, !string.IsNullOrEmpty(termFb) ? termFb : null);
 
             if (!string.IsNullOrEmpty(termFb) && termFb != display)
             {
@@ -652,6 +653,7 @@ namespace LethalAICrewmate
             NetMessenger.BroadcastCrewmateChat(name, display, pos, netId);
             ProximityChat.TryShowLocal(name, display, pos);
             BuddyTts.Speak(display, pos + Vector3.up * 1.6f);
+            ResponseJournal.RecordReply(display);
         }
 
         private static void ExtractMoveTag(ref string display, ref string tag)

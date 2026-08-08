@@ -12,7 +12,7 @@ namespace LethalAICrewmate
     {
         public const string ModGuid = "com.lethalaicrewmate.buddy";
         public const string ModName = "LethalAICrewmate";
-        public const string ModVersion = "2.3.0";
+        public const string ModVersion = "2.4.0";
 
         internal static Plugin Instance;
         internal static ManualLogSource Log;
@@ -43,6 +43,7 @@ namespace LethalAICrewmate
         internal static ConfigEntry<string> VoiceInputDevice;
         internal static ConfigEntry<bool> VisionEnabled;
         internal static ConfigEntry<string> VisionModel;
+        internal static ConfigEntry<bool> SaveResponses;
         internal static ConfigEntry<int> ConfigRevision;
 
         private Harmony _harmony;
@@ -132,6 +133,8 @@ namespace LethalAICrewmate
                 "Optional host screenshot analysis. Disabled in the stock text-only GPT-OSS setup.");
             VisionModel = Config.Bind("Vision", "Model", "qwen/qwen3.6-27b",
                 "Groq multimodal model used for screenshot questions.");
+            SaveResponses = Config.Bind("Logging", "SaveResponses", true,
+                "Write every Buddy reply (chat, voice, deterministic commands, danger callouts) to BepInEx/LethalAICrewmate-responses.log for review.");
             ConfigRevision = Config.Bind("Internal", "ConfigRevision", 0,
                 "Internal migration marker. Do not edit.");
 

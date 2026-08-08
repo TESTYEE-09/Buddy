@@ -45,6 +45,8 @@ namespace LethalAICrewmate
                 return new MovementCommand(MovementCommandKind.FetchScrap);
 
             if (lower == "stay" || lower == "stay here" || lower == "stay still" || lower == "stand still" ||
+                lower == "stay in place" || lower == "stay put" || lower == "stay right here" ||
+                lower == "park here" || lower == "stand by" || lower == "freeze" ||
                 lower == "dont move" || lower == "do not move" || lower == "wait" || lower == "wait here" ||
                 lower == "stop" || lower == "stop moving" || lower == "stop there" || lower == "wait there" || lower == "hold" || lower == "hold here" || lower == "hold position" ||
                 ContainsAny(lower, "stop following", "stop follow", "dont follow", "do not follow"))
