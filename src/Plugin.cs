@@ -12,7 +12,7 @@ namespace LethalAICrewmate
     {
         public const string ModGuid = "com.lethalaicrewmate.buddy";
         public const string ModName = "LethalAICrewmate";
-        public const string ModVersion = "1.5.2";
+        public const string ModVersion = "1.5.3";
 
         internal static Plugin Instance;
         internal static ManualLogSource Log;
@@ -54,8 +54,8 @@ namespace LethalAICrewmate
                 "Legacy plaintext Groq API key fallback. Prefer the LETHAL_AI_GROQ_API_KEY environment variable or a session-only key entered in the main menu.");
             PersistApiKey = Config.Bind("Security", "PersistApiKey", false,
                 "Write a key entered in the menu to the plaintext BepInEx config. Disabled by default; use LETHAL_AI_GROQ_API_KEY for persistent secure setup.");
-            Model = Config.Bind("Groq", "Model", "qwen/qwen3.6-27b",
-                "Groq chat model. qwen/qwen3.6-27b supports both normal chat and vision.");
+            Model = Config.Bind("Groq", "Model", "openai/gpt-oss-120b",
+                "Groq text chat model. Stock Buddy uses openai/gpt-oss-120b for stronger conversation and reasoning.");
             SttModel = Config.Bind("Groq", "SttModel", "whisper-large-v3-turbo",
                 "Groq speech-to-text model. Recommended: whisper-large-v3-turbo.");
             TtsModel = Config.Bind("Groq", "TtsModel", "canopylabs/orpheus-v1-english",
@@ -118,8 +118,8 @@ namespace LethalAICrewmate
                 "Max push-to-talk length in seconds (capped at 12 by runtime).");
             VoiceInputDevice = Config.Bind("Voice", "InputDevice", "",
                 "Optional microphone name (or part of its name). Empty uses the Windows default. Set this if Buddy records the wrong device.");
-            VisionEnabled = Config.Bind("Vision", "Enabled", true,
-                "Automatically attach a host-view screenshot only when a player asks what they are looking at or can see.");
+            VisionEnabled = Config.Bind("Vision", "Enabled", false,
+                "Optional host screenshot analysis. Disabled in the stock text-only GPT-OSS setup.");
             VisionModel = Config.Bind("Vision", "Model", "qwen/qwen3.6-27b",
                 "Groq multimodal model used for screenshot questions.");
             ConfigRevision = Config.Bind("Internal", "ConfigRevision", 0,
@@ -142,9 +142,9 @@ namespace LethalAICrewmate
                     if (string.IsNullOrWhiteSpace(Model.Value) ||
                         Model.Value.IndexOf("whisper", StringComparison.OrdinalIgnoreCase) >= 0 ||
                         Model.Value.IndexOf("orpheus", StringComparison.OrdinalIgnoreCase) >= 0)
-                        Model.Value = "qwen/qwen3.6-27b";
+                        Model.Value = "openai/gpt-oss-120b";
                     if (string.Equals(Model.Value?.Trim(), "llama-3.3-70b-versatile", StringComparison.OrdinalIgnoreCase))
-                        Model.Value = "qwen/qwen3.6-27b";
+                        Model.Value = "openai/gpt-oss-120b";
                     if (string.IsNullOrWhiteSpace(VisionModel.Value))
                         VisionModel.Value = "qwen/qwen3.6-27b";
                     // Apply 1.4.7 defaults once. After this marker is written, users can turn
@@ -157,6 +157,18 @@ namespace LethalAICrewmate
                             ChatHearRange.Value = 0f;
                         ConfigRevision.Value = 1;
                     }
+                    // v1.5.3 switches the stock experience to text-only GPT-OSS. Migrate only
+                    // the prior stock Qwen model; preserve any other custom chat-model choice.
+                    if (ConfigRevision.Value < 2)
+                    {
+                        if (string.Equals(Model.Value?.Trim(), "qwen/qwen3.6-27b", StringComparison.OrdinalIgnoreCase))
+                            Model.Value = "openai/gpt-oss-120b";
+                        VisionEnabled.Value = false;
+                        ConfigRevision.Value = 2;
+                    }
+                    // Stock v1.5.3 is deliberately text-only: never capture the host screen,
+                    // including when an older config previously opted into vision.
+                    VisionEnabled.Value = false;
                     if (SttModel.Value == null || SttModel.Value.IndexOf("whisper", StringComparison.OrdinalIgnoreCase) < 0)
                         SttModel.Value = "whisper-large-v3-turbo";
                     if (TtsModel.Value == null || TtsModel.Value.IndexOf("orpheus", StringComparison.OrdinalIgnoreCase) < 0)

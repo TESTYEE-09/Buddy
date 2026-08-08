@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.3
+
+- Switches Buddy's stock text model to Groq `openai/gpt-oss-120b` for stronger conversation, instruction following and reasoning.
+- Disables host screenshot capture entirely, including for older configs that previously enabled vision, making v1.5.3 text-only.
+- Migrates existing installs that still use the previous stock Qwen chat model to GPT-OSS 120B once, while preserving other custom model choices.
+
 ## 1.5.2
 
 - Verifies that a supplied facility code actually belongs to the requested turret, landmine or door instead of toggling the wrong object and claiming success.

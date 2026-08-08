@@ -23,7 +23,7 @@ namespace LethalAICrewmate
                 string name = CleanSingleLine(Plugin.CrewmateName?.Value, 24, "Buddy");
                 changed |= SetIfDifferent(Plugin.CrewmateName, name);
 
-                string model = CleanSingleLine(Plugin.Model?.Value, 128, "qwen/qwen3.6-27b");
+                string model = CleanSingleLine(Plugin.Model?.Value, 128, "openai/gpt-oss-120b");
                 changed |= SetIfDifferent(Plugin.Model, model);
 
                 string stt = CleanSingleLine(Plugin.SttModel?.Value, 128, "whisper-large-v3-turbo");

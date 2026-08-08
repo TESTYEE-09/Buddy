@@ -54,7 +54,7 @@ You can also talk to Buddy normally or ask him a question near him.
 
 Ship and terminal actions are host-authoritative and use the same game state as a player. Purchases respect sales, available credits and the 12-item dropship limit. Facility codes respect their normal cooldown, and ship doors still require working controls and hydraulic power.
 
-Recommended Groq models: `openai/gpt-oss-120b` for the strongest production text conversation, `openai/gpt-oss-20b` for the lowest-latency/lowest-cost text option, and `qwen/qwen3.6-27b` when Buddy needs screenshot vision. Keep `whisper-large-v3-turbo` for speech recognition.
+The stock configuration uses `openai/gpt-oss-120b` for text conversation and keeps screenshot vision disabled. Speech recognition remains `whisper-large-v3-turbo`.
 
 ## Personality
 
@@ -85,7 +85,7 @@ New installs default to:
 ```ini
 [Groq]
 ApiKey =
-Model = qwen/qwen3.6-27b
+Model = openai/gpt-oss-120b
 SttModel = whisper-large-v3-turbo
 TtsModel = canopylabs/orpheus-v1-english
 TtsVoice = austin
@@ -96,11 +96,11 @@ TtsVolume = 1
 
 For a persistent key without writing it to the BepInEx config, set the host-machine environment variable `LETHAL_AI_GROQ_API_KEY` before launching Steam. Keys entered through the main-menu panel are session-only by default.
 
-Vision is enabled by default but captures the host screen only for clear visual questions such as “what am I looking at?” Normal conversation sends no screenshot. The default vision model is `qwen/qwen3.6-27b`.
+Screenshot capture is disabled in v1.5.3. Stock Buddy is text-only and does not capture the host screen.
 
 ```ini
 [Vision]
-Enabled = true
+Enabled = false
 Model = qwen/qwen3.6-27b
 ```
 
@@ -144,7 +144,7 @@ The old 70m reply default automatically migrates to global delivery. Other custo
 - The key is never included in multiplayer messages.
 - Host push-to-talk audio goes directly to Groq when the host uses the Buddy voice key.
 - Client push-to-talk audio is relayed only while that client holds the Buddy voice key; the host can disable remote audio for public lobbies.
-- If Vision is enabled, a screenshot of the host view can be attached to a Groq chat request.
+- v1.5.3 does not capture or transmit host screenshots.
 - Generated Buddy speech is sent from the host to compatible clients as downsampled PCM audio.
 
 ## Build
