@@ -109,7 +109,12 @@ namespace LethalAICrewmate
             _hostBusy = false;
             _clientRecording = false;
             _clientSending = false;
-            _clientClip = null;
+            if (_clientClip != null)
+            {
+                AudioClip old = _clientClip;
+                _clientClip = null;
+                UnityEngine.Object.Destroy(old);
+            }
             _lastClientPttAt = -999f;
         }
 
@@ -192,6 +197,12 @@ namespace LethalAICrewmate
             try
             {
                 try { Microphone.End(_clientMicDevice); } catch { }
+                if (_clientClip != null)
+                {
+                    AudioClip old = _clientClip;
+                    _clientClip = null;
+                    UnityEngine.Object.Destroy(old);
+                }
                 _clientMicDevice = MicrophoneCapture.ResolveConfiguredDevice();
                 int length = Mathf.Clamp(Mathf.CeilToInt(maxSec) + 1, 2, 13);
                 _clientClip = Microphone.Start(_clientMicDevice, false, length, SampleRate);

@@ -43,6 +43,39 @@ namespace LethalAICrewmate
             }
         }
 
+        /// <summary>
+        /// Write a self-contained journal line without consuming a pending input note.
+        /// Used by deterministic callouts that have no paired player message.
+        /// </summary>
+        internal static void RecordDirect(string mode, string speaker, string input, string reply, string toolResult = null)
+        {
+            try
+            {
+                if (Plugin.SaveResponses != null && !Plugin.SaveResponses.Value) return;
+                var sb = new StringBuilder(320);
+                sb.Append('[').Append(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")).Append("] ");
+                sb.Append(string.IsNullOrWhiteSpace(mode) ? "system" : mode).Append(" | ");
+                sb.Append(string.IsNullOrWhiteSpace(speaker) ? "-" : speaker.Trim()).Append(": ");
+                sb.Append('"').Append(Sanitize(input)).Append('"');
+                sb.Append(" -> ").Append(Plugin.CrewmateName?.Value ?? "Buddy").Append(": ");
+                sb.Append('"').Append(Sanitize(reply)).Append('"');
+                if (!string.IsNullOrWhiteSpace(toolResult))
+                    sb.Append(" [tool: ").Append(Sanitize(toolResult)).Append(']');
+                sb.AppendLine();
+                WriteLine(sb.ToString());
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log?.LogDebug("Response journal: " + ex.Message);
+            }
+        }
+
+        /// <summary>Drop unpaired input notes when a session ends so stale pairings cannot leak across lobbies.</summary>
+        internal static void ResetSession()
+        {
+            lock (Gate) PendingInputs.Clear();
+        }
+
         /// <summary>Write a Buddy reply to the journal, paired with the oldest unpaired input note.</summary>
         internal static void RecordReply(string reply, string toolResult = null)
         {

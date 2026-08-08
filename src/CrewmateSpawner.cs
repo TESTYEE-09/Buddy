@@ -184,12 +184,16 @@ namespace LethalAICrewmate
 
                 if (masked == null)
                 {
-                    // Fallback: nearest newly spawned masked near spawn pos
+                    // Fallback: nearest newly spawned masked near spawn pos. Never adopt an
+                    // enemy that is alive, engaged or mid-attack — that is a hostile Masked,
+                    // not Buddy. The registry registration guard additionally refuses anything
+                    // that existed before the spawn attempt.
                     var all = UnityEngine.Object.FindObjectsOfType<MaskedPlayerEnemy>();
                     float best = 30f;
                     foreach (var m in all)
                     {
-                        if (m == null) continue;
+                        if (m == null || m.isEnemyDead) continue;
+                        if (m.targetPlayer != null || m.movingTowardsTargetPlayer || m.inKillAnimation) continue;
                         float d = Vector3.Distance(m.transform.position, spawnPos);
                         if (d < best && !CrewmateRegistry.IsCrewmate(m))
                         {

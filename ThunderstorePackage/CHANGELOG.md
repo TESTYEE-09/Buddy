@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.4.1
+
+- Commands with real side effects (`buy`, `route`, `moons`, `store`, `credits`, terminal actions) now only run when Buddy is actually addressed, so plain chat like "buy 3 flashlights" or "route titan" can no longer spend credits or move the ship by itself. Pleaded spawn requests stay available without addressing and remain plea/item/cap sandboxed.
+- Guards the enemy-kill patch against registry exceptions: a failure can no longer abort vanilla enemy deaths.
+- Fixes the old config migration clobbering Groq users' STT/TTS models with OpenAI models; provider selections are preserved.
+- Honors the `[Vision] Enabled` setting (still default-off); enabling it actually enables host screenshots for visual questions instead of being silently reset every launch.
+- Clears the speech queue on lobby change so stale Buddy lines cannot play into the next session.
+- Movement: Buddy now returns to the ship exterior when the owner is on the ship while he is outside, and recovery teleports are refused when no NavMesh exists near the target (no more void drops).
+- Spawn fallback refuses to adopt Masked enemies that are alive, targeting a player, or mid-attack.
+- Chat replies via Luna get a higher output ceiling so multi-sentence answers no longer truncate.
+- Audio: the ChatHearRange positional setting works again (default remains global); the playback clip is released on stop; the client mic clip is destroyed when replaced.
+- Voice validation now parses RIFF chunks properly (accepts INFO chunks, rejects non-PCM formats) and accepts "route to <moon>" phrasing.
+- Name tags sanitize control characters; response journal callouts no longer consume pending chat pairings.
+- 56 automated release checks (was 50).
+
 ## 2.4.0
 
 - Makes command execution genuinely agentic: the system prompt now has an explicit command catalogue (stay/stay in place, follow, move/go forward, scout, fetch, ship, terminal, facility codes, polite spawn) and a hard execution contract. On voice Buddy must call `execute_game_command` for any command instead of talking about it; on text chat he may only acknowledge the confirmed result. Ambiguous phrases default to calling the tool, so commands can no longer be lost to conversation.

@@ -50,10 +50,9 @@ namespace LethalAICrewmate
             source.bypassListenerEffects = true;
             source.bypassReverbZones = true;
 
-            // Buddy speech is dialogue, so make it listener-relative. This avoids scene mixer,
-            // indoor/outdoor and stale world-position failures that could make a valid clip silent.
-            source.spatialBlend = 0f;
-            source.spatialize = false;
+            // Spatial behaviour is owned by BuddyNetworkAudio.PlayClip, which decides per clip
+            // from the ChatHearRange setting (0 = global listener-relative, >0 = positional).
+            // Keeping that decision here would override it and make the range setting dead code.
         }
 
         internal static void MigrateLegacyConfig()

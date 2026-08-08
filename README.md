@@ -54,7 +54,7 @@ You can also talk to Buddy normally or ask him a question near him.
 
 Ship and terminal actions are host-authoritative and use the same game state as a player. Purchases respect sales, available credits and the 12-item dropship limit. Facility codes respect their normal cooldown, and ship doors still require working controls and hydraulic power.
 
-The stock OpenAI configuration uses `gpt-5.6-luna` for conversation and keeps screenshot vision disabled.
+The stock OpenAI configuration uses `gpt-5.6-luna` for conversation and keeps screenshot vision disabled by default; hosts can opt in with `[Vision] Enabled = true` to answer explicit visual questions ("what am I looking at?") with a host screenshot.
 
 ## Personality
 
@@ -168,7 +168,7 @@ dotnet build src/LethalAICrewmate.csproj -c Release
 
 `pack.ps1` builds the DLL and creates the Thunderstore ZIP.
 
-GitHub Actions performs release checks, compiles with warnings treated as errors, checks for Groq-key-shaped secrets in source and the compiled DLL, validates package/version consistency, creates a SHA-256 checksum and uploads the ready-to-install ZIP.
+GitHub Actions performs release checks, compiles with warnings treated as errors, checks for API-key-shaped secrets (Groq and OpenAI) in source and the compiled DLL, validates package/version consistency, creates a SHA-256 checksum and uploads the ready-to-install ZIP.
 
 Generated DLLs and release ZIPs are intentionally not committed to the source tree.
 

@@ -27,6 +27,24 @@ namespace LethalAICrewmate
             public Vector3 Position;
         }
 
+        /// <summary>
+        /// Drop queued-but-unspoken lines and release the queue latch so a lobby change can
+        /// never carry stale speech (or a wedged coroutine) into the next session.
+        /// </summary>
+        public static void ResetSession()
+        {
+            try
+            {
+                Pending.Clear();
+                _inFlight = false;
+                BuddyNetworkAudio.StopPlayback();
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log?.LogWarning($"BuddyTts.ResetSession: {ex.Message}");
+            }
+        }
+
         public static void Speak(string text, Vector3 worldPos)
         {
             try

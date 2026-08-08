@@ -27,13 +27,23 @@ static class Program
         Buffer.BlockCopy(audible, 0, truncated, 0, truncated.Length);
         Check(!TransportValidation.TryValidateMonoPcm16Wav(truncated, 400 * 1024, 0.35f, 12.5f, 0.008f, out _), "reject inconsistent data length");
 
+        byte[] withListChunk = MakeWavWithExtraChunk(audible, "LIST", new byte[] { (byte)'I', (byte)'N', (byte)'F', (byte)'O' });
+        Check(TransportValidation.TryValidateMonoPcm16Wav(withListChunk, 400 * 1024, 0.35f, 12.5f, 0.008f, out _),
+              "accept WAV with INFO chunk before data");
+        byte[] floatFormat = (byte[])audible.Clone();
+        WriteShort(floatFormat, 20, 3);
+        Check(!TransportValidation.TryValidateMonoPcm16Wav(floatFormat, 400 * 1024, 0.35f, 12.5f, 0.008f, out _),
+              "reject non-PCM WAV format");
+
         Check(VoiceSignalMath.HasUsableSignal(0.0011f), "accept observed quiet microphone signal");
         Check(!VoiceSignalMath.HasUsableSignal(0.0001f), "reject true silence floor");
         float quietGain = VoiceSignalMath.CalculateGain(0.0011f, 0.01f);
         Check(quietGain > 10f && quietGain <= 30f, "adaptively amplify quiet microphone");
         Check(VisionIntent.IsVisualQuestion("Buddy, what am I looking at?"), "detect looking-at vision request");
         Check(VisionIntent.IsVisualQuestion("Can you see my screen?"), "detect screen vision request");
+        Check(VisionIntent.IsVisualQuestion("what's in front of me?"), "detect what-is-in-front vision request");
         Check(!VisionIntent.IsVisualQuestion("Buddy follow me"), "avoid screenshots for normal commands");
+        Check(!VisionIntent.IsVisualQuestion("get in front of me"), "avoid screenshots for position command");
 
         ShipCommandParsing.ParsePurchase("3 pro flashlights", out string purchaseItem, out int purchaseQuantity);
         Check(purchaseItem == "pro flashlights" && purchaseQuantity == 3, "parse purchase quantity");
@@ -50,6 +60,7 @@ static class Program
               facilityCode == "b3" && !facilityEnable, "parse terminal hazard disable");
         Check(ShipCommandParsing.TryParseFacilityAction("open door c7", out _, out facilityEnable) && facilityEnable,
               "parse terminal door open");
+        Check(!ShipCommandParsing.TryParseFacilityAction("c7", out _, out _), "reject bare facility code without action");
         Check(ShipCommandParsing.IsStatusRequest("what time is it?"), "parse ship status question");
         Check(!ShipCommandParsing.IsStatusRequest("what's the weather in Brisbane?"), "do not hijack real-world weather question");
 
@@ -105,6 +116,16 @@ static class Program
             Plugin.SaveResponses.Value = false;
             ResponseJournal.RecordReply("silent reply");
             Check(!File.ReadAllText(journalPath).Contains("silent reply"), "journal suppressed by SaveResponses config");
+
+            Plugin.SaveResponses.Value = true;
+            ResponseJournal.NoteInput("chat", "sam", "where's the scrap?");
+            ResponseJournal.RecordDirect("callout", "system", "deterministic danger callout", "RUN! Bracken is right on us!", "bracken within 4.2m");
+            ResponseJournal.RecordReply("Two bits of scrap. Worth carrying.");
+            text = File.ReadAllText(journalPath);
+            Check(text.Contains("callout | system: \"deterministic danger callout\"") &&
+                  text.Contains("chat | sam: \"where's the scrap?\"") &&
+                  text.Contains("Two bits of scrap. Worth carrying."),
+                  "direct callout record does not consume pending input note");
         }
         finally
         {
@@ -119,6 +140,20 @@ static class Program
     {
         if (!condition) throw new InvalidOperationException("Release check failed: " + name);
         _checks++;
+    }
+
+    private static byte[] MakeWavWithExtraChunk(byte[] wav, string chunkId, byte[] chunkData)
+    {
+        // Insert an extra RIFF chunk between fmt (ends at 36) and the data chunk, then fix sizes.
+        int extra = 8 + chunkData.Length;
+        byte[] result = new byte[wav.Length + extra];
+        Buffer.BlockCopy(wav, 0, result, 0, 36);
+        WriteAscii(result, 36, chunkId);
+        WriteInt(result, 40, chunkData.Length);
+        Buffer.BlockCopy(chunkData, 0, result, 44, chunkData.Length);
+        Buffer.BlockCopy(wav, 36, result, 44 + chunkData.Length, wav.Length - 36);
+        WriteInt(result, 4, 36 + (result.Length - 44)); // RIFF size covers fmt..end
+        return result;
     }
 
     private static byte[] MakeWav(int rate, float seconds, float amplitude)
