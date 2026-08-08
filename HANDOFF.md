@@ -89,9 +89,9 @@ Old private builds/history included a shared Groq key. Deleting old tracked bina
 
 ## Release flow
 
-1. Make changes on a feature branch.
-2. Require a green GitHub Actions build.
+1. Make changes on a feature branch and bump manifest/csproj/plugin versions together.
+2. Require a green feature-branch and pull-request GitHub Actions build.
 3. Merge to `main`.
-4. Require the `main` build to pass.
-5. Create tag `v1.4.0` at the tested main commit.
-6. Tag CI publishes the exact tested ZIP + `SHA256SUMS.txt` as a GitHub Release.
+4. The `main` workflow reruns all validation and packaging gates.
+5. Only after those gates pass, CI publishes `vX.Y.Z` from that exact `main` SHA with the tested ZIP + `SHA256SUMS.txt`.
+6. If that version already has a GitHub Release, CI leaves it untouched instead of overwriting published assets.
