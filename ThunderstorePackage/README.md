@@ -43,7 +43,9 @@ Client:
 
 `client mic -> host relay -> host Whisper -> Buddy reply -> synced Buddy voice`
 
-v1.4.5 uses Austin with a light `friendly` direction, one normalized/soft-limited PCM stage, a wider near-full-volume positional bubble and longer hearing range.
+v1.4.6 uses Austin with a light `friendly` direction and reliable listener-relative playback on every peer. New Groq keys entered in the menu are session-only by default; use `LETHAL_AI_GROQ_API_KEY` for persistent host setup. Matching friends can use PTT by default, while public-lobby hosts can set `[Security] AllowRemoteVoice = false`. Buddy also shouts “RUN!” without prompting when a real hostile creature gets within 6m of a living player.
+
+Groq requires the organization owner to accept the Orpheus model terms once in its playground before speech audio can be generated. Buddy shows an in-game notice if this approval is missing; text replies continue normally.
 
 ## Defaults
 

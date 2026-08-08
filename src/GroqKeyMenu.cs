@@ -39,7 +39,7 @@ namespace LethalAICrewmate
         {
             if (_initialized) return;
             _initialized = true;
-            _keyBuffer = Plugin.ApiKey?.Value ?? "";
+            _keyBuffer = "";
         }
 
         private void OnGUI()
@@ -78,8 +78,8 @@ namespace LethalAICrewmate
                 line = _status;
             else if (!string.IsNullOrEmpty(NetMessenger.CompatibilityWarning))
                 line = NetMessenger.CompatibilityWarning;
-            else if (!string.IsNullOrWhiteSpace(Plugin.ApiKey.Value))
-                line = "Key saved. Only the host needs it.";
+            else if (GroqSecrets.HasKey)
+                line = "Key available to this host only.";
             else
                 line = "Paste a Groq key, Save, then Test.";
 
@@ -101,19 +101,23 @@ namespace LethalAICrewmate
                 return false;
             }
 
-            Plugin.ApiKey.Value = key;
-            Plugin.Instance?.Config.Save();
+            if (!GroqSecrets.SetFromMenu(key))
+            {
+                if (showStatus) SetStatus("Invalid Groq key.");
+                return false;
+            }
             _keyBuffer = key;
-            if (showStatus) SetStatus("Groq key saved locally.");
-            Plugin.Log?.LogInfo("Groq API key updated from the main menu.");
+            if (showStatus) SetStatus(Plugin.PersistApiKey?.Value == true
+                ? "Groq key saved locally."
+                : "Groq key saved for this game session only.");
+            Plugin.Log?.LogInfo("Groq API key updated from the main menu without logging its value.");
             return true;
         }
 
         private void ClearKey()
         {
             _keyBuffer = "";
-            Plugin.ApiKey.Value = "";
-            Plugin.Instance?.Config.Save();
+            GroqSecrets.ClearMenuKey();
             SetStatus("Groq key cleared.");
             Plugin.Log?.LogInfo("Groq API key cleared from local config.");
         }

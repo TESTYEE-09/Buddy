@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.4.6
+
+- Makes new main-menu Groq keys session-only by default and supports the `LETHAL_AI_GROQ_API_KEY` environment variable as the preferred persistent source.
+- Keeps matching friends' push-to-talk enabled by default, with a host switch to disable remote audio in public lobbies.
+- Reduces maximum remote voice payload size, applies a longer per-sender admission cooldown, requires Buddy-range admission before allocation and caps concurrent incoming transfers.
+- Uses each player's Windows default microphone instead of guessing a device by name, and routes Buddy dialogue through a reliable listener-relative audio source on every peer.
+- Changes Buddy PTT from V to B to avoid colliding with the game's voice-chat binding, and accepts explicit friend PTT regardless of Buddy's current distance.
+- Detects Groq's Orpheus terms-acceptance error, stops repeating failed TTS calls and shows the host a clear in-game setup notice while text replies continue.
+- Adds a deterministic emergency warning: when a real hostile creature gets within 6m of a living player, Buddy calls it out and shouts “RUN!” without waiting for input or an LLM response.
+- Continues to support pre-existing plaintext config keys as a legacy fallback; move them to the environment variable and clear the config entry for stronger local secret protection.
+
 ## 1.4.5
 
 - Consolidates version-layered polish patches into direct, named runtime services and removes more than 700 lines of obsolete or duplicated code.

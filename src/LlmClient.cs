@@ -63,7 +63,7 @@ namespace LethalAICrewmate
             public string Content;
         }
 
-        public static bool HasApiKey => !string.IsNullOrEmpty(Plugin.ApiKey?.Value);
+        public static bool HasApiKey => GroqSecrets.HasKey;
 
         public static void EnqueuePlayerMessage(string playerName, string message, bool isCommand)
         {
@@ -221,7 +221,7 @@ namespace LethalAICrewmate
                 uwr.uploadHandler = new UploadHandlerRaw(raw);
                 uwr.downloadHandler = new DownloadHandlerBuffer();
                 uwr.SetRequestHeader("Content-Type", "application/json");
-                uwr.SetRequestHeader("Authorization", "Bearer " + Plugin.ApiKey.Value);
+                uwr.SetRequestHeader("Authorization", "Bearer " + GroqSecrets.CurrentKey);
                 uwr.timeout = 30;
 
                 Plugin.Log?.LogInfo($"Groq chat payload bytes={raw.Length} historyMessages={requestHistory.Count} maxTokens={MaxTokens}.");
@@ -278,7 +278,7 @@ namespace LethalAICrewmate
                 uwr.uploadHandler = new UploadHandlerRaw(raw);
                 uwr.downloadHandler = new DownloadHandlerBuffer();
                 uwr.SetRequestHeader("Content-Type", "application/json");
-                uwr.SetRequestHeader("Authorization", "Bearer " + Plugin.ApiKey.Value);
+                uwr.SetRequestHeader("Authorization", "Bearer " + GroqSecrets.CurrentKey);
                 uwr.timeout = 30;
                 yield return uwr.SendWebRequest();
                 if (string.IsNullOrEmpty(uwr.error) && uwr.responseCode >= 200 && uwr.responseCode < 300)

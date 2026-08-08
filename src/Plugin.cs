@@ -12,12 +12,13 @@ namespace LethalAICrewmate
     {
         public const string ModGuid = "com.lethalaicrewmate.buddy";
         public const string ModName = "LethalAICrewmate";
-        public const string ModVersion = "1.4.5";
+        public const string ModVersion = "1.4.6";
 
         internal static Plugin Instance;
         internal static ManualLogSource Log;
 
         internal static ConfigEntry<string> ApiKey;
+        internal static ConfigEntry<bool> PersistApiKey;
         internal static ConfigEntry<string> Model;
         internal static ConfigEntry<string> SttModel;
         internal static ConfigEntry<string> TtsModel;
@@ -32,6 +33,7 @@ namespace LethalAICrewmate
         internal static ConfigEntry<float> ChatTriggerRange;
         internal static ConfigEntry<float> ObservationIntervalSeconds;
         internal static ConfigEntry<bool> VoiceEnabled;
+        internal static ConfigEntry<bool> AllowRemoteVoice;
         internal static ConfigEntry<KeyCode> VoiceKey;
         internal static ConfigEntry<float> VoiceMaxSeconds;
         internal static ConfigEntry<bool> VisionEnabled;
@@ -45,7 +47,9 @@ namespace LethalAICrewmate
             Log = Logger;
 
             ApiKey = Config.Bind("Groq", "ApiKey", "",
-                "Groq API key. The host can set/test it from the Lethal Company main menu or this config file. Never shared with multiplayer clients.");
+                "Legacy plaintext Groq API key fallback. Prefer the LETHAL_AI_GROQ_API_KEY environment variable or a session-only key entered in the main menu.");
+            PersistApiKey = Config.Bind("Security", "PersistApiKey", false,
+                "Write a key entered in the menu to the plaintext BepInEx config. Disabled by default; use LETHAL_AI_GROQ_API_KEY for persistent secure setup.");
             Model = Config.Bind("Groq", "Model", "llama-3.3-70b-versatile",
                 "Groq chat model. Production default: llama-3.3-70b-versatile. For optional vision use qwen/qwen3.6-27b (preview).");
             SttModel = Config.Bind("Groq", "SttModel", "whisper-large-v3-turbo",
@@ -68,14 +72,14 @@ namespace LethalAICrewmate
                 var legacyKey = Config.Bind("OpenRouter", "ApiKey", "", "Legacy setting; no longer used.");
                 var legacyModel = Config.Bind("OpenRouter", "Model", "", "Legacy setting; no longer used.");
                 string legacy = legacyKey.Value?.Trim() ?? "";
-                if (string.IsNullOrEmpty(ApiKey.Value) && legacy.StartsWith("gsk_", StringComparison.Ordinal))
+                if (PersistApiKey.Value && string.IsNullOrEmpty(ApiKey.Value) && legacy.StartsWith("gsk_", StringComparison.Ordinal))
                 {
                     ApiKey.Value = legacy;
                     Log.LogInfo("Migrated a legacy Groq key into [Groq] ApiKey.");
                 }
                 else if (string.IsNullOrEmpty(ApiKey.Value) && !string.IsNullOrEmpty(legacy))
                 {
-                    Log.LogWarning("Ignored legacy non-Groq API key. Add a Groq key from the main menu.");
+                    Log.LogWarning("Legacy API key was not auto-migrated. Use LETHAL_AI_GROQ_API_KEY or enter it for this session from the main menu.");
                 }
 
                 // Keep legacyModel bound only so old configs remain readable; model migration is
@@ -100,8 +104,10 @@ namespace LethalAICrewmate
 
             VoiceEnabled = Config.Bind("Voice", "Enabled", true,
                 "Push-to-talk for every modded player. Clients relay bounded mic audio to the host; only the host uses the Groq Whisper API key.");
-            VoiceKey = Config.Bind("Voice", "PushToTalkKey", KeyCode.V,
-                "Hold this key to record mic audio for Buddy. On clients the clip is relayed to the host for transcription.");
+            AllowRemoteVoice = Config.Bind("Security", "AllowRemoteVoice", true,
+                "Allow matching remote players to upload bounded push-to-talk audio to the host for Groq transcription. Disable this in public lobbies.");
+            VoiceKey = Config.Bind("Voice", "PushToTalkKey", KeyCode.B,
+                "Hold this key to record mic audio for Buddy. B avoids the game's common V push-to-talk binding; on clients the clip is relayed to the host.");
             VoiceMaxSeconds = Config.Bind("Voice", "MaxRecordSeconds", 8f,
                 "Max push-to-talk length in seconds (capped at 12 by runtime).");
             VisionEnabled = Config.Bind("Vision", "Enabled", false,
@@ -178,6 +184,7 @@ namespace LethalAICrewmate
                 BuddyClientVoice.Tick();
                 BuddyPoseSync.Tick();
                 BuddyMovementWatchdog.Tick();
+                BuddyDangerCallout.Tick();
             }
             catch (Exception ex)
             {

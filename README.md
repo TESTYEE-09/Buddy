@@ -62,7 +62,7 @@ Client path:
 
 Clients do not need a Groq key. Remote microphone audio is captured only while the player holds the Buddy push-to-talk key, is size/rate limited, and is accepted only from connected matching clients. The stock nearby PTT range is 60m.
 
-v1.4.5 keeps Austin + `friendly`, normalizes generated PCM once through a soft limiter, widens the near-full-volume 3D bubble, and keeps the stock speech/chat hearing range at 70m.
+v1.4.6 keeps Austin + `friendly`, normalizes generated PCM once through a soft limiter, widens the near-full-volume 3D bubble, and keeps the stock speech/chat hearing range at 70m.
 
 ## Groq setup
 
@@ -80,6 +80,8 @@ TtsDirection = friendly
 TtsVolume = 1
 ```
 
+For a persistent key without writing it to the BepInEx config, set the host-machine environment variable `LETHAL_AI_GROQ_API_KEY` before launching Steam. Keys entered through the main-menu panel are session-only by default.
+
 Optional vision is off by default for reliability and cost. To enable it, choose a vision-capable Groq model such as `qwen/qwen3.6-27b` and set:
 
 ```ini
@@ -88,6 +90,8 @@ Enabled = true
 ```
 
 The main-menu **Test** button validates the host key against Groq before a lobby starts.
+
+Orpheus TTS also requires the Groq organization owner to accept that model's terms once. If Groq returns `model_terms_required`, open [the Orpheus playground](https://console.groq.com/playground?model=canopylabs%2Forpheus-v1-english), accept the terms, then restart the game. Text replies continue working without TTS.
 
 ## Other config
 
@@ -101,9 +105,17 @@ ObservationIntervalSeconds = 0
 
 [Voice]
 Enabled = true
-PushToTalkKey = V
+PushToTalkKey = B
 MaxRecordSeconds = 8
 ```
+
+```ini
+[Security]
+PersistApiKey = false
+AllowRemoteVoice = true
+```
+
+`AllowRemoteVoice = true` lets matching friends send tightly bounded PTT audio to the host; turn it off in public lobbies. `PersistApiKey = true` writes the key in plaintext to the BepInEx config; leave it off when using the environment variable.
 
 `ChatHearRange = 0` makes Buddy chat/voice global instead of proximity-based. `ChatTriggerRange = 0` makes nearby unaddressed questions/client Buddy PTT range-unlimited.
 
@@ -111,10 +123,10 @@ Untouched v1.4.2 stock 50m/45m distance settings automatically migrate to v1.4.3
 
 ## Privacy and API usage
 
-- The Groq key is stored locally in `BepInEx/config/com.lethalaicrewmate.buddy.cfg` on the host.
+- `LETHAL_AI_GROQ_API_KEY` is the preferred persistent host-key source. Main-menu keys are session-only by default; plaintext config persistence is an explicit opt-in.
 - The key is never included in multiplayer messages.
 - Host push-to-talk audio goes directly to Groq when the host uses the Buddy voice key.
-- Client push-to-talk audio is relayed to the host only while that client uses the Buddy voice key; the host then sends it to Groq Whisper.
+- Client push-to-talk audio is relayed only while that client holds the Buddy voice key; the host can disable remote audio for public lobbies.
 - If Vision is enabled, a screenshot of the host view can be attached to a Groq chat request.
 - Generated Buddy speech is sent from the host to compatible clients as downsampled PCM audio.
 

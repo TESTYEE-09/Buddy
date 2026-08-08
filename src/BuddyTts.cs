@@ -17,13 +17,15 @@ namespace LethalAICrewmate
         private const int MaxChars = 200;
 
         private static bool _inFlight;
+        private static bool _blockedByModelTerms;
 
         public static void Speak(string text, Vector3 worldPos)
         {
             try
             {
                 if (Plugin.TtsEnabled == null || !Plugin.TtsEnabled.Value) return;
-                if (string.IsNullOrEmpty(Plugin.ApiKey?.Value)) return;
+                if (!GroqSecrets.HasKey) return;
+                if (_blockedByModelTerms) return;
                 if (string.IsNullOrWhiteSpace(text)) return;
                 if (!CrewmateSpawner.IsHost()) return;
                 if (Plugin.Host == null) return;
@@ -116,7 +118,7 @@ namespace LethalAICrewmate
                 uwr.uploadHandler = new UploadHandlerRaw(raw);
                 uwr.downloadHandler = new DownloadHandlerBuffer();
                 uwr.SetRequestHeader("Content-Type", "application/json");
-                uwr.SetRequestHeader("Authorization", "Bearer " + Plugin.ApiKey.Value);
+                uwr.SetRequestHeader("Authorization", "Bearer " + GroqSecrets.CurrentKey);
                 uwr.timeout = 30;
 
                 Plugin.Log?.LogInfo($"Buddy TTS request started model={model} voice={voice} chars={input.Length}.");
@@ -124,7 +126,22 @@ namespace LethalAICrewmate
 
                 if (!string.IsNullOrEmpty(uwr.error) || uwr.responseCode < 200 || uwr.responseCode >= 300)
                 {
-                    Plugin.Log?.LogWarning($"Orpheus TTS HTTP {uwr.responseCode}: {uwr.error} {uwr.downloadHandler?.text}");
+                    string response = uwr.downloadHandler?.text ?? "";
+                    Plugin.Log?.LogWarning($"Orpheus TTS HTTP {uwr.responseCode}: {uwr.error} {response}");
+                    if (response.IndexOf("model_terms_required", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        _blockedByModelTerms = true;
+                        try
+                        {
+                            HUDManager.Instance?.DisplayTip(
+                                "Buddy voice needs Groq approval",
+                                "Accept the Orpheus model terms in the Groq console, then restart. Buddy text still works.",
+                                true,
+                                false,
+                                "LethalAICrewmateTtsTerms");
+                        }
+                        catch { }
+                    }
                     yield break;
                 }
                 audioBytes = uwr.downloadHandler?.data;

@@ -4,18 +4,29 @@
 
 Never commit a Groq API key, put one in a release ZIP, log it, or send it through multiplayer messages.
 
-LethalAICrewmate stores the host key locally in:
+For the strongest practical setup, set the host machine environment variable
+`LETHAL_AI_GROQ_API_KEY` before starting the game. The mod reads it in memory and never writes
+that value to its config or logs.
+
+Keys entered in the main-menu panel are session-only by default. Set `[Security] PersistApiKey = true`
+only if you explicitly accept plaintext local storage in:
 
 `BepInEx/config/com.lethalaicrewmate.buddy.cfg`
 
-The main-menu password field writes to that local BepInEx config. Multiplayer clients do not need and do not receive the host key.
+Pre-existing keys in that config remain supported as a legacy fallback. Move them to the environment
+variable and clear the config entry after confirming the game starts successfully. Multiplayer clients
+do not need and do not receive the host key.
 
 Historical private builds contained a shared Groq credential. Any credential that has ever been committed or shared must be considered exposed and revoked/rotated at the provider. Removing it from the current source tree is not credential revocation.
 
 ## Multiplayer trust boundary
 
 - The host is authoritative for Buddy spawning, AI, item actions and Groq calls.
-- Clients send only a compatibility hello through the mod's custom networking path.
+- Remote push-to-talk is enabled for matching friends by default. Set `[Security] AllowRemoteVoice = false`
+  when hosting an untrusted public lobby.
+- When enabled, remote voice is sender-bound, compatibility-gated, range-gated before allocation,
+  rate-limited, size-limited, transfer-capped and WAV/RMS-validated before it reaches Groq.
+- Clients send only a compatibility hello and, when explicitly enabled, bounded voice transfers through the mod's custom networking path.
 - Clients accept Buddy state only from `NetworkManager.ServerClientId` after a successful exact version/protocol handshake.
 - Buddy does not spawn if any connected remote player is unmodded or incompatible.
 - LLM text cannot directly buy items, route moons or change Buddy movement state; those actions require deterministic player-command parsing.

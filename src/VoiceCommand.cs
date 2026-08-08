@@ -33,7 +33,7 @@ namespace LethalAICrewmate
             {
                 if (Plugin.VoiceEnabled == null || !Plugin.VoiceEnabled.Value) return;
                 if (!CrewmateSpawner.IsHost()) return;
-                if (string.IsNullOrEmpty(Plugin.ApiKey?.Value)) return;
+                if (!GroqSecrets.HasKey) return;
                 if (_busy) return;
 
                 if (IsTextInputFocused()) return;
@@ -155,7 +155,9 @@ namespace LethalAICrewmate
                 }
                 catch { /* ignore */ }
 
-                _micDevice = PickMicDevice();
+                // Unity's null device follows the Windows default recording device. Guessing from
+                // device names frequently selected a disconnected webcam/headset microphone.
+                _micDevice = null;
                 int len = Mathf.Clamp(Mathf.CeilToInt(maxSec) + 1, 2, 13);
                 _clip = Microphone.Start(_micDevice, false, len, SampleRate);
                 if (_clip == null)
@@ -261,7 +263,7 @@ namespace LethalAICrewmate
             {
                 uwr.uploadHandler = new UploadHandlerRaw(body);
                 uwr.downloadHandler = new DownloadHandlerBuffer();
-                uwr.SetRequestHeader("Authorization", "Bearer " + Plugin.ApiKey.Value);
+                uwr.SetRequestHeader("Authorization", "Bearer " + GroqSecrets.CurrentKey);
                 uwr.SetRequestHeader("Content-Type", "multipart/form-data; boundary=" + boundary);
                 uwr.timeout = 20;
 
