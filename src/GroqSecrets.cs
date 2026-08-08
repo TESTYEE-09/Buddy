@@ -17,6 +17,7 @@ namespace LethalAICrewmate
         internal static string ChatEndpoint => IsOpenAi
             ? "https://api.openai.com/v1/chat/completions"
             : "https://api.groq.com/openai/v1/chat/completions";
+        internal const string OpenAiResponsesEndpoint = "https://api.openai.com/v1/responses";
         internal static string SttEndpoint => IsOpenAi
             ? "https://api.openai.com/v1/audio/transcriptions"
             : "https://api.groq.com/openai/v1/audio/transcriptions";

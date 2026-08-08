@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.3
+
+- Fixes Buddy ignoring voice and chat with `gpt-realtime-2.1-mini`: OpenAI rejects this model on Chat Completions, so the experimental model now uses the Responses API and parses `output_text` replies.
+- Keeps this as a strict `gpt-realtime-2.1-mini` test with no fallback to another chat model; failures are logged directly.
+
 ## 1.6.2
 
 - Fixes multiplayer handshakes after leaving and creating or joining another lobby without restarting Lethal Company. Netcode clears named handlers on shutdown, so Buddy now registers them again for every listening session.

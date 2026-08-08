@@ -214,9 +214,13 @@ namespace LethalAICrewmate
             string model = imageB64 != null
                 ? (Plugin.VisionModel?.Value ?? "qwen/qwen3.6-27b")
                 : (Plugin.Model?.Value ?? (GroqSecrets.IsOpenAi ? "gpt-realtime-2.1-mini" : "openai/gpt-oss-120b"));
-            string body = BuildRequestJson(systemPrompt, requestHistory, imageB64, model);
+            bool useResponses = GroqSecrets.IsOpenAi && IsRealtimeModel(model) && imageB64 == null;
+            string body = useResponses
+                ? BuildResponsesRequestJson(systemPrompt, requestHistory, model)
+                : BuildRequestJson(systemPrompt, requestHistory, imageB64, model);
+            string endpoint = useResponses ? GroqSecrets.OpenAiResponsesEndpoint : GroqSecrets.ChatEndpoint;
 
-            using (var uwr = new UnityWebRequest(GroqSecrets.ChatEndpoint, "POST"))
+            using (var uwr = new UnityWebRequest(endpoint, "POST"))
             {
                 byte[] raw = Encoding.UTF8.GetBytes(body);
                 uwr.uploadHandler = new UploadHandlerRaw(raw);
@@ -245,12 +249,14 @@ namespace LethalAICrewmate
                     try
                     {
                         string responseText = uwr.downloadHandler?.text ?? "";
-                        string content = ParseAssistantContent(responseText);
+                        string content = useResponses
+                            ? ParseResponsesContent(responseText)
+                            : ParseAssistantContent(responseText);
                         content = StripThinking(content);
                         if (!string.IsNullOrEmpty(content))
                             HandleAssistantReply(content, pending.HistoryContent);
                         else
-                            Plugin.Log?.LogWarning("Groq chat: empty assistant content (after stripping thinking)");
+                            Plugin.Log?.LogWarning($"{GroqSecrets.ProviderName} chat: empty assistant content (after stripping thinking)");
                     }
                     catch (Exception ex)
                     {
@@ -351,6 +357,29 @@ namespace LethalAICrewmate
                     sb.Append("{\"role\":\"").Append(Escape(turn.Role)).Append("\",\"content\":\"")
                       .Append(Escape(turn.Content)).Append("\"}");
                 }
+            }
+            sb.Append("]}");
+            return sb.ToString();
+        }
+
+        private static bool IsRealtimeModel(string model)
+        {
+            return !string.IsNullOrWhiteSpace(model) &&
+                   model.StartsWith("gpt-realtime", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string BuildResponsesRequestJson(string systemPrompt, List<ChatTurn> history, string model)
+        {
+            var sb = new StringBuilder(8192);
+            sb.Append("{\"model\":\"").Append(Escape(model)).Append("\",");
+            sb.Append("\"instructions\":\"").Append(Escape(systemPrompt)).Append("\",");
+            sb.Append("\"max_output_tokens\":").Append(MaxTokens).Append(',');
+            sb.Append("\"reasoning\":{\"effort\":\"none\"},\"store\":false,\"input\":[");
+            for (int i = 0; i < history.Count; i++)
+            {
+                if (i > 0) sb.Append(',');
+                sb.Append("{\"role\":\"").Append(Escape(history[i].Role)).Append("\",\"content\":\"")
+                  .Append(Escape(history[i].Content)).Append("\"}");
             }
             sb.Append("]}");
             return sb.ToString();
@@ -510,6 +539,57 @@ namespace LethalAICrewmate
                 else
                 {
                     sb.Append(c);
+                }
+            }
+            return sb.ToString().Trim();
+        }
+
+        internal static string ParseResponsesContent(string json)
+        {
+            if (string.IsNullOrEmpty(json)) return null;
+            int outputText = json.IndexOf("\"output_text\"", StringComparison.Ordinal);
+            if (outputText < 0) return null;
+            int textKey = json.IndexOf("\"text\"", outputText, StringComparison.Ordinal);
+            return ParseJsonStringValue(json, textKey);
+        }
+
+        private static string ParseJsonStringValue(string json, int keyIndex)
+        {
+            if (keyIndex < 0) return null;
+            int colon = json.IndexOf(':', keyIndex);
+            if (colon < 0) return null;
+            int i = colon + 1;
+            while (i < json.Length && char.IsWhiteSpace(json[i])) i++;
+            if (i >= json.Length || json[i++] != '"') return null;
+
+            var sb = new StringBuilder();
+            while (i < json.Length)
+            {
+                char c = json[i++];
+                if (c == '"') break;
+                if (c != '\\' || i >= json.Length)
+                {
+                    sb.Append(c);
+                    continue;
+                }
+
+                char n = json[i++];
+                switch (n)
+                {
+                    case '"': sb.Append('"'); break;
+                    case '\\': sb.Append('\\'); break;
+                    case '/': sb.Append('/'); break;
+                    case 'n': sb.Append('\n'); break;
+                    case 'r': sb.Append('\r'); break;
+                    case 't': sb.Append('\t'); break;
+                    case 'u':
+                        if (i + 3 < json.Length && int.TryParse(json.Substring(i, 4), System.Globalization.NumberStyles.HexNumber, null, out int code))
+                        {
+                            sb.Append((char)code);
+                            i += 4;
+                        }
+                        break;
+                    default: sb.Append(n); break;
                 }
             }
             return sb.ToString().Trim();
