@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.4.1
+
+- Rebuilt Buddy's system prompt around conversation first: the player's actual message is now the primary task, with sensors and game knowledge treated as silent background context.
+- Added a proper restrained personality: friendly, useful, dry low-key humor, calm by default, and nervous only when there is a real reason.
+- Buddy can now naturally answer normal questions, give opinions, joke, react and continue the current conversation instead of constantly resetting into entity/quota callouts.
+- Reordered LLM input so the player's message appears before the live sensor dump.
+- Explicitly suppresses unsolicited Manticoil and Roaming Locust callouts because they are harmless background wildlife.
+- Unsolicited danger callouts are reserved for genuinely dangerous nearby entities or when the player asks for situational awareness.
+- Relaxed the old 22-word hard cap: normal replies stay short and natural, while actual strategy/explanation questions can receive a useful multi-sentence answer.
+- Removed the stock `Jumpy LC employee` personality and `nervous` TTS direction from new installs.
+- Existing untouched legacy jumpy/nervous config is automatically migrated to the new conversation-first defaults on first Buddy response.
+- Replaced encyclopedia-style prompting with a compact Lethal Company gameplay reference based on the community wiki, used only when relevant to the player's question.
+
 ## 1.4.0
 
 - Added exact multiplayer version/protocol handshakes.
