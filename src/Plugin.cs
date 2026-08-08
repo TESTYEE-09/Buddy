@@ -12,7 +12,7 @@ namespace LethalAICrewmate
     {
         public const string ModGuid = "com.lethalaicrewmate.buddy";
         public const string ModName = "LethalAICrewmate";
-        public const string ModVersion = "2.4.1";
+        public const string ModVersion = "2.4.2";
 
         internal static Plugin Instance;
         internal static ManualLogSource Log;
@@ -44,6 +44,7 @@ namespace LethalAICrewmate
         internal static ConfigEntry<bool> VisionEnabled;
         internal static ConfigEntry<string> VisionModel;
         internal static ConfigEntry<bool> SaveResponses;
+        internal static ConfigEntry<bool> RemoteVoiceInPublicLobbies;
         internal static ConfigEntry<int> ConfigRevision;
 
         private Harmony _harmony;
@@ -135,6 +136,8 @@ namespace LethalAICrewmate
                 "Groq multimodal model used for screenshot questions.");
             SaveResponses = Config.Bind("Logging", "SaveResponses", true,
                 "Write every Buddy reply (chat, voice, deterministic commands, danger callouts) to BepInEx/LethalAICrewmate-responses.log for review.");
+            RemoteVoiceInPublicLobbies = Config.Bind("Security", "RemoteVoiceInPublicLobbies", false,
+                "Reject remote push-to-talk voice when the Steam lobby is public. Protects the host's API budget and keeps strangers' audio away from the speech service; friends/invite-only lobbies always allow remote voice.");
             ConfigRevision = Config.Bind("Internal", "ConfigRevision", 0,
                 "Internal migration marker. Do not edit.");
 

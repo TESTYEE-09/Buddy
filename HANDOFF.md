@@ -1,12 +1,12 @@
-# HANDOFF — LethalAICrewmate v2.4.1
+# HANDOFF — LethalAICrewmate v2.4.2
 
 ## Current status
 
 LethalAICrewmate is a BepInEx 5 mod for **Lethal Company v81** adding a friendly AI crewmate named Buddy.
 
-Release target: **v2.4.1** (wire protocol **7**).
+Release target: **v2.4.2** (wire protocol **7**).
 
-v2.4.1 hardening notes: terminal side effects require addressing Buddy; the enemy-kill guard cannot abort vanilla kills; config migration preserves Groq provider models; `[Vision] Enabled` is honored (default off); speech queue clears on lobby change; recovery teleports refuse void targets; spawn fallback never adopts engaged Masked enemies; ChatHearRange positional audio works; WAV validation parses RIFF chunks; 56 release checks.
+v2.4.2 hardening notes: terminal side effects require addressing Buddy; the enemy-kill guard cannot abort vanilla kills; config migration preserves Groq provider models; `[Vision] Enabled` is honored (default off); speech queue clears on lobby change; recovery teleports refuse void targets; spawn fallback never adopts engaged Masked enemies; ChatHearRange positional audio works; WAV validation parses RIFF chunks; 56 release checks.
 
 Automated release requirements:
 

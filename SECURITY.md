@@ -25,8 +25,12 @@ Historical private builds contained a shared Groq credential. Any credential tha
 - The host is authoritative for Buddy spawning, AI, item actions and all provider API calls.
 - Remote push-to-talk is enabled for matching friends by default. Set `[Security] AllowRemoteVoice = false`
   when hosting an untrusted public lobby.
+- In public Steam lobbies remote push-to-talk is additionally rejected by default
+  (`[Security] RemoteVoiceInPublicLobbies = false`): strangers cannot upload audio that would
+  consume the host's provider budget or be transcribed by the speech service. Set it to `true`
+  to allow remote voice everywhere. Friends/invite-only lobbies always allow remote voice.
 - When enabled, remote voice is sender-bound, compatibility-gated, range-gated before allocation,
-  rate-limited, size-limited, transfer-capped and WAV/RMS-validated before it reaches Groq.
+  rate-limited, size-limited, transfer-capped and WAV/RMS-validated before it reaches the provider.
 - Clients send only a compatibility hello and, when explicitly enabled, bounded voice transfers through the mod's custom networking path.
 - Clients accept Buddy state only from `NetworkManager.ServerClientId` after a successful exact version/protocol handshake.
 - Buddy does not spawn if any connected remote player is unmodded or incompatible.
