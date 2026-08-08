@@ -1,0 +1,61 @@
+name: Build LethalAICrewmate
+
+on:
+  push:
+    branches:
+      - ship/multiplayer-1.3.0
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore src/LethalAICrewmate.csproj
+
+      - name: Build release DLL
+        run: dotnet build src/LethalAICrewmate.csproj -c Release --no-restore
+
+      - name: Build Thunderstore ZIP
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dll = 'src/bin/Release/netstandard2.1/LethalAICrewmate.dll'
+          if (!(Test-Path $dll)) { throw "Missing compiled DLL: $dll" }
+
+          Copy-Item $dll 'ThunderstorePackage/LethalAICrewmate.dll' -Force
+
+          $required = @(
+            'ThunderstorePackage/LethalAICrewmate.dll',
+            'ThunderstorePackage/manifest.json',
+            'ThunderstorePackage/README.md',
+            'ThunderstorePackage/CHANGELOG.md',
+            'ThunderstorePackage/icon.png'
+          )
+          foreach ($file in $required) {
+            if (!(Test-Path $file)) { throw "Missing package file: $file" }
+          }
+
+          $zip = 'LethalAICrewmate-1.3.0.zip'
+          if (Test-Path $zip) { Remove-Item $zip -Force }
+          Compress-Archive -Path 'ThunderstorePackage/*' -DestinationPath $zip -CompressionLevel Optimal
+
+      - name: Upload installable mod
+        uses: actions/upload-artifact@v4
+        with:
+          name: LethalAICrewmate-1.3.0
+          path: LethalAICrewmate-1.3.0.zip
+          if-no-files-found: error
+          retention-days: 14
