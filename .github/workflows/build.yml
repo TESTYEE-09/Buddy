@@ -5,8 +5,6 @@ on:
     branches:
       - main
       - 'ship/**'
-    tags:
-      - 'v*'
   pull_request:
     branches:
       - main
@@ -54,9 +52,6 @@ jobs:
 
           if ($manifestVersion -ne $projectVersion -or $manifestVersion -ne $pluginVersion) {
             throw "Version mismatch: manifest=$manifestVersion csproj=$projectVersion plugin=$pluginVersion"
-          }
-          if ($env:GITHUB_REF -like 'refs/tags/v*' -and $env:GITHUB_REF_NAME -ne "v$manifestVersion") {
-            throw "Tag $env:GITHUB_REF_NAME does not match package version v$manifestVersion"
           }
 
           $trackedBinaries = @(git ls-files 'LethalAICrewmate-*.zip' 'ThunderstorePackage/LethalAICrewmate.dll')
@@ -168,16 +163,24 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Publish GitHub Release for version tag
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Publish verified main release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
-          gh release create $env:GITHUB_REF_NAME `
+          $tag = "v$env:MOD_VERSION"
+
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Release $tag already exists; leaving it untouched."
+            exit 0
+          }
+
+          gh release create $tag `
             "LethalAICrewmate-$env:MOD_VERSION.zip" `
             'SHA256SUMS.txt' `
-            --verify-tag `
-            --title "LethalAICrewmate v$env:MOD_VERSION" `
+            --target $env:GITHUB_SHA `
+            --title "LethalAICrewmate $tag" `
             --generate-notes
