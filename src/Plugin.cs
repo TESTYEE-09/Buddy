@@ -12,7 +12,7 @@ namespace LethalAICrewmate
     {
         public const string ModGuid = "com.lethalaicrewmate.buddy";
         public const string ModName = "LethalAICrewmate";
-        public const string ModVersion = "1.4.2";
+        public const string ModVersion = "1.4.3";
 
         internal static Plugin Instance;
         internal static ManualLogSource Log;
@@ -59,7 +59,7 @@ namespace LethalAICrewmate
             TtsDirection = Config.Bind("Groq", "TtsDirection", "friendly",
                 "Optional Orpheus vocal direction (no brackets). Stock Buddy uses friendly for a lighter conversational delivery; empty = fully natural.");
             TtsVolume = Config.Bind("Groq", "TtsVolume", 1f,
-                "Buddy voice volume 0–1. v1.4.2 also applies a small safe PCM gain before playback/network replication.");
+                "Buddy voice volume 0–1. v1.4.3 applies bounded host-side gain before playback/network replication for stronger speech.");
 
             // Very old private builds stored a provider key under [OpenRouter]. Only migrate a
             // Groq-shaped key; never silently send an OpenRouter key to the Groq endpoint.
@@ -91,17 +91,17 @@ namespace LethalAICrewmate
                 "Optional personality flavor for Buddy. Core conversation/relevance rules always remain active.");
             Enabled = Config.Bind("Crewmate", "Enabled", true,
                 "Master toggle for spawning the AI crewmate.");
-            ChatHearRange = Config.Bind("Crewmate", "ChatHearRange", 50f,
-                "Max distance to hear/see Buddy chat and positional voice (0 = everyone hears). Stock v1.4.2 range is 50m.");
-            ChatTriggerRange = Config.Bind("Crewmate", "ChatTriggerRange", 45f,
-                "Distance within which nearby unaddressed questions (ending with ?) can trigger a Buddy reply. Addressing Buddy by name still works normally.");
+            ChatHearRange = Config.Bind("Crewmate", "ChatHearRange", 70f,
+                "Max distance to hear/see Buddy chat and positional voice (0 = everyone hears). Stock v1.4.3 range is 70m.");
+            ChatTriggerRange = Config.Bind("Crewmate", "ChatTriggerRange", 60f,
+                "Distance within which nearby unaddressed questions and multiplayer push-to-talk can trigger Buddy. Addressing Buddy by text name still works normally.");
             ObservationIntervalSeconds = Config.Bind("Crewmate", "ObservationIntervalSeconds", 0f,
                 "Seconds between unsolicited LLM observations (0 = off).");
 
             VoiceEnabled = Config.Bind("Voice", "Enabled", true,
-                "Host-only push-to-talk using Groq Whisper. Multiplayer clients can still talk to Buddy through normal text chat.");
+                "Push-to-talk for every modded player. Clients relay bounded mic audio to the host; only the host uses the Groq Whisper API key.");
             VoiceKey = Config.Bind("Voice", "PushToTalkKey", KeyCode.V,
-                "Hold this key to record host mic audio for Buddy. Release to transcribe + send.");
+                "Hold this key to record mic audio for Buddy. On clients the clip is relayed to the host for transcription.");
             VoiceMaxSeconds = Config.Bind("Voice", "MaxRecordSeconds", 8f,
                 "Max push-to-talk length in seconds (capped at 12 by runtime).");
             VisionEnabled = Config.Bind("Vision", "Enabled", false,
