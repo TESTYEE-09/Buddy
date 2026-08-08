@@ -816,7 +816,7 @@ namespace LethalAICrewmate
                 {
                     var complete = _incomingAudio;
                     _incomingAudio = null;
-                    BuddyTts.PlayReplicatedPcm(complete.Data, complete.SampleRate, complete.Position);
+                    BuddyNetworkAudio.PlayReplicatedPcm(complete.Data, complete.SampleRate, complete.Position);
                 }
             }
             catch (Exception ex)
