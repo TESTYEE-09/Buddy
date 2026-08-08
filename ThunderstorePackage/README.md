@@ -42,7 +42,7 @@ Buddy can report live time, credits, quota/deadline, moon/weather, ship scrap an
 
 ## Personality
 
-Buddy is conversation-first rather than a sensor/wiki narrator. His normal replies are short and more consistently dry/witty. He ignores harmless background wildlife unless it is actually relevant and can very rarely make a subtle fourth-wall joke without turning that into his whole personality.
+Buddy is conversation-first rather than a sensor/wiki narrator. v1.5.0 gives him a much richer grounded multiplayer personality, stronger truth and tool-use rules, calibrated danger behavior, better vision honesty and natural dry wit. He ignores harmless background wildlife unless it is actually relevant.
 
 ## Voice
 

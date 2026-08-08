@@ -64,6 +64,7 @@ namespace LethalAICrewmate
         private static float _lastClientPttAt;
         private static float _clientHintCooldown;
         private static ulong _nextClientTransferId = 1;
+        private static KeyCode _clientRecordingKey;
 
         private static bool _hostBusy;
 
@@ -153,17 +154,20 @@ namespace LethalAICrewmate
             if (IsTextInputFocused())
                 return;
 
-            var key = Plugin.VoiceKey?.Value ?? KeyCode.B;
+            var primary = Plugin.VoiceKey?.Value ?? KeyCode.B;
+            var alternate = Plugin.VoiceAlternateKey?.Value ?? KeyCode.V;
             float maxSec = Mathf.Clamp(Plugin.VoiceMaxSeconds?.Value ?? 8f, 1f, 12f);
 
-            if (!_clientRecording && InputCompat.GetKeyDown(key))
+            if (!_clientRecording && (InputCompat.GetKeyDown(primary) ||
+                                      (alternate != primary && InputCompat.GetKeyDown(alternate))))
             {
                 if (Time.unscaledTime - _lastClientPttAt < 0.35f)
                     return;
+                _clientRecordingKey = InputCompat.GetKeyDown(primary) ? primary : alternate;
                 BeginClientRecord(maxSec);
             }
             else if (_clientRecording &&
-                     (InputCompat.GetKeyUp(key) || Time.unscaledTime - _clientStartedAt >= maxSec))
+                     (InputCompat.GetKeyUp(_clientRecordingKey) || Time.unscaledTime - _clientStartedAt >= maxSec))
             {
                 _lastClientPttAt = Time.unscaledTime;
                 EndClientRecordAndRelay();

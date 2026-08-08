@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.5.0
+
+- Accepts both B and V as Buddy push-to-talk keys on every correctly modded peer, while tracking the key that began each recording so mixed key releases cannot truncate clips.
+- Keeps B as the recommended dedicated key; V also activates Lethal Company's normal proximity voice chat.
+- Rebuilds Buddy's system prompt with explicit decision priorities, grounded world-state rules, multiplayer behavior, danger calibration, deterministic movement/tool boundaries, vision limits, natural dialogue guidance and response examples.
+- Raises the response ceiling for questions that genuinely need detail while preserving brief acknowledgements and urgent callouts.
+- Clarifies the hard multiplayer requirement: each speaking client must actually load the exact same DLL; host-visible vanilla chat alone does not prove the client mod loaded.
+
 ## 1.4.9
 
 - Adds polished bounded scouting commands: `go forward`, `go ahead`, `check in front`, `scout ahead`, `lead the way` and `take point`, with optional 4-18 metre distances.

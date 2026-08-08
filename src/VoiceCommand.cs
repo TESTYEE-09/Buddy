@@ -23,6 +23,7 @@ namespace LethalAICrewmate
         private static bool _busy;
         private static float _hintCooldown;
         private static float _lastPttTime;
+        private static KeyCode _recordingKey;
 
         public static void Tick()
         {
@@ -35,16 +36,19 @@ namespace LethalAICrewmate
 
                 if (IsTextInputFocused()) return;
 
-                var key = Plugin.VoiceKey?.Value ?? KeyCode.B;
+                var primary = Plugin.VoiceKey?.Value ?? KeyCode.B;
+                var alternate = Plugin.VoiceAlternateKey?.Value ?? KeyCode.V;
                 float maxSec = Mathf.Clamp(Plugin.VoiceMaxSeconds?.Value ?? 6f, 1f, 12f);
 
-                if (!_recording && InputCompat.GetKeyDown(key))
+                if (!_recording && (InputCompat.GetKeyDown(primary) ||
+                                    (alternate != primary && InputCompat.GetKeyDown(alternate))))
                 {
                     // Debounce accidental double-taps
                     if (Time.unscaledTime - _lastPttTime < 0.35f) return;
+                    _recordingKey = InputCompat.GetKeyDown(primary) ? primary : alternate;
                     BeginRecord(maxSec);
                 }
-                else if (_recording && (InputCompat.GetKeyUp(key) || Time.unscaledTime - _startedAt >= maxSec))
+                else if (_recording && (InputCompat.GetKeyUp(_recordingKey) || Time.unscaledTime - _startedAt >= maxSec))
                 {
                     _lastPttTime = Time.unscaledTime;
                     EndRecordAndSend();

@@ -13,7 +13,7 @@ namespace LethalAICrewmate
         private const int MaxHistory = 8;
         private const int MaxQueue = 3;
         private const float MinInterval = 1.5f; // Groq is fast
-        private const int MaxTokens = 100;
+        private const int MaxTokens = 220;
         private const float DuplicateWindowSeconds = 2f;
         private const float HardRequestCeilingSeconds = 45f;
 
