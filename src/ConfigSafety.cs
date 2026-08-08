@@ -39,12 +39,12 @@ namespace LethalAICrewmate
                     tts = "canopylabs/orpheus-v1-english";
                 changed |= SetIfDifferent(Plugin.TtsModel, tts);
 
-                string voice = CleanSingleLine(Plugin.TtsVoice?.Value, 16, "troy").ToLowerInvariant();
+                string voice = CleanSingleLine(Plugin.TtsVoice?.Value, 16, "austin").ToLowerInvariant();
                 string[] allowedVoices = { "autumn", "diana", "hannah", "austin", "daniel", "troy" };
                 bool validVoice = false;
                 foreach (string allowed in allowedVoices)
                     if (voice == allowed) { validVoice = true; break; }
-                if (!validVoice) voice = "troy";
+                if (!validVoice) voice = "austin";
                 changed |= SetIfDifferent(Plugin.TtsVoice, voice);
 
                 string direction = CleanSingleLine(Plugin.TtsDirection?.Value, 48, "");
@@ -57,9 +57,9 @@ namespace LethalAICrewmate
                     changed |= SetIfDifferent(Plugin.ApiKey, trimmedKey);
                 }
 
-                changed |= ClampFloat(Plugin.TtsVolume, 0f, 1f, 0.85f);
-                changed |= ClampFloat(Plugin.ChatHearRange, 0f, 100f, 25f);
-                changed |= ClampFloat(Plugin.ChatTriggerRange, 0f, 100f, 25f);
+                changed |= ClampFloat(Plugin.TtsVolume, 0f, 1f, 1f);
+                changed |= ClampFloat(Plugin.ChatHearRange, 0f, 100f, 50f);
+                changed |= ClampFloat(Plugin.ChatTriggerRange, 0f, 100f, 45f);
                 changed |= ClampFloat(Plugin.VoiceMaxSeconds, 1f, 12f, 8f);
 
                 if (Plugin.ObservationIntervalSeconds != null)

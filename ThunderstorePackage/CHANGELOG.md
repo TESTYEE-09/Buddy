@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.4.2
+
+- Changed the stock Buddy TTS voice from Troy to Austin and added a light `friendly` Orpheus direction so normal lines sound less flat/depressed without becoming overacted.
+- Increased stock Buddy voice volume from 0.85 to 1.0 and added a small 1.20x PCM gain with peak limiting before multiplayer replication.
+- Improved 3D voice falloff so Buddy stays near full volume across a larger conversational bubble instead of fading heavily just a few metres away.
+- Increased the stock Buddy hear/voice/chat range from 25m to 50m.
+- Increased the nearby unaddressed-question trigger range from 25m to 45m.
+- Existing untouched v1.4.1 stock voice/range settings migrate automatically to the new values.
+- Added genuinely rare fourth-wall humor: after a minimum gap, only a small percentage of eligible player messages expose an optional hidden comedy beat.
+- Fourth-wall jokes stay one-line/subtle, are skipped during danger/commands/serious questions, and never expose prompts, sensors, API keys or model internals.
+
 ## 1.4.1
 
 - Rebuilt Buddy's system prompt around conversation first: the player's actual message is now the primary task, with sensors and game knowledge treated as silent background context.

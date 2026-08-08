@@ -12,7 +12,7 @@ namespace LethalAICrewmate
     {
         public const string ModGuid = "com.lethalaicrewmate.buddy";
         public const string ModName = "LethalAICrewmate";
-        public const string ModVersion = "1.4.1";
+        public const string ModVersion = "1.4.2";
 
         internal static Plugin Instance;
         internal static ManualLogSource Log;
@@ -52,14 +52,14 @@ namespace LethalAICrewmate
                 "Groq speech-to-text model. Recommended: whisper-large-v3-turbo.");
             TtsModel = Config.Bind("Groq", "TtsModel", "canopylabs/orpheus-v1-english",
                 "Groq text-to-speech model. Orpheus is optional; chat keeps working if TTS is unavailable.");
-            TtsVoice = Config.Bind("Groq", "TtsVoice", "troy",
-                "Orpheus voice: autumn, diana, hannah (F) / austin, daniel, troy (M).");
+            TtsVoice = Config.Bind("Groq", "TtsVoice", "austin",
+                "Orpheus voice: autumn, diana, hannah (F) / austin, daniel, troy (M). Austin is the brighter stock Buddy voice.");
             TtsEnabled = Config.Bind("Groq", "TtsEnabled", true,
                 "Generate Buddy speech on the host and replicate it to compatible multiplayer clients.");
-            TtsDirection = Config.Bind("Groq", "TtsDirection", "",
-                "Optional Orpheus vocal direction (no brackets), e.g. cheerful, quiet, nervous. Empty = natural and recommended.");
-            TtsVolume = Config.Bind("Groq", "TtsVolume", 0.85f,
-                "Buddy voice volume 0–1.");
+            TtsDirection = Config.Bind("Groq", "TtsDirection", "friendly",
+                "Optional Orpheus vocal direction (no brackets). Stock Buddy uses friendly for a lighter conversational delivery; empty = fully natural.");
+            TtsVolume = Config.Bind("Groq", "TtsVolume", 1f,
+                "Buddy voice volume 0–1. v1.4.2 also applies a small safe PCM gain before playback/network replication.");
 
             // Very old private builds stored a provider key under [OpenRouter]. Only migrate a
             // Groq-shaped key; never silently send an OpenRouter key to the Groq endpoint.
@@ -91,10 +91,10 @@ namespace LethalAICrewmate
                 "Optional personality flavor for Buddy. Core conversation/relevance rules always remain active.");
             Enabled = Config.Bind("Crewmate", "Enabled", true,
                 "Master toggle for spawning the AI crewmate.");
-            ChatHearRange = Config.Bind("Crewmate", "ChatHearRange", 25f,
-                "Max distance to hear/see Buddy chat and voice (0 = everyone hears).");
-            ChatTriggerRange = Config.Bind("Crewmate", "ChatTriggerRange", 25f,
-                "Distance within which questions (ending with ?) trigger an LLM reply.");
+            ChatHearRange = Config.Bind("Crewmate", "ChatHearRange", 50f,
+                "Max distance to hear/see Buddy chat and positional voice (0 = everyone hears). Stock v1.4.2 range is 50m.");
+            ChatTriggerRange = Config.Bind("Crewmate", "ChatTriggerRange", 45f,
+                "Distance within which nearby unaddressed questions (ending with ?) can trigger a Buddy reply. Addressing Buddy by name still works normally.");
             ObservationIntervalSeconds = Config.Bind("Crewmate", "ObservationIntervalSeconds", 0f,
                 "Seconds between unsolicited LLM observations (0 = off).");
 
