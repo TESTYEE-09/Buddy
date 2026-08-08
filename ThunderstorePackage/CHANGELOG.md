@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.1
+
+- Switches the stock OpenAI chat model to `gpt-realtime-2.1-mini` for the first quality and latency test.
+- Keeps `gpt-4o-mini-transcribe` input and `tts-1` WAV output so the existing host-authoritative multiplayer voice relay stays unchanged during this test.
+
 ## 1.6.0
 
 - Adds a provider-aware OpenAI path for text chat, host/friend transcription, speech generation, key testing and host-only secret handling while retaining optional Groq compatibility.

@@ -213,7 +213,7 @@ namespace LethalAICrewmate
 
             string model = imageB64 != null
                 ? (Plugin.VisionModel?.Value ?? "qwen/qwen3.6-27b")
-                : (Plugin.Model?.Value ?? (GroqSecrets.IsOpenAi ? "gpt-5.6-luna" : "openai/gpt-oss-120b"));
+                : (Plugin.Model?.Value ?? (GroqSecrets.IsOpenAi ? "gpt-realtime-2.1-mini" : "openai/gpt-oss-120b"));
             string body = BuildRequestJson(systemPrompt, requestHistory, imageB64, model);
 
             using (var uwr = new UnityWebRequest(GroqSecrets.ChatEndpoint, "POST"))
@@ -261,7 +261,7 @@ namespace LethalAICrewmate
                 if (needRetryNoVision)
                 {
                     Plugin.Log?.LogInfo("Retrying chat without vision…");
-                    string fallbackModel = Plugin.Model?.Value ?? (GroqSecrets.IsOpenAi ? "gpt-5.6-luna" : "openai/gpt-oss-120b");
+                    string fallbackModel = Plugin.Model?.Value ?? (GroqSecrets.IsOpenAi ? "gpt-realtime-2.1-mini" : "openai/gpt-oss-120b");
                     yield return SendRequestNoVision(systemPrompt, fallbackModel, requestHistory, pending.HistoryContent);
                 }
             }
@@ -307,7 +307,7 @@ namespace LethalAICrewmate
 
         private static string BuildRequestJson(string systemPrompt, List<ChatTurn> history, string imageJpegBase64, string model)
         {
-            if (string.IsNullOrWhiteSpace(model)) model = GroqSecrets.IsOpenAi ? "gpt-5.6-luna" : "openai/gpt-oss-120b";
+            if (string.IsNullOrWhiteSpace(model)) model = GroqSecrets.IsOpenAi ? "gpt-realtime-2.1-mini" : "openai/gpt-oss-120b";
             var sb = new StringBuilder(Math.Max(8192, (imageJpegBase64?.Length ?? 0) + 4096));
             sb.Append("{\"model\":\"").Append(Escape(model)).Append("\",");
             if (GroqSecrets.IsOpenAi)

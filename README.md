@@ -88,7 +88,7 @@ Provider = OpenAI
 
 [Groq]
 ApiKey =
-Model = gpt-5.6-luna
+Model = gpt-realtime-2.1-mini
 SttModel = gpt-4o-mini-transcribe
 TtsModel = tts-1
 TtsVoice = alloy

@@ -30,7 +30,7 @@ namespace LethalAICrewmate
                 changed |= SetIfDifferent(Plugin.Provider, provider);
 
                 string model = CleanSingleLine(Plugin.Model?.Value, 128,
-                    GroqSecrets.IsOpenAi ? "gpt-5.6-luna" : "openai/gpt-oss-120b");
+                    GroqSecrets.IsOpenAi ? "gpt-realtime-2.1-mini" : "openai/gpt-oss-120b");
                 changed |= SetIfDifferent(Plugin.Model, model);
 
                 string stt = CleanSingleLine(Plugin.SttModel?.Value, 128,
