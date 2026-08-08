@@ -47,7 +47,7 @@ namespace LethalAICrewmate
                 if (!validVoice) voice = "austin";
                 changed |= SetIfDifferent(Plugin.TtsVoice, voice);
 
-                string direction = CleanSingleLine(Plugin.TtsDirection?.Value, 48, "friendly");
+                string direction = CleanSingleLine(Plugin.TtsDirection?.Value, 48, "");
                 changed |= SetIfDifferent(Plugin.TtsDirection, direction);
 
                 if (Plugin.ApiKey != null)
