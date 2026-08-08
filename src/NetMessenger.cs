@@ -26,7 +26,7 @@ namespace LethalAICrewmate
         public const int ProtocolVersion = 7;
 
         private const float HelloIntervalSeconds = 2.5f;
-        private const float MissingModGraceSeconds = 8f;
+        private const float MissingModGraceSeconds = 15f;
         private const float PendingAttachLifetimeSeconds = 12f;
         private const int MaxAudioBytes = 512 * 1024;
         private const int AudioChunkBytes = 8000;
@@ -93,6 +93,11 @@ namespace LethalAICrewmate
 
                 if (!nm.IsListening)
                 {
+                    // NGO clears named-message handlers when a lobby shuts down even when it
+                    // reuses the same NetworkManager object. Force a clean registration when the
+                    // next host/client session begins instead of trusting the stale local flag.
+                    _registered = false;
+                    _registeredOn = null;
                     _helloAcked = false;
                     _nextHelloAt = 0f;
                     CompatibilityWarning = "";
@@ -152,7 +157,7 @@ namespace LethalAICrewmate
             try
             {
                 var nm = NetworkManager.Singleton;
-                if (nm == null || nm.CustomMessagingManager == null)
+                if (nm == null || nm.CustomMessagingManager == null || !nm.IsListening)
                     return;
 
                 if (_registered && _registeredOn == nm)
@@ -237,7 +242,7 @@ namespace LethalAICrewmate
                     string label = ResolvePeerLabel(nm, id);
                     warning = age < MissingModGraceSeconds
                         ? $"Waiting for {label} to load LethalAICrewmate..."
-                        : $"Buddy cannot spawn: {label} is missing LethalAICrewmate {Plugin.ModVersion}. Install the same ZIP on every player and restart the lobby.";
+                        : $"Buddy cannot spawn: no mod handshake received from {label}. Both players may have the ZIP, but the mod network session did not connect; return to the menu and rejoin with version {Plugin.ModVersion}.";
                 }
                 else
                 {
@@ -369,6 +374,7 @@ namespace LethalAICrewmate
                         writer,
                         NetworkDelivery.Reliable);
                 }
+                Plugin.Log?.LogInfo($"Sent LethalAICrewmate {Plugin.ModVersion} handshake to host.");
             }
             catch (Exception ex)
             {

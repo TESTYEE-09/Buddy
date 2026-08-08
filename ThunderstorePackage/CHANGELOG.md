@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.2
+
+- Fixes multiplayer handshakes after leaving and creating or joining another lobby without restarting Lethal Company. Netcode clears named handlers on shutdown, so Buddy now registers them again for every listening session.
+- Extends the initial handshake grace period and no longer falsely claims a player lacks the ZIP when the host simply received no handshake.
+- Logs every client hello send so failed multiplayer setup is straightforward to diagnose.
+
 ## 1.6.1
 
 - Switches the stock OpenAI chat model to `gpt-realtime-2.1-mini` for the first quality and latency test.
