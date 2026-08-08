@@ -12,7 +12,7 @@ namespace LethalAICrewmate
     {
         public const string ModGuid = "com.lethalaicrewmate.buddy";
         public const string ModName = "LethalAICrewmate";
-        public const string ModVersion = "1.4.3";
+        public const string ModVersion = "1.4.4";
 
         internal static Plugin Instance;
         internal static ManualLogSource Log;
@@ -173,6 +173,21 @@ namespace LethalAICrewmate
             catch (Exception ex)
             {
                 Plugin.Log?.LogError($"PluginHost.Update: {ex}");
+            }
+        }
+
+        private void LateUpdate()
+        {
+            try
+            {
+                // Apply remote authority after vanilla NetworkTransform/AI update work so the
+                // client cannot be pulled back to a stale Masked position later in the frame.
+                BuddyPoseSync143.LateTick();
+                BuddyNetworkAudio.Tick();
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log?.LogWarning($"PluginHost.LateUpdate: {ex.Message}");
             }
         }
     }

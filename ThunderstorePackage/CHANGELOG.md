@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.4.4
+
+- Applies Buddy's authoritative pose after vanilla client updates and disables remote NavMesh competition, preventing clients from leaving Buddy behind at the ship.
+- Gates pose, chat, speech and remote push-to-talk traffic on the exact protocol-4 handshake and improves late body binding recovery diagnostics.
+- Uses ordered transfer headers/chunks, exact chunk coverage, multiple bounded incoming speech transfers and host-side WAV/RMS validation.
+- Adds explicit chat/TTS receive, decode, completion, playback and drop-reason logging without exposing API keys.
+- Replaces stacked hard-clipping voice boosts with one RMS normalization and soft limiter while retaining the 70m positional voice bubble.
+- Extends movement stall recovery to follow, fetch and return-to-ship states, including safe area-aware fallback teleports.
+- Makes Buddy intentionally invincible and continues blocking every Masked chase/kill path.
+- Stops resending stale sensor blocks in conversation history, bounds memory to eight clean messages, deduplicates inputs, collapses stale observations and handles exact commands without a chat-model call.
+- Adds automated transport/audio release checks for malformed chunks, incomplete transfers, silence and malformed WAV payloads.
+
 ## 1.4.3
 
 - Added continuous server-authoritative Buddy pose replication so remote clients see the same movement, facility entry/exit and recovery teleports as the host.

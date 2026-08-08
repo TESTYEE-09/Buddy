@@ -116,6 +116,7 @@ namespace LethalAICrewmate
                 restLower.Contains("come here") || restLower == "here" || restLower.Contains("come on");
 
             bool isCommand = false;
+            string deterministicCommand = null;
             if (looksLikeCommand && (addressed ||
                 restLower.StartsWith("follow") || restLower.StartsWith("stay") ||
                 restLower.StartsWith("fetch") || restLower.StartsWith("ship") ||
@@ -125,6 +126,7 @@ namespace LethalAICrewmate
                 isCommand = true;
                 Plugin.Log?.LogInfo($"Command parsed from chat: '{rest}'");
                 CrewmateAI.ApplyCommandFromChat(rest);
+                deterministicCommand = ClassifyExactCommand(restLower);
             }
 
             bool shouldReply = addressed || isCommand;
@@ -143,9 +145,43 @@ namespace LethalAICrewmate
 
             if (shouldReply)
             {
+                if (!string.IsNullOrEmpty(deterministicCommand))
+                {
+                    LlmClient.PublishLocalReply(BuildCommandAcknowledgement(deterministicCommand));
+                    return;
+                }
                 string playerName = GetPlayerName(playerId);
                 LlmClient.EnqueuePlayerMessage(playerName, msg, isCommand);
             }
+        }
+
+        private static string ClassifyExactCommand(string command)
+        {
+            if (string.IsNullOrWhiteSpace(command)) return null;
+            string value = command.Trim().TrimEnd('.', '!', '?');
+            if (value == "follow" || value == "follow me" || value == "come here" || value == "come on" || value == "here")
+                return "follow";
+            if (value == "stay" || value == "stay here" || value == "wait" || value == "wait here" || value == "stop")
+                return "stay";
+            if (value == "ship" || value == "go to ship" || value == "go to the ship" || value == "go home" || value == "return to ship")
+                return "ship";
+            if (value == "fetch" || value == "fetch scrap" || value == "collect scrap" || value == "get scrap" || value == "grab scrap")
+                return "fetch";
+            return null;
+        }
+
+        private static string BuildCommandAcknowledgement(string command)
+        {
+            string[][] lines =
+            {
+                new[] { "On you.", "Following.", "Right behind you." },
+                new[] { "I'll hold here.", "Staying put.", "I'll wait here." },
+                new[] { "Heading back to the ship.", "Back to the ship, got it.", "Returning to the ship." },
+                new[] { "I'll look for scrap.", "Going for scrap.", "I'll grab what I can." }
+            };
+            int group = command == "follow" ? 0 : command == "stay" ? 1 : command == "ship" ? 2 : 3;
+            var choices = lines[group];
+            return choices[UnityEngine.Random.Range(0, choices.Length)];
         }
 
         private static PlayerControllerB GetPlayerById(int playerId)

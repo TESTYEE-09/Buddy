@@ -16,6 +16,16 @@ namespace LethalAICrewmate
         private static GameObject _audioGo;
         private static AudioSource _source;
 
+        public static void Tick()
+        {
+            try
+            {
+                if (_audioGo != null && _source != null && _source.isPlaying)
+                    _audioGo.transform.position = ResolveBuddyPosition(_audioGo.transform.position);
+            }
+            catch { }
+        }
+
         public static void PlayHostClipAndReplicate(AudioClip clip, Vector3 worldPos)
         {
             if (clip == null) return;
@@ -53,6 +63,7 @@ namespace LethalAICrewmate
 
                 var clip = AudioClip.Create("BuddyNetworkVoice", sampleCount, 1, sampleRate, false);
                 clip.SetData(samples, 0);
+                Plugin.Log?.LogInfo($"Buddy client PCM decoded length={clip.length:F2}s samples={sampleCount} rate={sampleRate}.");
                 PlayClip(clip, worldPos);
             }
             catch (Exception ex)
@@ -150,6 +161,7 @@ namespace LethalAICrewmate
             }
 
             _source.Play();
+            Plugin.Log?.LogInfo($"Buddy audio playback started peer={(CrewmateSpawner.IsHost() ? "host" : "client")} length={clip.length:F2}s volume={_source.volume:F2} range={range:F0}m playing={_source.isPlaying}.");
         }
 
         private static void EnsureAudioSource()

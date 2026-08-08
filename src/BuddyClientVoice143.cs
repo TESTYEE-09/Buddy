@@ -49,6 +49,7 @@ namespace LethalAICrewmate
         private static readonly Dictionary<ulong, IncomingVoice> IncomingBySender = new Dictionary<ulong, IncomingVoice>();
         private static readonly Dictionary<ulong, float> LastStartBySender = new Dictionary<ulong, float>();
         private static readonly Queue<RemoteVoiceRequest> HostQueue = new Queue<RemoteVoiceRequest>();
+        private static readonly HashSet<ulong> QueuedSenders = new HashSet<ulong>();
 
         private static bool _registered;
         private static NetworkManager _registeredOn;
@@ -104,6 +105,7 @@ namespace LethalAICrewmate
             IncomingBySender.Clear();
             LastStartBySender.Clear();
             HostQueue.Clear();
+            QueuedSenders.Clear();
             _hostBusy = false;
             _clientRecording = false;
             _clientSending = false;
@@ -265,7 +267,7 @@ namespace LethalAICrewmate
                         MsgVoiceStart,
                         NetworkManager.ServerClientId,
                         start,
-                        NetworkDelivery.Reliable);
+                        NetworkDelivery.ReliableFragmentedSequenced);
                 }
 
                 int chunksThisFrame = 0;
@@ -312,7 +314,7 @@ namespace LethalAICrewmate
                 if (nm == null || !nm.IsServer || senderId == NetworkManager.ServerClientId ||
                     nm.CustomMessagingManager == null || !IsConnectedRemote(nm, senderId))
                     return;
-                if (!NetMessenger.IsHostSessionReadyForBuddy())
+                if (!NetMessenger.IsCompatibleClient(senderId))
                     return;
 
                 reader.ReadValueSafe(out ulong transferId);
@@ -346,7 +348,7 @@ namespace LethalAICrewmate
             {
                 var nm = NetworkManager.Singleton;
                 if (nm == null || !nm.IsServer || senderId == NetworkManager.ServerClientId ||
-                    !IsConnectedRemote(nm, senderId))
+                    !IsConnectedRemote(nm, senderId) || !NetMessenger.IsCompatibleClient(senderId))
                     return;
                 if (!IncomingBySender.TryGetValue(senderId, out var incoming) || incoming == null)
                     return;
@@ -354,8 +356,8 @@ namespace LethalAICrewmate
                 reader.ReadValueSafe(out ulong transferId);
                 reader.ReadValueSafe(out int offset);
                 reader.ReadValueSafe(out int len);
-                if (transferId != incoming.TransferId || len <= 0 || len > VoiceChunkBytes ||
-                    offset < 0 || offset + len > incoming.Data.Length)
+                if (transferId != incoming.TransferId ||
+                    !TransportValidation.IsExactChunk(incoming.Data.Length, VoiceChunkBytes, offset, len))
                     return;
 
                 byte[] chunk = new byte[len];
@@ -370,14 +372,19 @@ namespace LethalAICrewmate
                 if (incoming.ReceivedBytes >= incoming.Data.Length)
                 {
                     IncomingBySender.Remove(senderId);
-                    if (HostQueue.Count < MaxQueuedRemoteClips)
+                    string validation = "";
+                    bool valid = TryValidateRemoteWav(incoming.Data, out validation);
+                    if (valid && HostQueue.Count < MaxQueuedRemoteClips && !QueuedSenders.Contains(senderId))
                     {
                         HostQueue.Enqueue(new RemoteVoiceRequest
                         {
                             SenderId = senderId,
                             Wav = incoming.Data
                         });
+                        QueuedSenders.Add(senderId);
                     }
+                    else if (!string.IsNullOrEmpty(validation))
+                        Plugin.Log?.LogInfo($"Rejected remote Buddy voice from client {senderId}: {validation}.");
                 }
             }
             catch (Exception ex)
@@ -411,6 +418,7 @@ namespace LethalAICrewmate
             }
 
             var request = HostQueue.Dequeue();
+            if (request != null) QueuedSenders.Remove(request.SenderId);
             if (request?.Wav == null || request.Wav.Length < 1000)
                 return;
 
@@ -422,6 +430,12 @@ namespace LethalAICrewmate
 
             _hostBusy = true;
             Plugin.Host.StartCoroutine(TranscribeRemote(request));
+        }
+
+        private static bool TryValidateRemoteWav(byte[] wav, out string reason)
+        {
+            return TransportValidation.TryValidateMonoPcm16Wav(
+                wav, MaxVoiceBytes, 0.35f, 12.5f, MinRms, out reason);
         }
 
         private static IEnumerator TranscribeRemote(RemoteVoiceRequest request)
