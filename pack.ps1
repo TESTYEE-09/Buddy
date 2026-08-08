@@ -4,6 +4,11 @@ $root = $PSScriptRoot
 $project = Join-Path $root "src\LethalAICrewmate.csproj"
 $manifestPath = Join-Path $root "ThunderstorePackage\manifest.json"
 $packageDir = Join-Path $root "ThunderstorePackage"
+$dotnetCommand = Get-Command dotnet -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -First 1
+if ([string]::IsNullOrWhiteSpace($dotnetCommand)) {
+    $dotnetCommand = Join-Path $env:ProgramFiles "dotnet\dotnet.exe"
+}
+if (!(Test-Path $dotnetCommand)) { throw "Could not locate dotnet.exe" }
 
 $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
 $version = [string]$manifest.version_number
@@ -34,9 +39,9 @@ Get-ChildItem $root -Recurse -File | Where-Object {
     if ($text -match $secretPattern) { throw "Possible Groq API key embedded in $($_.FullName)" }
 }
 
-dotnet restore $project
+& $dotnetCommand restore $project
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-dotnet build $project -c Release --no-restore -p:ContinuousIntegrationBuild=true
+& $dotnetCommand build $project -c Release --no-restore -p:ContinuousIntegrationBuild=true
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 $dll = Join-Path $root "src\bin\Release\netstandard2.1\LethalAICrewmate.dll"

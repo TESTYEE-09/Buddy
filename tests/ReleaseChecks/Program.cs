@@ -32,6 +32,14 @@ static class Program
         Check(VisionIntent.IsVisualQuestion("Can you see my screen?"), "detect screen vision request");
         Check(!VisionIntent.IsVisualQuestion("Buddy follow me"), "avoid screenshots for normal commands");
 
+        ShipCommandParsing.ParsePurchase("3 pro flashlights", out string purchaseItem, out int purchaseQuantity);
+        Check(purchaseItem == "pro flashlights" && purchaseQuantity == 3, "parse purchase quantity");
+        Check(ShipCommandParsing.TryParseFacilityAction("disable turret B3", out string facilityCode, out bool facilityEnable) &&
+              facilityCode == "b3" && !facilityEnable, "parse terminal hazard disable");
+        Check(ShipCommandParsing.TryParseFacilityAction("open door c7", out _, out facilityEnable) && facilityEnable,
+              "parse terminal door open");
+        Check(ShipCommandParsing.IsStatusRequest("what time is it?"), "parse ship status question");
+
         Console.WriteLine($"Release checks passed: {_checks}");
         return 0;
     }

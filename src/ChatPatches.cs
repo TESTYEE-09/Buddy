@@ -97,12 +97,10 @@ namespace LethalAICrewmate
                 if (!string.IsNullOrEmpty(termResult))
                 {
                     Plugin.Log?.LogInfo($"Terminal cmd: {termResult}");
-                    try
-                    {
-                        if (HUDManager.Instance != null)
-                            HUDManager.Instance.AddChatMessage(termResult, name);
-                    }
-                    catch { /* ignore */ }
+                    // Replicate deterministic ship/terminal feedback to every matching player and
+                    // speak it once. Do not ask the LLM to paraphrase or repeat a side effect.
+                    LlmClient.PublishLocalReply(termResult);
+                    return;
                 }
             }
 
@@ -125,7 +123,7 @@ namespace LethalAICrewmate
             {
                 isCommand = true;
                 Plugin.Log?.LogInfo($"Command parsed from chat: '{rest}'");
-                CrewmateAI.ApplyCommandFromChat(rest);
+                CrewmateAI.ApplyCommandFromChat(rest, playerId);
                 deterministicCommand = ClassifyExactCommand(restLower);
             }
 

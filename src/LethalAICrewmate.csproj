@@ -4,7 +4,7 @@
     <TargetFramework>netstandard2.1</TargetFramework>
     <AssemblyName>LethalAICrewmate</AssemblyName>
     <Description>Host-authoritative multiplayer AI crewmate for Lethal Company powered by Groq</Description>
-    <Version>1.4.7</Version>
+    <Version>1.4.8</Version>
     <LangVersion>latest</LangVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Nullable>disable</Nullable>
@@ -25,6 +25,10 @@
   <ItemGroup>
     <Reference Include="Unity.InputSystem">
       <HintPath>$(UserProfile)\.nuget\packages\lethalcompany.gamelibs.steam\81.0.5-ngd.0\ref\netstandard2.1\Unity.InputSystem.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="DissonanceVoip">
+      <HintPath>$(UserProfile)\.nuget\packages\lethalcompany.gamelibs.steam\81.0.5-ngd.0\ref\netstandard2.1\DissonanceVoip.dll</HintPath>
       <Private>false</Private>
     </Reference>
   </ItemGroup>

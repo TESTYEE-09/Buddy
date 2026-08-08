@@ -29,6 +29,8 @@ namespace LethalAICrewmate
         public Vector3 ManualDestination;
         /// <summary>Cooldown next facility/outside teleport (anti-spam).</summary>
         public float NextAreaTeleportAt;
+        /// <summary>Stable shoulder preference so following does not visibly zig-zag.</summary>
+        public float FollowSideOffset;
     }
 
     public static class CrewmateRegistry
@@ -99,7 +101,8 @@ namespace LethalAICrewmate
                 State = CrewmateState.FollowOwner,
                 StayPosition = enemy.transform.position,
                 Neutralized = false,
-                NextObservationAt = Time.time + 30f
+                NextObservationAt = Time.time + 30f,
+                FollowSideOffset = Random.Range(-0.75f, 0.75f)
             };
 
             InstanceIds.Add(enemy.GetInstanceID());

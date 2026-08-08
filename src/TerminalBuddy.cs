@@ -53,10 +53,31 @@ namespace LethalAICrewmate
                 if (lower.StartsWith("buy "))
                     return BuyItem(lower.Substring(4).Trim());
 
+                if (ShipCommandParsing.IsStatusRequest(lower))
+                    return BuildShipStatus(lower);
+
+                if (ShipCommandParsing.TryParseFacilityAction(lower, out string facilityCode, out bool enableFacility))
+                    return SetFacilityObject(facilityCode, enableFacility);
+
+                if ((lower.Contains("turret") || lower.Contains("landmine") || lower.Contains("mine")) &&
+                    (lower.Contains("disable") || lower.Contains("deactivate") || lower.Contains("turn off") ||
+                     lower.Contains("enable") || lower.Contains("activate") || lower.Contains("turn on")))
+                    return "Which terminal code? For example: buddy disable turret B3.";
+
+                if (lower.Contains("ship door") || lower.Contains("hangar door") || lower == "open doors" || lower == "close doors")
+                {
+                    if (lower.Contains("open")) return SetHangarDoor(true);
+                    if (lower.Contains("close") || lower.Contains("shut")) return SetHangarDoor(false);
+                }
+
+                if (lower.Contains("lights") &&
+                    (lower.Contains("turn on") || lower.Contains("turn off") || lower.Contains("lights on") || lower.Contains("lights off")))
+                    return SetShipLights(!lower.Contains("off"));
+
                 if (lower == "moons" || lower == "list moons" || lower == "terminal moons")
                     return ListMoons();
 
-                if (lower == "store" || lower == "terminal store" || lower == "credits")
+                if (lower == "store" || lower == "terminal store")
                     return ShowCreditsAndStoreHint();
 
                 if (lower.StartsWith("terminal "))
@@ -73,27 +94,23 @@ namespace LethalAICrewmate
 
         public static string ApplyLlmTags(string display, ref string cleanedDisplay)
         {
-            cleanedDisplay = display;
-            if (string.IsNullOrEmpty(display)) return null;
-
-            string feedback = null;
-            // [ROUTE:titan] [BUY:shovel] [TERMINAL:moons]
-            feedback = TryTag(ref cleanedDisplay, "ROUTE", RouteMoon) ?? feedback;
-            feedback = TryTag(ref cleanedDisplay, "BUY", BuyItem) ?? feedback;
-            feedback = TryTag(ref cleanedDisplay, "TERMINAL", RunTerminalSentence) ?? feedback;
-            return feedback;
+            cleanedDisplay = StripLlmTag(display ?? "", "ROUTE");
+            cleanedDisplay = StripLlmTag(cleanedDisplay, "BUY");
+            cleanedDisplay = StripLlmTag(cleanedDisplay, "TERMINAL").Trim();
+            return null;
         }
 
-        private static string TryTag(ref string display, string tag, Func<string, string> action)
+        private static string StripLlmTag(string value, string tag)
         {
             string open = "[" + tag + ":";
-            int i = display.IndexOf(open, StringComparison.OrdinalIgnoreCase);
-            if (i < 0) return null;
-            int end = display.IndexOf(']', i);
-            if (end < 0) return null;
-            string arg = display.Substring(i + open.Length, end - (i + open.Length)).Trim();
-            display = (display.Substring(0, i) + display.Substring(end + 1)).Trim();
-            return action(arg);
+            while (true)
+            {
+                int start = value.IndexOf(open, StringComparison.OrdinalIgnoreCase);
+                if (start < 0) return value;
+                int end = value.IndexOf(']', start);
+                if (end < 0) return value.Substring(0, start).TrimEnd();
+                value = value.Remove(start, end - start + 1);
+            }
         }
 
         public static string RouteMoon(string moonQuery)
@@ -162,7 +179,8 @@ namespace LethalAICrewmate
 
             try
             {
-                itemQuery = itemQuery.ToLowerInvariant();
+                ShipCommandParsing.ParsePurchase(itemQuery, out itemQuery, out int quantity);
+
                 // buyableItemsList is Item[] on Terminal
                 var list = term.buyableItemsList;
                 if (list == null || list.Length == 0)
@@ -186,22 +204,163 @@ namespace LethalAICrewmate
                 if (match < 0)
                     return $"Store doesn't have '{itemQuery}' (or name mismatch).";
 
-                int cost = list[match].creditsWorth;
-                if (term.groupCredits < cost)
-                    return $"Need {cost} credits for {matchName}, have {term.groupCredits}.";
+                int salePercent = 100;
+                if (term.itemSalesPercentages != null && match < term.itemSalesPercentages.Length)
+                    salePercent = Mathf.Clamp(term.itemSalesPercentages[match], 0, 100);
+                int unitCost = (int)(list[match].creditsWorth * (salePercent / 100f));
+                int totalCost = unitCost * quantity;
+                if (term.groupCredits < totalCost)
+                    return $"Need {totalCost} credits for {quantity} {matchName}, have {term.groupCredits}.";
+                int dropshipCount = term.numberOfItemsInDropship + quantity;
+                if (dropshipCount > 12)
+                    return $"Dropship limit is 12 items; there are already {term.numberOfItemsInDropship} queued.";
 
-                // Buy one of that item index
-                int[] bought = { match };
-                int newCredits = term.groupCredits - cost;
-                term.BuyItemsServerRpc(bought, newCredits, 1);
-                Plugin.Log?.LogInfo($"Bought store index {match} ({matchName}) for {cost}");
-                return $"Bought {matchName} ({cost} cr).";
+                int[] bought = new int[quantity];
+                for (int i = 0; i < bought.Length; i++) bought[i] = match;
+                int newCredits = term.groupCredits - totalCost;
+                term.BuyItemsServerRpc(bought, newCredits, dropshipCount);
+                Plugin.Log?.LogInfo($"Bought {quantity}x store index {match} ({matchName}) for {totalCost}");
+                return $"Bought {quantity} {matchName} for {totalCost} credits. {newCredits} left.";
             }
             catch (Exception ex)
             {
                 Plugin.Log?.LogWarning($"BuyItem: {ex.Message}");
                 return RunTerminalSentence("buy " + itemQuery);
             }
+        }
+
+        public static string BuildShipStatus(string query)
+        {
+            string lower = query?.ToLowerInvariant() ?? "status";
+            bool full = lower == "status" || lower == "ship status" || lower == "report" || lower.Contains("full status");
+            var sor = StartOfRound.Instance;
+            var tod = TimeOfDay.Instance;
+            var term = UnityEngine.Object.FindObjectOfType<Terminal>();
+            var parts = new List<string>();
+
+            try
+            {
+                if (full || lower.Contains("time") || lower.Contains("late"))
+                {
+                    if (sor != null && (sor.inShipPhase || !sor.shipHasLanded))
+                        parts.Add("Time is paused in orbit");
+                    else if (tod != null && HUDManager.Instance != null)
+                        parts.Add("Time " + HUDManager.Instance.GetClockTimeFormatted(tod.normalizedTimeOfDay, tod.numberOfHours, false).Trim());
+                    else if (tod != null)
+                        parts.Add("Hour " + tod.hour);
+                }
+
+                if (full || lower.Contains("credit"))
+                    parts.Add($"Credits {term?.groupCredits ?? 0}");
+
+                if (full || lower.Contains("quota") || lower.Contains("deadline") || lower.Contains("days left"))
+                {
+                    if (tod != null)
+                        parts.Add($"Quota {tod.quotaFulfilled}/{tod.profitQuota}, {Mathf.Max(0, tod.daysUntilDeadline)} days left");
+                }
+
+                if (full || lower.Contains("moon") || lower.Contains("where are we") || lower.Contains("weather"))
+                {
+                    string moon = sor?.currentLevel != null ? (sor.currentLevel.PlanetName ?? sor.currentLevel.name) : "unknown moon";
+                    string weather = tod != null ? tod.currentLevelWeather.ToString() : "unknown weather";
+                    parts.Add($"{moon}, {weather}");
+                }
+
+                if (full || lower.Contains("scrap"))
+                {
+                    int count = 0;
+                    int value = 0;
+                    foreach (var item in UnityEngine.Object.FindObjectsOfType<GrabbableObject>())
+                    {
+                        if (item?.itemProperties == null || !item.itemProperties.isScrap || !item.isInShipRoom) continue;
+                        count++;
+                        value += Mathf.Max(0, item.scrapValue);
+                    }
+                    parts.Add($"Ship scrap {count} items worth {value}");
+                }
+
+                if (full || lower.Contains("crew") || lower.Contains("alive"))
+                {
+                    int total = 0;
+                    int alive = 0;
+                    if (sor?.allPlayerScripts != null)
+                        foreach (var player in sor.allPlayerScripts)
+                            if (player != null && player.isPlayerControlled)
+                            {
+                                total++;
+                                if (!player.isPlayerDead) alive++;
+                            }
+                    parts.Add($"Crew {alive}/{total} alive");
+                }
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log?.LogWarning($"BuildShipStatus: {ex.Message}");
+            }
+
+            return parts.Count == 0 ? "No ship status available." : string.Join(". ", parts) + ".";
+        }
+
+        public static string SetFacilityObject(string code, bool enable)
+        {
+            if (string.IsNullOrWhiteSpace(code)) return "Which terminal code?";
+            var term = UnityEngine.Object.FindObjectOfType<Terminal>();
+            if (term == null) return "No terminal.";
+
+            TerminalAccessibleObject match = null;
+            foreach (var candidate in UnityEngine.Object.FindObjectsOfType<TerminalAccessibleObject>())
+            {
+                if (candidate != null && string.Equals(candidate.objectCode, code, StringComparison.OrdinalIgnoreCase))
+                {
+                    match = candidate;
+                    break;
+                }
+            }
+            if (match == null) return $"No terminal object has code {code.ToUpperInvariant()}.";
+            if (match.inCooldown) return $"Code {match.objectCode.ToUpperInvariant()} is cooling down.";
+
+            string kind = DescribeFacilityObject(match);
+            bool current = match.isBigDoor ? match.isDoorOpen : match.isPoweredOn;
+            if (current == enable)
+                return $"{kind} {match.objectCode.ToUpperInvariant()} is already {(enable ? "on/open" : "off/closed")}.";
+
+            term.CallFunctionInAccessibleTerminalObject(match.objectCode);
+            Plugin.Log?.LogInfo($"Buddy terminal code {match.objectCode}: {kind} -> {(enable ? "enabled/open" : "disabled/closed")}");
+            return $"{(enable ? "Enabled/opened" : "Disabled/closed")} {kind} {match.objectCode.ToUpperInvariant()}.";
+        }
+
+        private static string DescribeFacilityObject(TerminalAccessibleObject accessible)
+        {
+            if (accessible == null) return "terminal object";
+            if (accessible.isBigDoor) return "door";
+            string name = ((accessible.mapRadarObject != null ? accessible.mapRadarObject.name : accessible.gameObject.name) ?? "").ToLowerInvariant();
+            if (name.Contains("turret")) return "turret";
+            if (name.Contains("mine")) return "landmine";
+            return "facility hazard";
+        }
+
+        public static string SetHangarDoor(bool open)
+        {
+            var door = UnityEngine.Object.FindObjectOfType<HangarShipDoor>();
+            if (door == null) return "No ship door controller.";
+            if (!door.buttonsEnabled) return "Ship door controls are disabled right now.";
+            if (open && door.overheated) return "Ship door hydraulics are overheated.";
+            if (open && door.doorPower <= 0f) return "Ship door has no hydraulic power left.";
+
+            if (open) door.SetDoorOpen();
+            else door.SetDoorClosed();
+            Plugin.Log?.LogInfo($"Buddy set hangar door {(open ? "open" : "closed")}.");
+            return open ? "Opening the ship doors." : "Closing the ship doors.";
+        }
+
+        public static string SetShipLights(bool on)
+        {
+            var lights = StartOfRound.Instance?.shipRoomLights;
+            if (lights == null) return "No ship light controller.";
+            if (lights.areLightsOn == on) return $"Ship lights are already {(on ? "on" : "off")}.";
+            lights.SetShipLightsServerRpc(on);
+            Plugin.Log?.LogInfo($"Buddy set ship lights {(on ? "on" : "off")}.");
+            return $"Ship lights {(on ? "on" : "off")}.";
         }
 
         public static string ListMoons()

@@ -9,7 +9,7 @@ Buddy is an AI crewmate for **Lethal Company v81**. He joins the crew as a frien
 3. Put `LethalAICrewmate.dll` in `BepInEx/plugins/LethalAICrewmate/`, or install the release ZIP with a compatible mod manager.
 4. Launch Lethal Company.
 5. The host pastes a Groq API key into the **Lethal AI Crewmate — Groq** box on the main menu, presses **Save**, then **Test**.
-6. Host a lobby and land on a moon. Buddy spawns once every connected player passes the mod compatibility handshake.
+6. Host a lobby. Buddy appears physically in the ship once every connected player passes the mod compatibility handshake, including while in orbit.
 
 Only the host needs a Groq key. Prefer the host environment variable or the session-only menu field; the key is never sent to other players.
 
@@ -35,12 +35,21 @@ Type these in normal Lethal Company chat:
 
 | Command | Result |
 | --- | --- |
-| `buddy follow` | Follow a living player |
+| `buddy follow` | Follow the player who gave the order |
 | `buddy stay` | Hold position |
 | `buddy go to ship` | Return toward the ship |
 | `buddy fetch scrap` | Find nearby scrap and bring it back |
+| `buddy buy 3 flashlights` | Buy store items using the real price, sale and crew credits |
+| `buddy open door C7` | Open a facility door using its visible terminal code |
+| `buddy disable turret B3` | Disable a coded turret/landmine through the terminal |
+| `buddy open ship doors` | Use the hangar-door controls when powered and available |
+| `buddy turn ship lights off` | Control the ship-room lights |
+| `buddy status` | Report time, credits, quota, deadline, moon, weather, scrap and crew |
+| `buddy what time is it?` | Answer a specific live ship-status question without guessing |
 
 You can also talk to Buddy normally or ask him a question near him.
+
+Ship and terminal actions are host-authoritative and use the same game state as a player. Purchases respect sales, available credits and the 12-item dropship limit. Facility codes respect their normal cooldown, and ship doors still require working controls and hydraulic power.
 
 ## Personality
 
@@ -62,7 +71,7 @@ Client path:
 
 Clients do not need a Groq key. Remote microphone audio is captured only while the player holds the Buddy push-to-talk key, is size/rate limited, and is accepted only from connected matching clients. The stock nearby PTT range is 60m.
 
-v1.4.7 adaptively amplifies quiet microphones before Whisper, keeps literal silence blocked, and makes Buddy replies global so every matching player receives both text and speech. If Windows selects the wrong microphone, set `[Voice] InputDevice` to its full name or a unique part of the name.
+v1.4.8 uses the same active microphone as Lethal Company's normal Dissonance voice chat, adaptively amplifies quiet speech, and shows the speaking client when Whisper could not understand a clip. If an explicit override is needed, set `[Voice] InputDevice` to the device's full name or a unique part of it.
 
 ## Groq setup
 
