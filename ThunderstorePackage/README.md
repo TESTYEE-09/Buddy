@@ -61,7 +61,8 @@ Groq requires the organization owner to accept the Orpheus model terms once in i
 
 ## Defaults
 
-- Chat and visual questions: `qwen/qwen3.6-27b`
+- Text chat: `openai/gpt-oss-120b`
+- Screenshot capture: disabled; stock Buddy is text-only
 - STT: `whisper-large-v3-turbo`
 - TTS: `canopylabs/orpheus-v1-english`
 - TTS voice: `austin`

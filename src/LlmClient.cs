@@ -214,7 +214,7 @@ namespace LethalAICrewmate
 
             string model = imageB64 != null
                 ? (Plugin.VisionModel?.Value ?? "qwen/qwen3.6-27b")
-                : (Plugin.Model?.Value ?? "qwen/qwen3.6-27b");
+                : (Plugin.Model?.Value ?? "openai/gpt-oss-120b");
             string body = BuildRequestJson(systemPrompt, requestHistory, imageB64, model);
 
             using (var uwr = new UnityWebRequest(GroqChatEndpoint, "POST"))
@@ -262,7 +262,7 @@ namespace LethalAICrewmate
                 if (needRetryNoVision)
                 {
                     Plugin.Log?.LogInfo("Retrying chat without vision…");
-                    string fallbackModel = Plugin.Model?.Value ?? "qwen/qwen3.6-27b";
+                    string fallbackModel = Plugin.Model?.Value ?? "openai/gpt-oss-120b";
                     yield return SendRequestNoVision(systemPrompt, fallbackModel, requestHistory, pending.HistoryContent);
                 }
             }
@@ -308,7 +308,7 @@ namespace LethalAICrewmate
 
         private static string BuildRequestJson(string systemPrompt, List<ChatTurn> history, string imageJpegBase64, string model)
         {
-            if (string.IsNullOrWhiteSpace(model)) model = "qwen/qwen3.6-27b";
+            if (string.IsNullOrWhiteSpace(model)) model = "openai/gpt-oss-120b";
             var sb = new StringBuilder(Math.Max(8192, (imageJpegBase64?.Length ?? 0) + 4096));
             sb.Append("{\"model\":\"").Append(Escape(model)).Append("\",");
             sb.Append("\"max_tokens\":").Append(MaxTokens).Append(',');
