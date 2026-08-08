@@ -13,6 +13,7 @@ Buddy is a friendly AI crewmate for **Lethal Company v81**. He follows the crew,
 
 - Host-authoritative Buddy AI and item actions.
 - Exact mod/protocol handshake before Buddy can spawn.
+- Physical Buddy body aboard the ship in orbit as well as during moon visits.
 - Continuous host-to-client Buddy pose sync for movement and facility transitions.
 - Long-session movement watchdog with path rebuild and safe recovery teleport.
 - Safe late-join state recovery.
@@ -22,12 +23,20 @@ Buddy is a friendly AI crewmate for **Lethal Company v81**. He follows the crew,
 
 ## Commands
 
-- `buddy follow`
+- `buddy follow` (follows whoever gave the order)
 - `buddy stay`
 - `buddy go to ship`
 - `buddy fetch scrap`
+- `buddy buy 3 flashlights`
+- `buddy open door C7`
+- `buddy disable turret B3`
+- `buddy open ship doors`
+- `buddy turn ship lights off`
+- `buddy status`
 
 You can also talk to Buddy normally in text chat or hold **B** to use Buddy push-to-talk.
+
+Buddy can report live time, credits, quota/deadline, moon/weather, ship scrap and crew state. His ship actions use real host game state: purchases consume credits and respect sales/dropship limits, facility codes use normal cooldowns, and hangar doors still need power.
 
 ## Personality
 
@@ -43,7 +52,7 @@ Client:
 
 `client mic -> host relay -> host Whisper -> Buddy reply -> synced Buddy voice`
 
-v1.4.7 adaptively amplifies quiet microphones before Whisper, delivers replies globally to matching clients, and automatically captures a clearer host screenshot for visual questions. New Groq keys entered in the menu are session-only by default; use `LETHAL_AI_GROQ_API_KEY` for persistent host setup. Public-lobby hosts can set `[Security] AllowRemoteVoice = false`.
+v1.4.8 selects the same active microphone as Lethal Company's voice chat, amplifies quiet speech, and reports failed transcriptions to the speaking client. It also delivers replies globally and automatically captures a clearer host screenshot for visual questions. New Groq keys entered in the menu are session-only by default; use `LETHAL_AI_GROQ_API_KEY` for persistent host setup. Public-lobby hosts can set `[Security] AllowRemoteVoice = false`.
 
 Groq requires the organization owner to accept the Orpheus model terms once in its playground before speech audio can be generated. Buddy shows an in-game notice if this approval is missing; text replies continue normally.
 

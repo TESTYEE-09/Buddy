@@ -49,6 +49,33 @@ namespace LethalAICrewmate
                 }
                 catch { /* ignore */ }
 
+                try
+                {
+                    if (TimeOfDay.Instance != null)
+                    {
+                        sb.Append("Quota: ").Append(TimeOfDay.Instance.quotaFulfilled)
+                          .Append('/').Append(TimeOfDay.Instance.profitQuota)
+                          .Append("; days left: ").Append(Mathf.Max(0, TimeOfDay.Instance.daysUntilDeadline))
+                          .Append("; weather: ").Append(TimeOfDay.Instance.currentLevelWeather).AppendLine(".");
+                    }
+                }
+                catch { /* ignore */ }
+
+                try
+                {
+                    int shipScrapCount = 0;
+                    int shipScrapValue = 0;
+                    foreach (var item in UnityEngine.Object.FindObjectsOfType<GrabbableObject>())
+                    {
+                        if (item?.itemProperties == null || !item.itemProperties.isScrap || !item.isInShipRoom) continue;
+                        shipScrapCount++;
+                        shipScrapValue += Mathf.Max(0, item.scrapValue);
+                    }
+                    sb.Append("Ship scrap: ").Append(shipScrapCount).Append(" items worth ")
+                      .Append(shipScrapValue).AppendLine(".");
+                }
+                catch { /* ignore */ }
+
                 // Nearby enemies around Buddy or host player
                 Vector3 origin = Vector3.zero;
                 var buddy = CrewmateRegistry.GetPrimary();

@@ -16,8 +16,9 @@ namespace LethalAICrewmate
         private static Coroutine _spawnRoutine;
         private static float _lastPollLog;
         private static int _pollAttempts;
+        private static float _nextSpawnAllowedAt;
 
-        /// <summary>Called from land patches and periodic poll.</summary>
+        /// <summary>Called from lifecycle patches and the periodic host poll.</summary>
         public static void SpawnCrewmateIfNeeded(string reason = "unknown")
         {
             try
@@ -47,13 +48,8 @@ namespace LethalAICrewmate
                     return;
                 }
 
-                // Prefer landed state; allow land-event reasons to proceed even if flags lag one frame
-                bool looksLanded = sor.shipHasLanded && !sor.inShipPhase;
-                bool forceFromEvent = reason.StartsWith("event:", StringComparison.Ordinal);
-                if (!looksLanded && !forceFromEvent)
-                {
-                    return; // quiet — poll will retry
-                }
+                // ShipLeave performs vanilla enemy cleanup; wait briefly before recreating Buddy in orbit.
+                if (Time.unscaledTime < _nextSpawnAllowedAt) return;
 
                 if (Plugin.Host == null)
                 {
@@ -77,18 +73,20 @@ namespace LethalAICrewmate
             }
         }
 
-        /// <summary>1–2 Hz poll from PluginHost while on a moon.</summary>
+        /// <summary>Periodic host poll in orbit and during moon visits.</summary>
         public static void PollSpawn()
         {
             try
             {
+                if (_spawnedThisLanding && CrewmateRegistry.GetPrimary() == null)
+                    _spawnedThisLanding = false;
                 if (_spawnedThisLanding || _spawnAttemptInProgress) return;
                 if (Plugin.Enabled == null || !Plugin.Enabled.Value) return;
                 if (!IsHost()) return;
+                if (Time.unscaledTime < _nextSpawnAllowedAt) return;
 
                 var sor = StartOfRound.Instance;
                 if (sor == null) return;
-                if (!sor.shipHasLanded || sor.inShipPhase) return;
                 if (CrewmateRegistry.GetPrimary() != null)
                 {
                     _spawnedThisLanding = true;
@@ -123,10 +121,6 @@ namespace LethalAICrewmate
                 var sor = StartOfRound.Instance;
                 if (!IsHost() || sor == null)
                     break;
-                // Abort only if clearly back in orbit
-                if (sor.inShipPhase && !sor.shipHasLanded)
-                    break;
-
                 yield return new WaitForSeconds(delays[i]);
 
                 if (TrySpawnOnce($"{reason} try{i + 1}"))
@@ -161,12 +155,6 @@ namespace LethalAICrewmate
                     return false;
                 }
 
-                if (RoundManager.Instance == null)
-                {
-                    Plugin.Log?.LogWarning($"[{reason}] RoundManager missing; cannot spawn crewmate.");
-                    return false;
-                }
-
                 var spawnPos = GetSpawnPosition();
                 spawnPos = SnapToNavMesh(spawnPos, 15f);
                 var yRot = 0f;
@@ -175,7 +163,7 @@ namespace LethalAICrewmate
 
                 MaskedPlayerEnemy masked = null;
 
-                try
+                if (RoundManager.Instance != null) try
                 {
                     NetworkObjectReference netRef =
                         RoundManager.Instance.SpawnEnemyGameObject(spawnPos, yRot, -1, enemyType);
@@ -343,7 +331,10 @@ namespace LethalAICrewmate
 
                         if (data.Enemy != null && data.Enemy.IsSpawned && data.Enemy.NetworkObject != null)
                         {
-                            RoundManager.Instance?.DespawnEnemyGameObject(data.Enemy.NetworkObject);
+                            if (RoundManager.Instance != null)
+                                RoundManager.Instance.DespawnEnemyGameObject(data.Enemy.NetworkObject);
+                            else
+                                data.Enemy.NetworkObject.Despawn(true);
                         }
                     }
                     catch (Exception ex)
@@ -364,6 +355,7 @@ namespace LethalAICrewmate
                 _spawnAttemptInProgress = false;
                 _spawnRoutine = null;
                 _pollAttempts = 0;
+                _nextSpawnAllowedAt = Time.unscaledTime + 4f;
             }
         }
 

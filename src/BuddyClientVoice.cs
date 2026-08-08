@@ -20,6 +20,7 @@ namespace LethalAICrewmate
     {
         private const string MsgVoiceStart = "LethalAICrewmate_VoiceStart";
         private const string MsgVoiceChunk = "LethalAICrewmate_VoiceChunk";
+        private const string MsgVoiceHint = "LethalAICrewmate_VoiceHint";
         private const string GroqSttEndpoint = "https://api.groq.com/openai/v1/audio/transcriptions";
         private const int SampleRate = 16000;
         private const int MaxVoiceBytes = 300 * 1024;
@@ -126,6 +127,7 @@ namespace LethalAICrewmate
                 {
                     try { _registeredOn.CustomMessagingManager.UnregisterNamedMessageHandler(MsgVoiceStart); } catch { }
                     try { _registeredOn.CustomMessagingManager.UnregisterNamedMessageHandler(MsgVoiceChunk); } catch { }
+                    try { _registeredOn.CustomMessagingManager.UnregisterNamedMessageHandler(MsgVoiceHint); } catch { }
                 }
             }
             catch { }
@@ -134,8 +136,10 @@ namespace LethalAICrewmate
             _registeredOn = nm;
             try { nm.CustomMessagingManager.UnregisterNamedMessageHandler(MsgVoiceStart); } catch { }
             try { nm.CustomMessagingManager.UnregisterNamedMessageHandler(MsgVoiceChunk); } catch { }
+            try { nm.CustomMessagingManager.UnregisterNamedMessageHandler(MsgVoiceHint); } catch { }
             nm.CustomMessagingManager.RegisterNamedMessageHandler(MsgVoiceStart, OnVoiceStart);
             nm.CustomMessagingManager.RegisterNamedMessageHandler(MsgVoiceChunk, OnVoiceChunk);
+            nm.CustomMessagingManager.RegisterNamedMessageHandler(MsgVoiceHint, OnVoiceHint);
             _registered = true;
             Plugin.Log?.LogInfo("Registered Buddy client voice-relay handlers.");
         }
@@ -149,7 +153,7 @@ namespace LethalAICrewmate
             if (IsTextInputFocused())
                 return;
 
-            var key = Plugin.VoiceKey?.Value ?? KeyCode.V;
+            var key = Plugin.VoiceKey?.Value ?? KeyCode.B;
             float maxSec = Mathf.Clamp(Plugin.VoiceMaxSeconds?.Value ?? 8f, 1f, 12f);
 
             if (!_clientRecording && InputCompat.GetKeyDown(key))
@@ -460,12 +464,17 @@ namespace LethalAICrewmate
                     if (!ok)
                     {
                         Plugin.Log?.LogWarning($"Remote Groq STT HTTP {uwr.responseCode}: {uwr.error}");
+                        SendClientHint(request.SenderId, "Buddy's speech service failed for that clip. Try again.");
                         yield break;
                     }
 
                     string text = ParseTranscription(uwr.downloadHandler?.text);
                     if (string.IsNullOrWhiteSpace(text) || IsWhisperHallucination(text))
+                    {
+                        Plugin.Log?.LogWarning($"Remote STT client={request.SenderId} returned no usable transcript.");
+                        SendClientHint(request.SenderId, "Buddy couldn't make out that clip. Hold the Buddy push-to-talk key, speak clearly, then release.");
                         yield break;
+                    }
 
                     HandleRemoteTranscript(request.SenderId, text.Trim());
                 }
@@ -541,7 +550,7 @@ namespace LethalAICrewmate
             AppendPart(sb, boundary, "response_format", "json");
             AppendPart(sb, boundary, "language", "en");
             AppendPart(sb, boundary, "temperature", "0");
-            AppendPart(sb, boundary, "prompt", "Lethal Company gameplay. Crew talking to Buddy AI. Commands: follow stay ship fetch scrap.");
+            AppendPart(sb, boundary, "prompt", "Lethal Company gameplay. Crew talking to Buddy AI. Commands: follow, stay, ship, fetch scrap, status, time, credits, buy items, open door, disable turret, ship lights.");
 
             byte[] head = Encoding.UTF8.GetBytes(sb.ToString());
             byte[] fileHeader = Encoding.UTF8.GetBytes(
@@ -626,6 +635,49 @@ namespace LethalAICrewmate
             catch
             {
                 Plugin.Log?.LogInfo(message);
+            }
+        }
+
+        private static void SendClientHint(ulong clientId, string message)
+        {
+            try
+            {
+                var nm = NetworkManager.Singleton;
+                if (nm == null || !nm.IsServer || nm.CustomMessagingManager == null ||
+                    !IsConnectedRemote(nm, clientId) || !NetMessenger.IsCompatibleClient(clientId))
+                    return;
+
+                byte[] bytes = Encoding.UTF8.GetBytes(message ?? "Buddy could not process that voice clip.");
+                if (bytes.Length > 220) Array.Resize(ref bytes, 220);
+                using (var writer = new FastBufferWriter(bytes.Length + 16, Allocator.Temp))
+                {
+                    writer.WriteValueSafe(bytes.Length);
+                    writer.WriteBytesSafe(bytes, bytes.Length);
+                    nm.CustomMessagingManager.SendNamedMessage(MsgVoiceHint, clientId, writer, NetworkDelivery.Reliable);
+                }
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log?.LogWarning($"Buddy voice hint send: {ex.Message}");
+            }
+        }
+
+        private static void OnVoiceHint(ulong senderId, FastBufferReader reader)
+        {
+            try
+            {
+                var nm = NetworkManager.Singleton;
+                if (nm == null || !nm.IsClient || nm.IsServer || !NetMessenger.CanAcceptServerStateMessage(senderId))
+                    return;
+                reader.ReadValueSafe(out int len);
+                if (len <= 0 || len > 220) return;
+                byte[] bytes = new byte[len];
+                reader.ReadBytesSafe(ref bytes, len);
+                ClientHint(Encoding.UTF8.GetString(bytes));
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log?.LogWarning($"Buddy voice hint receive: {ex.Message}");
             }
         }
 

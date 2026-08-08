@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.4.8
+
+- Keeps Buddy physically aboard the ship in orbit, with safe re-spawn after Lethal Company's normal level-transition enemy cleanup.
+- Makes `follow` and `come here` target the player who issued the command, and smooths general following with closer spacing, stable side offsets, gentler pathing and fewer recovery teleports.
+- Selects the same active Dissonance microphone as Lethal Company's regular voice chat and gives the speaking client a clear notice when Whisper cannot understand a relayed clip.
+- Extends urgent hostile callouts slightly from 6m to 7.5m without turning them into long-range warnings.
+- Adds host-authoritative ship controls for hangar doors and ship-room lights, preserving the game's availability, overheat and hydraulic-power restrictions.
+- Adds player-equivalent facility terminal-code actions such as `buddy open door C7` and `buddy disable turret B3`, including current-state and cooldown checks.
+- Upgrades store buying with quantities, current sale prices, credit checks and the normal 12-item dropship limit.
+- Adds deterministic live answers for time, credits, quota/deadline, moon/weather, ship scrap value and living crew, plus a concise `buddy status` report.
+- Replicates deterministic ship/terminal feedback as Buddy chat and speech to every compatible player without asking the LLM to repeat the side effect.
+- Extracts and tests ship-command parsing; the release suite now covers quantity purchases, facility codes and status questions.
+- Updates Buddy's system prompt with the real deterministic tool set and prevents it from claiming an action succeeded without game confirmation.
+
 ## 1.4.7
 
 - Shows an explicit in-game error when any friend is missing or mismatched, including the exact remedy: install the same ZIP on every player and restart the lobby.

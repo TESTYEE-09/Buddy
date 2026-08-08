@@ -71,7 +71,7 @@ Deterministic movement commands include:
 
 Questions can trigger a reply when addressed to Buddy, or when the player is within `ChatTriggerRange` and the message ends with `?`.
 
-Explicit terminal actions (`route`, `buy`, `moons`, etc.) are parsed deterministically from player chat. **LLM output is never permitted to execute terminal side effects.** Model-produced `[ROUTE:]`, `[BUY:]` and `[TERMINAL:]` tags are stripped without running them.
+Explicit terminal and ship actions (`route`, quantity-aware `buy`, coded facility doors/hazards, hangar doors and ship lights) are parsed deterministically from player chat. **LLM output is never permitted to execute side effects.** Model-produced `[ROUTE:]`, `[BUY:]` and `[TERMINAL:]` tags are stripped without running them. Deterministic status queries expose player-visible time, credits, quota/deadline, moon/weather, ship scrap and crew state. Buddy maintains a networked physical body in the ship during orbit and moon phases; follow orders transfer ownership to the requesting living player.
 
 ## Groq
 
@@ -98,7 +98,7 @@ LLM rules:
 
 ## Voice
 
-Host push-to-talk defaults to **V**:
+Host push-to-talk defaults to **B**:
 
 `host microphone -> Groq Whisper -> LLM -> Groq Orpheus -> Buddy speech`
 

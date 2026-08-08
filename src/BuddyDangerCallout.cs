@@ -8,7 +8,7 @@ namespace LethalAICrewmate
     /// <summary>Deterministic emergency warning; it never waits for the LLM or player input.</summary>
     internal static class BuddyDangerCallout
     {
-        private const float DangerDistance = 6f;
+        private const float DangerDistance = 7.5f;
         private const float ScanInterval = 0.25f;
         private const float CooldownSeconds = 25f;
 

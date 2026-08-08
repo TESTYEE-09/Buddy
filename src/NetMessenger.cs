@@ -23,7 +23,7 @@ namespace LethalAICrewmate
         public const string MsgTtsChunk = "LethalAICrewmate_TtsChunk";
 
         // Increment whenever a wire format becomes incompatible.
-        public const int ProtocolVersion = 6;
+        public const int ProtocolVersion = 7;
 
         private const float HelloIntervalSeconds = 2.5f;
         private const float MissingModGraceSeconds = 8f;

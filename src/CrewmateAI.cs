@@ -9,8 +9,8 @@ namespace LethalAICrewmate
 {
     public static class CrewmateAI
     {
-        private const float FollowDistance = 7f;      // stop this far from player (was 3 — too clingy)
-        private const float FollowResumeDistance = 9f; // only start walking again when farther than this
+        private const float FollowDistance = 3.8f;
+        private const float FollowResumeDistance = 5.4f;
         private const float PickupRange = 2f;
         private const float ShipDropRange = 4f;
         private const float AgentSpeed = 5.0f;
@@ -187,7 +187,9 @@ namespace LethalAICrewmate
             {
                 if (!enemy.agent.enabled) enemy.agent.enabled = true;
                 enemy.agent.speed = AgentSpeed;
-                enemy.agent.stoppingDistance = 2.5f;
+                enemy.agent.stoppingDistance = 2.2f;
+                enemy.agent.acceleration = 12f;
+                enemy.agent.angularSpeed = 360f;
                 if (!enemy.agent.isOnNavMesh)
                 {
                     if (NavMesh.SamplePosition(enemy.transform.position, out var hit, 10f, NavMesh.AllAreas))
@@ -232,7 +234,7 @@ namespace LethalAICrewmate
             }
 
             // Far separation (owner teleported / entrance) — hard follow
-            if (dist > 28f && Time.time >= data.NextAreaTeleportAt)
+            if (dist > 42f && Time.time >= data.NextAreaTeleportAt)
             {
                 TeleportBesidePlayer(enemy, target, enemy.isOutside);
                 data.NextAreaTeleportAt = Time.time + 1.5f;
@@ -241,8 +243,8 @@ namespace LethalAICrewmate
 
             // Walk toward a point offset behind the player, not into their feet
             Vector3 followPoint = target.transform.position
-                                  - target.transform.forward * 2.5f
-                                  + target.transform.right * 0.6f;
+                                  - target.transform.forward * 2.25f
+                                  + target.transform.right * data.FollowSideOffset;
             MoveTo(enemy, followPoint);
         }
 
@@ -853,7 +855,7 @@ namespace LethalAICrewmate
             }
         }
 
-        public static void ApplyCommandFromChat(string message)
+        public static void ApplyCommandFromChat(string message, int requestingPlayerId = -1)
         {
             if (string.IsNullOrEmpty(message)) return;
             var data = CrewmateRegistry.GetPrimary();
@@ -865,7 +867,19 @@ namespace LethalAICrewmate
 
             var lower = message.ToLowerInvariant();
             if (lower.Contains("follow") || lower.Contains("come") || lower == "here")
+            {
+                var players = StartOfRound.Instance?.allPlayerScripts;
+                if (players != null && requestingPlayerId >= 0 && requestingPlayerId < players.Length)
+                {
+                    var requester = players[requestingPlayerId];
+                    if (requester != null && !requester.isPlayerDead)
+                    {
+                        data.Owner = requester;
+                        Plugin.Log?.LogInfo($"Buddy follow owner -> '{requester.playerUsername}' (playerId={requestingPlayerId}).");
+                    }
+                }
                 ApplyCommand(data, "FOLLOW");
+            }
             else if (lower.Contains("stay") || lower.Contains("wait") || lower.Contains("stop"))
                 ApplyCommand(data, "STAY");
             else if (lower.Contains("ship") || lower.Contains("go home") || lower.Contains("return"))

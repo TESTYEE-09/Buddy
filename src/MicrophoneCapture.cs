@@ -1,5 +1,6 @@
 using System;
 using System.Text;
+using Dissonance;
 using UnityEngine;
 
 namespace LethalAICrewmate
@@ -9,23 +10,48 @@ namespace LethalAICrewmate
         internal static string ResolveConfiguredDevice()
         {
             string requested = Plugin.VoiceInputDevice?.Value?.Trim() ?? "";
-            if (string.IsNullOrEmpty(requested)) return null;
-
             string[] devices = Microphone.devices;
             if (devices == null || devices.Length == 0)
             {
-                Plugin.Log?.LogWarning($"Configured Buddy microphone '{requested}' was not found; using Windows default.");
+                if (!string.IsNullOrEmpty(requested))
+                    Plugin.Log?.LogWarning($"Configured Buddy microphone '{requested}' was not found; using Windows default.");
                 return null;
             }
 
+            if (!string.IsNullOrEmpty(requested))
+            {
+                string configured = FindMatchingDevice(devices, requested);
+                if (!string.IsNullOrEmpty(configured)) return configured;
+                Plugin.Log?.LogWarning($"Configured Buddy microphone '{requested}' was not found; using Lethal Company's active mic. Available: {string.Join(", ", devices)}");
+            }
+
+            // Dissonance owns the game's normal voice-chat microphone. Selecting the same active
+            // device avoids silently recording a stale Windows default on remote clients.
+            try
+            {
+                var comms = UnityEngine.Object.FindObjectOfType<DissonanceComms>();
+                string active = comms?.MicrophoneCapture?.Device;
+                if (string.IsNullOrWhiteSpace(active)) active = comms?.MicrophoneName;
+                string matched = FindMatchingDevice(devices, active);
+                if (!string.IsNullOrEmpty(matched)) return matched;
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log?.LogWarning($"Could not read Lethal Company voice device: {ex.Message}");
+            }
+
+            return null;
+        }
+
+        private static string FindMatchingDevice(string[] devices, string requested)
+        {
+            if (devices == null || string.IsNullOrWhiteSpace(requested)) return null;
             for (int i = 0; i < devices.Length; i++)
                 if (string.Equals(devices[i], requested, StringComparison.OrdinalIgnoreCase))
                     return devices[i];
             for (int i = 0; i < devices.Length; i++)
                 if (!string.IsNullOrEmpty(devices[i]) && devices[i].IndexOf(requested, StringComparison.OrdinalIgnoreCase) >= 0)
                     return devices[i];
-
-            Plugin.Log?.LogWarning($"Configured Buddy microphone '{requested}' was not found; using Windows default. Available: {string.Join(", ", devices)}");
             return null;
         }
 

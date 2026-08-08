@@ -35,7 +35,7 @@ namespace LethalAICrewmate
 
                 if (IsTextInputFocused()) return;
 
-                var key = Plugin.VoiceKey?.Value ?? KeyCode.V;
+                var key = Plugin.VoiceKey?.Value ?? KeyCode.B;
                 float maxSec = Mathf.Clamp(Plugin.VoiceMaxSeconds?.Value ?? 6f, 1f, 12f);
 
                 if (!_recording && InputCompat.GetKeyDown(key))
@@ -344,7 +344,7 @@ namespace LethalAICrewmate
             part("language", "en");
             part("temperature", "0");
             // Nudge model away from silence hallucinations
-            part("prompt", "Lethal Company gameplay. Crew talking to Buddy AI. Commands: follow stay ship fetch scrap.");
+            part("prompt", "Lethal Company gameplay. Crew talking to Buddy AI. Commands: follow, stay, ship, fetch scrap, status, time, credits, buy items, open door, disable turret, ship lights.");
 
             var head = Encoding.UTF8.GetBytes(sb.ToString());
             var fileHeader = Encoding.UTF8.GetBytes(

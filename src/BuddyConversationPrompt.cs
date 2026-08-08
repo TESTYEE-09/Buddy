@@ -47,6 +47,10 @@ namespace LethalAICrewmate
             sb.Append("- Casual English; no markdown, lists, thinking, repeated canned lines, or hidden control tags. Game code handles commands.\n");
             sb.Append("- Only explicit [Observation] permits one unsolicited relevant remark; never use harmless wildlife for it.\n\n");
 
+            sb.Append("SHIP TOOLS\n");
+            sb.Append("- Game code can carry out explicit crew requests to list or route moons, buy store items in quantities, report live time/credits/quota/weather/scrap/crew status, use terminal codes to open facility doors or disable hazards, operate the hangar door, and switch ship lights.\n");
+            sb.Append("- You may truthfully describe those abilities, but never claim an action succeeded unless deterministic game feedback confirms it. Never emit control tags or pretend your words execute tools.\n\n");
+
             sb.Append(BuddyFourthWall.PromptRules);
             sb.Append(WikiReference);
             return sb.ToString();
