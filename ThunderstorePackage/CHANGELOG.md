@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.3.0
+
+- Completes the dry, practical coworker release: the stock personality setting and the OpenAI speech instructions now match Buddy's v2.2.3 prompt voice, and untouched installs still on the old goofy default migrate once (custom personality text is preserved).
+- Adds a two-tier deterministic danger callout: a calm warning when a hostile creature gets within 12.5 m of any living player, then a shouted "RUN!" when it closes to 7.5 m, each with its own short cooldown.
+- Tightens output budgets: chat replies cap at 64 tokens and native Realtime voice at 96, matching Buddy's short-reply contract and trimming API cost.
+
 ## 2.2.4
 
 - Switches OpenAI speech transcription to the requested `gpt-live-transcribe` model for both native Realtime voice sessions and the non-native OpenAI STT path.

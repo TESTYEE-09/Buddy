@@ -1,6 +1,6 @@
-# LethalAICrewmate — v1.4.5 Design Spec
+# LethalAICrewmate — v2.3.0 Design Spec
 
-BepInEx 5 plugin for **Lethal Company v81**. Adds a friendly AI-driven crewmate NPC (default name **Buddy**) backed by Groq on the host.
+BepInEx 5 plugin for **Lethal Company v81**. Adds a friendly AI-driven crewmate NPC (default name **Buddy**) backed by OpenAI (default) or Groq on the host.
 
 ## Release architecture
 

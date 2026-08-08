@@ -129,7 +129,7 @@ namespace LethalAICrewmate
                           "\",\"input\":\"" + LlmClient.Escape(input) +
                           "\",\"response_format\":\"wav\"" +
                           (GroqSecrets.IsOpenAi
-                              ? ",\"instructions\":\"Perform this as a natural, expressive goofy male coworker in a dangerous workplace. Sound warm, lively, cheeky, and conversational with varied emphasis and timing. React to the line: dry amusement for banter, alert urgency for danger, relief after success, and restrained concern for bad news. Never sound like an announcer, assistant, cartoon, or forced comedian. Do not rush or change the words.\""
+                              ? ",\"instructions\":\"Perform this as a natural male Lethal Company coworker. Sound practical, a little tired, alert when danger is real, and quietly funny without internet slang, chaos-goblin jokes, or a cartoon voice. React to the line: dry amusement for banter, clear urgency for danger, relief after success, and restrained concern for bad news. Never sound like an announcer, assistant, mascot, or forced comedian. Keep the exact words and do not add a preamble.\""
                               : "") + "}";
 
             byte[] audioBytes = null;
