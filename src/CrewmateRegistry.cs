@@ -9,7 +9,8 @@ namespace LethalAICrewmate
         FollowOwner,
         Stay,
         ReturnToShip,
-        FetchScrap
+        FetchScrap,
+        ScoutAhead
     }
 
     public class CrewmateData
@@ -31,6 +32,10 @@ namespace LethalAICrewmate
         public float NextAreaTeleportAt;
         /// <summary>Stable shoulder preference so following does not visibly zig-zag.</summary>
         public float FollowSideOffset;
+        public Vector3 ScoutDestination;
+        public float ScoutStartedAt;
+        public float ScoutArrivedAt;
+        public bool ScoutReportSent;
     }
 
     public static class CrewmateRegistry
@@ -245,6 +250,13 @@ namespace LethalAICrewmate
             if (state != CrewmateState.FetchScrap)
             {
                 data.FetchTarget = null;
+            }
+            if (state != CrewmateState.ScoutAhead)
+            {
+                data.ScoutDestination = Vector3.zero;
+                data.ScoutStartedAt = 0f;
+                data.ScoutArrivedAt = 0f;
+                data.ScoutReportSent = false;
             }
             Plugin.Log?.LogInfo($"Crewmate state -> {state}");
         }

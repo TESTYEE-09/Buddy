@@ -170,7 +170,7 @@ namespace LethalAICrewmate
                     enemy.agent.isStopped = true;
                     enemy.agent.ResetPath();
                     enemy.agent.speed = 5.0f;
-                    enemy.agent.stoppingDistance = 2.5f;
+                    enemy.agent.stoppingDistance = 2.2f;
                     enemy.agent.isStopped = false;
                     enemy.agent.SetDestination(destination);
                 }
@@ -183,7 +183,8 @@ namespace LethalAICrewmate
 
         private static PlayerControllerB ResolveOwner(CrewmateData data)
         {
-            if (data?.Owner != null && !data.Owner.isPlayerDead)
+            if (data?.Owner != null && !data.Owner.isPlayerDead &&
+                (data.Owner.isPlayerControlled || data.Owner.isHostPlayerObject))
                 return data.Owner;
 
             try
@@ -196,7 +197,7 @@ namespace LethalAICrewmate
                 float bestDistance = float.MaxValue;
                 foreach (var player in players)
                 {
-                    if (player == null || player.isPlayerDead)
+                    if (player == null || player.isPlayerDead || !player.isPlayerControlled)
                         continue;
                     float d = Vector3.Distance(data.Enemy.transform.position, player.transform.position);
                     if (d < bestDistance)

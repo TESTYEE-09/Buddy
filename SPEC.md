@@ -73,6 +73,8 @@ Questions can trigger a reply when addressed to Buddy, or when the player is wit
 
 Explicit terminal and ship actions (`route`, quantity-aware `buy`, coded facility doors/hazards, hangar doors and ship lights) are parsed deterministically from player chat. **LLM output is never permitted to execute side effects.** Model-produced `[ROUTE:]`, `[BUY:]` and `[TERMINAL:]` tags are stripped without running them. Deterministic status queries expose player-visible time, credits, quota/deadline, moon/weather, ship scrap and crew state. Buddy maintains a networked physical body in the ship during orbit and moon phases; follow orders transfer ownership to the requesting living player.
 
+Movement orders use one deterministic parser so overlapping conversational keywords cannot accidentally change state. Scout-ahead orders choose a complete reachable path 4-18 metres along the requester's facing direction, report nearby same-area threats or scrap, pause briefly, then return to `FollowOwner`. A blocked or stalled scout cancels safely instead of teleporting forward.
+
 ## Groq
 
 Host config section:

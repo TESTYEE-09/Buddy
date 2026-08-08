@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.4.9
+
+- Adds polished bounded scouting commands: `go forward`, `go ahead`, `check in front`, `scout ahead`, `lead the way` and `take point`, with optional 4-18 metre distances.
+- Scouts select a complete NavMesh path in the requesting player's facing direction, report nearby real threats or scrap once, then naturally resume following.
+- Fixes `go to ship` being intercepted as a moon-route request, `stop following` being interpreted as follow, and ordinary scrap questions being mistaken for fetch orders.
+- Resolves follow owners by their real client ID and stops following disconnected player objects.
+- Tracks the actual snapped movement destination so the watchdog no longer performs unnecessary stall recoveries.
+- Improves missing-mod spawn diagnostics with the affected player's name, suppresses repetitive gate log spam, and stops conversational replies from pretending Buddy has a body while compatibility blocks spawning.
+- Tightens normal replies to one short sentence most of the time, reduces the response token ceiling, and increases Buddy's quick, understated wit.
+- Expands release parsing checks from 19 to 28.
+
 ## 1.4.8
 
 - Keeps Buddy physically aboard the ship in orbit, with safe re-spawn after Lethal Company's normal level-transition enemy cleanup.

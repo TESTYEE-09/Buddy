@@ -25,6 +25,8 @@ Buddy is a friendly AI crewmate for **Lethal Company v81**. He follows the crew,
 
 - `buddy follow` (follows whoever gave the order)
 - `buddy stay`
+- `buddy go forward`
+- `buddy check ahead 15 metres`
 - `buddy go to ship`
 - `buddy fetch scrap`
 - `buddy buy 3 flashlights`
@@ -40,7 +42,7 @@ Buddy can report live time, credits, quota/deadline, moon/weather, ship scrap an
 
 ## Personality
 
-Buddy is conversation-first rather than a sensor/wiki narrator. He ignores harmless background wildlife unless it is actually relevant, has low-key humor, and can very rarely make a subtle fourth-wall joke without turning that into his whole personality.
+Buddy is conversation-first rather than a sensor/wiki narrator. His normal replies are short and more consistently dry/witty. He ignores harmless background wildlife unless it is actually relevant and can very rarely make a subtle fourth-wall joke without turning that into his whole personality.
 
 ## Voice
 

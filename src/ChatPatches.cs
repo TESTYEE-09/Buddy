@@ -88,7 +88,7 @@ namespace LethalAICrewmate
             string restLower = rest.ToLowerInvariant();
 
             // Explicit terminal/orbit actions are deterministic player commands. The LLM is never
-            // allowed to execute these side effects (see TerminalSafetyPatches).
+            // allowed to execute these side effects.
             if (addressed || restLower.StartsWith("route") || restLower.StartsWith("buy") ||
                 restLower == "moons" || restLower.StartsWith("terminal") || restLower == "store" ||
                 restLower == "credits")
@@ -104,27 +104,20 @@ namespace LethalAICrewmate
                 }
             }
 
-            bool looksLikeCommand =
-                restLower.Contains("follow") || restLower == "stay" || restLower.StartsWith("stay ") ||
-                restLower.Contains("wait") || restLower == "stop" ||
-                restLower.Contains("go to ship") || restLower.Contains("go home") ||
-                restLower == "ship" || restLower.StartsWith("ship ") ||
-                restLower.Contains("fetch") || restLower.Contains("collect scrap") ||
-                restLower.Contains("scrap") || restLower.Contains("loot") ||
-                restLower.Contains("come here") || restLower == "here" || restLower.Contains("come on");
-
+            MovementCommand movement = MovementCommandParsing.Parse(restLower);
             bool isCommand = false;
             string deterministicCommand = null;
-            if (looksLikeCommand && (addressed ||
-                restLower.StartsWith("follow") || restLower.StartsWith("stay") ||
-                restLower.StartsWith("fetch") || restLower.StartsWith("ship") ||
-                restLower.StartsWith("go ") || restLower.StartsWith("come") ||
-                restLower == "here" || restLower == "stop" || restLower.StartsWith("wait")))
+            if (movement.Kind != MovementCommandKind.None && (addressed || MovementCommandParsing.IsDirectDirective(restLower)))
             {
                 isCommand = true;
                 Plugin.Log?.LogInfo($"Command parsed from chat: '{rest}'");
-                CrewmateAI.ApplyCommandFromChat(rest, playerId);
-                deterministicCommand = ClassifyExactCommand(restLower);
+                if (CrewmateAI.ApplyCommandFromChat(rest, playerId, out string failure))
+                    deterministicCommand = CommandName(movement.Kind);
+                else if (!string.IsNullOrWhiteSpace(failure))
+                {
+                    LlmClient.PublishLocalReply(failure);
+                    return;
+                }
             }
 
             bool shouldReply = addressed || isCommand;
@@ -143,6 +136,11 @@ namespace LethalAICrewmate
 
             if (shouldReply)
             {
+                if (CrewmateRegistry.GetPrimary() == null && !string.IsNullOrWhiteSpace(NetMessenger.HostCompatibilityWarning))
+                {
+                    LlmClient.PublishLocalReply(NetMessenger.HostCompatibilityWarning);
+                    return;
+                }
                 if (!string.IsNullOrEmpty(deterministicCommand))
                 {
                     LlmClient.PublishLocalReply(BuildCommandAcknowledgement(deterministicCommand));
@@ -153,18 +151,13 @@ namespace LethalAICrewmate
             }
         }
 
-        private static string ClassifyExactCommand(string command)
+        private static string CommandName(MovementCommandKind command)
         {
-            if (string.IsNullOrWhiteSpace(command)) return null;
-            string value = command.Trim().TrimEnd('.', '!', '?');
-            if (value == "follow" || value == "follow me" || value == "come here" || value == "come on" || value == "here")
-                return "follow";
-            if (value == "stay" || value == "stay here" || value == "wait" || value == "wait here" || value == "stop")
-                return "stay";
-            if (value == "ship" || value == "go to ship" || value == "go to the ship" || value == "go home" || value == "return to ship")
-                return "ship";
-            if (value == "fetch" || value == "fetch scrap" || value == "collect scrap" || value == "get scrap" || value == "grab scrap")
-                return "fetch";
+            if (command == MovementCommandKind.Follow) return "follow";
+            if (command == MovementCommandKind.Stay) return "stay";
+            if (command == MovementCommandKind.ReturnToShip) return "ship";
+            if (command == MovementCommandKind.FetchScrap) return "fetch";
+            if (command == MovementCommandKind.ScoutAhead) return "scout";
             return null;
         }
 
@@ -175,9 +168,10 @@ namespace LethalAICrewmate
                 new[] { "On you.", "Following.", "Right behind you." },
                 new[] { "I'll hold here.", "Staying put.", "I'll wait here." },
                 new[] { "Heading back to the ship.", "Back to the ship, got it.", "Returning to the ship." },
-                new[] { "I'll look for scrap.", "Going for scrap.", "I'll grab what I can." }
+                new[] { "I'll look for scrap.", "Going for scrap.", "I'll grab what I can." },
+                new[] { "I'll check ahead.", "Taking point.", "I'll scout forward and report back." }
             };
-            int group = command == "follow" ? 0 : command == "stay" ? 1 : command == "ship" ? 2 : 3;
+            int group = command == "follow" ? 0 : command == "stay" ? 1 : command == "ship" ? 2 : command == "fetch" ? 3 : 4;
             var choices = lines[group];
             return choices[UnityEngine.Random.Range(0, choices.Length)];
         }
@@ -188,8 +182,10 @@ namespace LethalAICrewmate
             {
                 var scripts = StartOfRound.Instance?.allPlayerScripts;
                 if (scripts == null) return null;
-                if (playerId >= 0 && playerId < scripts.Length)
-                    return scripts[playerId];
+                foreach (var player in scripts)
+                    if (player != null && (int)player.playerClientId == playerId)
+                        return player;
+                if (playerId >= 0 && playerId < scripts.Length) return scripts[playerId];
             }
             catch { /* ignore */ }
             return null;

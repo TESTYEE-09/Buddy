@@ -550,7 +550,7 @@ namespace LethalAICrewmate
             AppendPart(sb, boundary, "response_format", "json");
             AppendPart(sb, boundary, "language", "en");
             AppendPart(sb, boundary, "temperature", "0");
-            AppendPart(sb, boundary, "prompt", "Lethal Company gameplay. Crew talking to Buddy AI. Commands: follow, stay, ship, fetch scrap, status, time, credits, buy items, open door, disable turret, ship lights.");
+            AppendPart(sb, boundary, "prompt", "Lethal Company gameplay. Crew talking to Buddy AI. Commands: follow, stay, ship, fetch scrap, go forward, scout ahead, check in front, status, time, credits, buy items, open door, disable turret, ship lights.");
 
             byte[] head = Encoding.UTF8.GetBytes(sb.ToString());
             byte[] fileHeader = Encoding.UTF8.GetBytes(

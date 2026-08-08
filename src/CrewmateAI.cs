@@ -114,6 +114,9 @@ namespace LethalAICrewmate
                     case CrewmateState.FetchScrap:
                         TickFetchScrap(data);
                         break;
+                    case CrewmateState.ScoutAhead:
+                        TickScoutAhead(data);
+                        break;
                 }
             }
             catch (Exception ex)
@@ -423,13 +426,143 @@ namespace LethalAICrewmate
             MoveTo(enemy, data.FetchTarget.transform.position);
         }
 
+        private static void TickScoutAhead(CrewmateData data)
+        {
+            var enemy = data.Enemy;
+            if (enemy == null) return;
+
+            if (Time.time - data.ScoutStartedAt > 20f)
+            {
+                StopMoving(enemy);
+                CrewmateRegistry.SetState(data, CrewmateState.FollowOwner);
+                LlmClient.PublishLocalReply("I couldn't get any farther ahead safely. Coming back.");
+                return;
+            }
+
+            var owner = GetFollowTarget(data);
+            if (owner != null && Vector3.Distance(enemy.transform.position, owner.transform.position) > 35f)
+            {
+                StopMoving(enemy);
+                CrewmateRegistry.SetState(data, CrewmateState.FollowOwner);
+                return;
+            }
+
+            float distance = Vector3.Distance(enemy.transform.position, data.ScoutDestination);
+            if (distance > 1.8f)
+            {
+                MoveTo(enemy, data.ScoutDestination);
+                return;
+            }
+
+            StopMoving(enemy);
+            if (data.ScoutArrivedAt <= 0f)
+                data.ScoutArrivedAt = Time.time;
+            if (!data.ScoutReportSent)
+            {
+                data.ScoutReportSent = true;
+                LlmClient.PublishLocalReply(BuildScoutReport(data));
+            }
+            if (Time.time - data.ScoutArrivedAt >= 2.5f)
+                CrewmateRegistry.SetState(data, CrewmateState.FollowOwner);
+        }
+
+        private static string BuildScoutReport(CrewmateData data)
+        {
+            EnemyAI nearestThreat = null;
+            float nearestDistance = 16f;
+            foreach (var candidate in UnityEngine.Object.FindObjectsOfType<EnemyAI>())
+            {
+                if (candidate == null || candidate.isEnemyDead || CrewmateRegistry.IsCrewmate(candidate)) continue;
+                if (candidate.isOutside != data.Enemy.isOutside) continue;
+                string name = (candidate.enemyType?.enemyName ?? candidate.GetType().Name).ToLowerInvariant();
+                if (name.Contains("manticoil") || name.Contains("roaming locust")) continue;
+                float distance = Vector3.Distance(data.Enemy.transform.position, candidate.transform.position);
+                if (distance < nearestDistance)
+                {
+                    nearestDistance = distance;
+                    nearestThreat = candidate;
+                }
+            }
+
+            if (nearestThreat != null)
+            {
+                string name = nearestThreat.enemyType?.enemyName;
+                if (string.IsNullOrWhiteSpace(name)) name = "something hostile";
+                return $"Hold up—{name} is about {Mathf.CeilToInt(nearestDistance)} metres ahead of us.";
+            }
+
+            int scrap = 0;
+            foreach (var item in UnityEngine.Object.FindObjectsOfType<GrabbableObject>())
+                if (IsValidScrap(item) && Vector3.Distance(data.Enemy.transform.position, item.transform.position) <= 12f)
+                    scrap++;
+            return scrap > 0 ? $"Ahead looks clear. I found {scrap} piece{(scrap == 1 ? "" : "s")} of scrap nearby." : "Ahead looks clear. I'll come back to you.";
+        }
+
+        private static bool TryBeginScout(CrewmateData data, PlayerControllerB requester, float requestedDistance, out string failure)
+        {
+            failure = null;
+            requester = requester ?? GetFollowTarget(data);
+            if (data?.Enemy == null || requester == null || requester.isPlayerDead)
+            {
+                failure = "I need a living crewmate to point the way.";
+                return false;
+            }
+
+            Vector3 direction = requester.transform.forward;
+            direction.y = 0f;
+            if (direction.sqrMagnitude < 0.01f) direction = data.Enemy.transform.forward;
+            direction.Normalize();
+            float distance = Mathf.Clamp(requestedDistance, MovementCommandParsing.MinScoutDistance, MovementCommandParsing.MaxScoutDistance);
+
+            if (!TryResolveScoutDestination(data.Enemy, requester.transform.position, direction, distance, out Vector3 destination))
+            {
+                failure = "I can't find a safe path forward from here.";
+                return false;
+            }
+
+            data.Owner = requester;
+            CrewmateRegistry.SetState(data, CrewmateState.ScoutAhead);
+            data.ScoutDestination = destination;
+            data.ScoutStartedAt = Time.time;
+            data.ScoutArrivedAt = 0f;
+            data.ScoutReportSent = false;
+            MoveTo(data.Enemy, destination);
+            Plugin.Log?.LogInfo($"Buddy scout -> player='{requester.playerUsername}' distance={distance:F1} destination={destination}.");
+            return true;
+        }
+
+        private static bool TryResolveScoutDestination(MaskedPlayerEnemy enemy, Vector3 origin, Vector3 direction, float distance, out Vector3 destination)
+        {
+            destination = Vector3.zero;
+            bool buddyOnNavMesh = enemy.agent != null && enemy.agent.enabled && enemy.agent.isOnNavMesh;
+            if (!buddyOnNavMesh)
+            {
+                destination = origin + direction * distance;
+                destination.y = enemy.transform.position.y;
+                return true;
+            }
+
+            if (!NavMesh.SamplePosition(enemy.transform.position, out var start, 5f, NavMesh.AllAreas))
+                return false;
+            for (float candidateDistance = distance; candidateDistance >= MovementCommandParsing.MinScoutDistance; candidateDistance -= 2f)
+            {
+                Vector3 candidate = origin + direction * candidateDistance;
+                if (!NavMesh.SamplePosition(candidate, out var end, 4f, NavMesh.AllAreas)) continue;
+                var path = new NavMeshPath();
+                if (NavMesh.CalculatePath(start.position, end.position, NavMesh.AllAreas, path) &&
+                    path.status == NavMeshPathStatus.PathComplete)
+                {
+                    destination = end.position;
+                    return true;
+                }
+            }
+            return false;
+        }
+
         private static void MoveTo(MaskedPlayerEnemy enemy, Vector3 worldPos)
         {
             try
             {
-                if (CrewmateRegistry.TryGet(enemy, out var data) && data != null)
-                    data.ManualDestination = worldPos;
-
                 enemy.moveTowardsDestination = true;
                 enemy.movingTowardsTargetPlayer = false;
                 enemy.targetPlayer = null;
@@ -440,6 +573,8 @@ namespace LethalAICrewmate
                 Vector3 dest = worldPos;
                 if (NavMesh.SamplePosition(worldPos, out var hit, 8f, NavMesh.AllAreas))
                     dest = hit.position;
+                if (CrewmateRegistry.TryGet(enemy, out var data) && data != null)
+                    data.ManualDestination = dest;
 
                 try { enemy.SetDestinationToPosition(dest, checkForPath: false); }
                 catch { /* ignore */ }
@@ -492,7 +627,8 @@ namespace LethalAICrewmate
             try
             {
                 // isPlayerControlled can be false for host in some states — only require alive
-                if (data.Owner != null && !data.Owner.isPlayerDead)
+                if (data.Owner != null && !data.Owner.isPlayerDead &&
+                    (data.Owner.isPlayerControlled || data.Owner.isHostPlayerObject))
                     return data.Owner;
 
                 // Nearest living player
@@ -503,7 +639,7 @@ namespace LethalAICrewmate
                 float bestDist = float.MaxValue;
                 foreach (var p in sor.allPlayerScripts)
                 {
-                    if (p == null || p.isPlayerDead) continue;
+                    if (p == null || p.isPlayerDead || !p.isPlayerControlled) continue;
                     float d = Vector3.Distance(data.Enemy.transform.position, p.transform.position);
                     if (d < bestDist)
                     {
@@ -730,6 +866,14 @@ namespace LethalAICrewmate
                     TeleportToPosition(data, data.FetchTarget.transform.position, outside, "fetch stall");
                     return true;
                 }
+
+                if (data.State == CrewmateState.ScoutAhead)
+                {
+                    StopMoving(data.Enemy);
+                    CrewmateRegistry.SetState(data, CrewmateState.FollowOwner);
+                    LlmClient.PublishLocalReply("That route is blocked. I'm coming back.");
+                    return true;
+                }
             }
             catch (Exception ex)
             {
@@ -855,39 +999,62 @@ namespace LethalAICrewmate
             }
         }
 
-        public static void ApplyCommandFromChat(string message, int requestingPlayerId = -1)
+        public static bool ApplyCommandFromChat(string message, int requestingPlayerId, out string failure)
         {
-            if (string.IsNullOrEmpty(message)) return;
+            failure = null;
+            if (string.IsNullOrEmpty(message)) return false;
             var data = CrewmateRegistry.GetPrimary();
             if (data == null)
             {
                 Plugin.Log?.LogWarning("Command ignored: no crewmate registered.");
-                return;
+                failure = !string.IsNullOrWhiteSpace(NetMessenger.HostCompatibilityWarning)
+                    ? NetMessenger.HostCompatibilityWarning
+                    : "I can't move right now—my body isn't available.";
+                return false;
             }
 
-            var lower = message.ToLowerInvariant();
-            if (lower.Contains("follow") || lower.Contains("come") || lower == "here")
+            MovementCommand command = MovementCommandParsing.Parse(message);
+            var requester = ResolveCommandPlayer(requestingPlayerId);
+            switch (command.Kind)
             {
-                var players = StartOfRound.Instance?.allPlayerScripts;
-                if (players != null && requestingPlayerId >= 0 && requestingPlayerId < players.Length)
-                {
-                    var requester = players[requestingPlayerId];
+                case MovementCommandKind.Follow:
                     if (requester != null && !requester.isPlayerDead)
                     {
                         data.Owner = requester;
                         Plugin.Log?.LogInfo($"Buddy follow owner -> '{requester.playerUsername}' (playerId={requestingPlayerId}).");
                     }
-                }
-                ApplyCommand(data, "FOLLOW");
+                    ApplyCommand(data, "FOLLOW");
+                    return true;
+                case MovementCommandKind.Stay:
+                    ApplyCommand(data, "STAY");
+                    return true;
+                case MovementCommandKind.ReturnToShip:
+                    ApplyCommand(data, "SHIP");
+                    return true;
+                case MovementCommandKind.FetchScrap:
+                    ApplyCommand(data, "FETCH");
+                    return true;
+                case MovementCommandKind.ScoutAhead:
+                    return TryBeginScout(data, requester, command.ScoutDistance, out failure);
+                default:
+                    Plugin.Log?.LogInfo($"No movement command in: '{message}'");
+                    return false;
             }
-            else if (lower.Contains("stay") || lower.Contains("wait") || lower.Contains("stop"))
-                ApplyCommand(data, "STAY");
-            else if (lower.Contains("ship") || lower.Contains("go home") || lower.Contains("return"))
-                ApplyCommand(data, "SHIP");
-            else if (lower.Contains("fetch") || lower.Contains("collect") || lower.Contains("scrap") || lower.Contains("loot"))
-                ApplyCommand(data, "FETCH");
-            else
-                Plugin.Log?.LogInfo($"No command keyword in: '{message}'");
+        }
+
+        private static PlayerControllerB ResolveCommandPlayer(int playerId)
+        {
+            try
+            {
+                var players = StartOfRound.Instance?.allPlayerScripts;
+                if (players == null) return null;
+                foreach (var player in players)
+                    if (player != null && (int)player.playerClientId == playerId)
+                        return player;
+                if (playerId >= 0 && playerId < players.Length) return players[playerId];
+            }
+            catch { }
+            return null;
         }
 
         /// <summary>Client-side attach/detach mirror for held scrap visuals.</summary>
