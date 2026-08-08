@@ -44,6 +44,7 @@ Type these in normal Lethal Company chat:
 | `buddy buy 3 flashlights` | Buy store items using the real price, sale and crew credits |
 | `buddy open door C7` | Open a facility door using its visible terminal code |
 | `buddy disable turret B3` | Disable a coded turret/landmine through the terminal |
+| `buddy disable the turret` | Disable it automatically when exactly one terminal-controlled turret exists |
 | `buddy open ship doors` | Use the hangar-door controls when powered and available |
 | `buddy turn ship lights off` | Control the ship-room lights |
 | `buddy status` | Report time, credits, quota, deadline, moon, weather, scrap and crew |
@@ -52,6 +53,8 @@ Type these in normal Lethal Company chat:
 You can also talk to Buddy normally or ask him a question near him.
 
 Ship and terminal actions are host-authoritative and use the same game state as a player. Purchases respect sales, available credits and the 12-item dropship limit. Facility codes respect their normal cooldown, and ship doors still require working controls and hydraulic power.
+
+Recommended Groq models: `openai/gpt-oss-120b` for the strongest production text conversation, `openai/gpt-oss-20b` for the lowest-latency/lowest-cost text option, and `qwen/qwen3.6-27b` when Buddy needs screenshot vision. Keep `whisper-large-v3-turbo` for speech recognition.
 
 ## Personality
 

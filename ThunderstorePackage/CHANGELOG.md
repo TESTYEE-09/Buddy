@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.5.2
+
+- Verifies that a supplied facility code actually belongs to the requested turret, landmine or door instead of toggling the wrong object and claiming success.
+- Supports natural single-target requests such as `buddy disable the turret`; when multiple targets exist Buddy lists their real terminal codes and asks which one.
+- Uses component-based turret/landmine identification with name fallback, respects cooldown and current power state, and reports the terminal command honestly.
+- Expands the system prompt with facility-control semantics, intent resolution, observation-versus-inference discipline and a stronger anti-filler quality bar.
+
 ## 1.5.1
 
 - Fixes a confirmed remote voice failure where a friend's WAV reached the host and Whisper started, but post-request exceptions could silently wedge or drop the transcript.
