@@ -47,7 +47,8 @@ namespace LethalAICrewmate
                 if (!validVoice) voice = "austin";
                 changed |= SetIfDifferent(Plugin.TtsVoice, voice);
 
-                string direction = CleanSingleLine(Plugin.TtsDirection?.Value, 48, "");
+                // Empty is intentionally valid: it disables Orpheus direction tags.
+                string direction = CleanSingleLineAllowEmpty(Plugin.TtsDirection?.Value, 48);
                 changed |= SetIfDifferent(Plugin.TtsDirection, direction);
 
                 if (Plugin.ApiKey != null)
@@ -58,8 +59,8 @@ namespace LethalAICrewmate
                 }
 
                 changed |= ClampFloat(Plugin.TtsVolume, 0f, 1f, 1f);
-                changed |= ClampFloat(Plugin.ChatHearRange, 0f, 100f, 50f);
-                changed |= ClampFloat(Plugin.ChatTriggerRange, 0f, 100f, 45f);
+                changed |= ClampFloat(Plugin.ChatHearRange, 0f, 120f, 70f);
+                changed |= ClampFloat(Plugin.ChatTriggerRange, 0f, 120f, 60f);
                 changed |= ClampFloat(Plugin.VoiceMaxSeconds, 1f, 12f, 8f);
 
                 if (Plugin.ObservationIntervalSeconds != null)
@@ -89,6 +90,13 @@ namespace LethalAICrewmate
         {
             string result = (value ?? "").Replace('\r', ' ').Replace('\n', ' ').Replace('\t', ' ').Trim();
             if (string.IsNullOrEmpty(result)) result = fallback;
+            if (result.Length > maxLength) result = result.Substring(0, maxLength).TrimEnd();
+            return result;
+        }
+
+        private static string CleanSingleLineAllowEmpty(string value, int maxLength)
+        {
+            string result = (value ?? "").Replace('\r', ' ').Replace('\n', ' ').Replace('\t', ' ').Trim();
             if (result.Length > maxLength) result = result.Substring(0, maxLength).TrimEnd();
             return result;
         }
