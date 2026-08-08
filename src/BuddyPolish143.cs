@@ -10,7 +10,7 @@ namespace LethalAICrewmate
     {
         internal const float NewHearRange = 70f;
         internal const float NewTriggerRange = 60f;
-        internal const float AdditionalVoiceGain = 1.20f; // 1.20 (v1.4.2) * 1.20 = ~1.44 total
+        internal const float TargetRms = 0.16f;
 
         private static readonly FieldInfo NetworkAudioSourceField =
             AccessTools.Field(typeof(BuddyNetworkAudio), "_source");
@@ -24,9 +24,17 @@ namespace LethalAICrewmate
 
                 float[] samples = new float[clip.samples * clip.channels];
                 if (!clip.GetData(samples, 0)) return;
+                double sumSquares = 0d;
                 for (int i = 0; i < samples.Length; i++)
-                    samples[i] = Mathf.Clamp(samples[i] * AdditionalVoiceGain, -0.98f, 0.98f);
+                    sumSquares += samples[i] * samples[i];
+                float rms = (float)Math.Sqrt(sumSquares / Math.Max(1, samples.Length));
+                float gain = rms > 0.0001f ? Mathf.Clamp(TargetRms / rms, 0.75f, 2.4f) : 1f;
+                const double drive = 1.15;
+                double divisor = Math.Tanh(drive);
+                for (int i = 0; i < samples.Length; i++)
+                    samples[i] = (float)(Math.Tanh(samples[i] * gain * drive) / divisor * 0.92);
                 clip.SetData(samples, 0);
+                Plugin.Log?.LogInfo($"Buddy voice normalized rms={rms:F3} gain={gain:F2} with soft limiter.");
             }
             catch (Exception ex)
             {

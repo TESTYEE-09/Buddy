@@ -27,6 +27,9 @@ namespace LethalAICrewmate
             public bool Moving;
             public uint Sequence;
             public float ReceivedAt;
+            public bool Applied;
+            public bool LastAppliedOutside;
+            public float LastDiagnosticAt;
         }
 
         private static readonly Dictionary<ulong, RemotePose> RemotePoses = new Dictionary<ulong, RemotePose>();
@@ -60,14 +63,24 @@ namespace LethalAICrewmate
                         SendAllPoses(nm);
                     }
                 }
-                else if (nm.IsClient)
-                {
-                    ApplyRemotePoses(nm);
-                }
             }
             catch (Exception ex)
             {
                 Plugin.Log?.LogWarning($"Buddy pose sync tick: {ex.Message}");
+            }
+        }
+
+        internal static void LateTick()
+        {
+            try
+            {
+                var nm = NetworkManager.Singleton;
+                if (nm != null && nm.IsListening && nm.IsClient && !nm.IsServer)
+                    ApplyRemotePoses(nm);
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log?.LogWarning($"Buddy late pose apply: {ex.Message}");
             }
         }
 
@@ -148,11 +161,8 @@ namespace LethalAICrewmate
             byte outside = enemy.isOutside ? (byte)1 : (byte)0;
             byte moving = enemy.moveTowardsDestination ? (byte)1 : (byte)0;
 
-            foreach (ulong clientId in nm.ConnectedClientsIds)
+            foreach (ulong clientId in NetMessenger.CompatibleClientIds())
             {
-                if (clientId == NetworkManager.ServerClientId)
-                    continue;
-
                 using (var writer = new FastBufferWriter(80, Allocator.Temp))
                 {
                     writer.WriteValueSafe(data.NetworkObjectId);
@@ -175,7 +185,7 @@ namespace LethalAICrewmate
             try
             {
                 var nm = NetworkManager.Singleton;
-                if (nm == null || !nm.IsClient || nm.IsServer || senderId != NetworkManager.ServerClientId)
+                if (nm == null || !nm.IsClient || nm.IsServer || !NetMessenger.CanAcceptServerStateMessage(senderId))
                     return;
 
                 reader.ReadValueSafe(out ulong netId);
@@ -200,7 +210,10 @@ namespace LethalAICrewmate
                     Outside = outside != 0,
                     Moving = moving != 0,
                     Sequence = sequence,
-                    ReceivedAt = Time.unscaledTime
+                    ReceivedAt = Time.unscaledTime,
+                    Applied = previous?.Applied ?? false,
+                    LastAppliedOutside = previous?.LastAppliedOutside ?? (outside != 0),
+                    LastDiagnosticAt = previous?.LastDiagnosticAt ?? 0f
                 };
 
                 // This also makes the ID safe before the Masked body finishes spawning locally.
@@ -229,7 +242,14 @@ namespace LethalAICrewmate
                 }
 
                 if (!nm.SpawnManager.SpawnedObjects.TryGetValue(netId, out var netObj) || netObj == null)
+                {
+                    if (Time.unscaledTime - pose.LastDiagnosticAt >= 10f)
+                    {
+                        pose.LastDiagnosticAt = Time.unscaledTime;
+                        Plugin.Log?.LogInfo($"Buddy pose waiting for body binding netId={netId} packetAge={Time.unscaledTime - pose.ReceivedAt:F2}s.");
+                    }
                     continue;
+                }
 
                 var enemy = netObj.GetComponent<MaskedPlayerEnemy>();
                 if (enemy == null)
@@ -243,13 +263,19 @@ namespace LethalAICrewmate
                     enemy.movingTowardsTargetPlayer = false;
                     enemy.moveTowardsDestination = false;
                     enemy.inKillAnimation = false;
+                    if (!pose.Applied || enemy.isOutside != pose.Outside)
+                    {
+                        try { enemy.SetEnemyOutside(pose.Outside); } catch { }
+                    }
                     enemy.isOutside = pose.Outside;
                 }
                 catch { }
 
                 Vector3 current = enemy.transform.position;
                 float distance = Vector3.Distance(current, pose.Position);
-                Vector3 next = distance >= SnapDistance
+                bool areaChanged = pose.Applied && pose.LastAppliedOutside != pose.Outside;
+                bool hardSnap = !pose.Applied || areaChanged || distance >= SnapDistance;
+                Vector3 next = hardSnap
                     ? pose.Position
                     : Vector3.Lerp(current, pose.Position, Mathf.Clamp01(Time.unscaledDeltaTime * 12f));
 
@@ -258,20 +284,25 @@ namespace LethalAICrewmate
                     if (enemy.agent != null)
                     {
                         if (enemy.agent.enabled && enemy.agent.isOnNavMesh)
-                        {
                             enemy.agent.isStopped = true;
-                            if (distance >= SnapDistance)
-                                enemy.agent.Warp(pose.Position);
-                        }
+                        enemy.agent.enabled = false;
                     }
                 }
                 catch { }
 
                 enemy.transform.position = next;
                 Quaternion targetRot = Quaternion.Euler(0f, pose.Yaw, 0f);
-                enemy.transform.rotation = distance >= SnapDistance
+                enemy.transform.rotation = hardSnap
                     ? targetRot
                     : Quaternion.Slerp(enemy.transform.rotation, targetRot, Mathf.Clamp01(Time.unscaledDeltaTime * 10f));
+
+                if (hardSnap)
+                {
+                    string reason = !pose.Applied ? "first authoritative pose" : areaChanged ? "inside/outside transition" : $"drift {distance:F1}m";
+                    Plugin.Log?.LogInfo($"Buddy pose hard-snap netId={netId} reason={reason} packetAge={Time.unscaledTime - pose.ReceivedAt:F2}s position={pose.Position}.");
+                }
+                pose.Applied = true;
+                pose.LastAppliedOutside = pose.Outside;
             }
 
             foreach (ulong id in stale)

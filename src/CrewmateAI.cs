@@ -145,11 +145,24 @@ namespace LethalAICrewmate
                 if (!CrewmateRegistry.TryGet(enemy, out var data))
                 {
                     // Known net-id only (client before full register) — still maintain agent if present
-                    EnsureAgent(enemy);
+                    if (CrewmateSpawner.IsHost()) EnsureAgent(enemy);
                     return;
                 }
 
                 SyncHeldItemVisual(data);
+                if (!CrewmateSpawner.IsHost())
+                {
+                    if (enemy.agent != null && enemy.agent.enabled)
+                    {
+                        try
+                        {
+                            if (enemy.agent.isOnNavMesh) enemy.agent.isStopped = true;
+                            enemy.agent.enabled = false;
+                        }
+                        catch { }
+                    }
+                    return;
+                }
                 EnsureAgent(enemy);
 
                 // Drive agent along destination when host AI set moveTowardsDestination
@@ -339,6 +352,8 @@ namespace LethalAICrewmate
                     enemy.transform.rotation = Quaternion.LookRotation(look.normalized);
 
                 Plugin.Log?.LogInfo($"Buddy teleported beside owner (outside={setOutside}) at {dest}");
+                if (CrewmateRegistry.TryGet(enemy, out var data) && data != null)
+                    BuddyPoseSync143.SendImmediate(data);
             }
             catch (Exception ex)
             {
@@ -684,6 +699,62 @@ namespace LethalAICrewmate
             {
                 // ignore
             }
+        }
+
+        internal static bool RecoverStalled(CrewmateData data)
+        {
+            if (data?.Enemy == null) return false;
+            try
+            {
+                if (data.State == CrewmateState.FollowOwner)
+                {
+                    var owner = GetFollowTarget(data);
+                    if (owner == null) return false;
+                    bool outside = !owner.isInsideFactory && !owner.isInHangarShipRoom;
+                    TeleportBesidePlayer(data.Enemy, owner, outside);
+                    return true;
+                }
+
+                if (data.State == CrewmateState.ReturnToShip || data.HeldItem != null)
+                {
+                    TeleportToPosition(data, GetShipDropPosition(), false, "return-to-ship stall");
+                    return true;
+                }
+
+                if (data.State == CrewmateState.FetchScrap && data.FetchTarget != null)
+                {
+                    bool outside = data.Enemy.isOutside;
+                    try { outside = !data.FetchTarget.isInFactory; } catch { }
+                    TeleportToPosition(data, data.FetchTarget.transform.position, outside, "fetch stall");
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log?.LogWarning($"RecoverStalled: {ex.Message}");
+            }
+            return false;
+        }
+
+        private static void TeleportToPosition(CrewmateData data, Vector3 destination, bool outside, string reason)
+        {
+            var enemy = data.Enemy;
+            if (NavMesh.SamplePosition(destination, out var hit, 12f, NavMesh.AllAreas))
+                destination = hit.position;
+            try { enemy.TeleportMaskedEnemyAndSync(destination, outside); }
+            catch
+            {
+                try { enemy.TeleportMaskedEnemy(destination, outside); }
+                catch
+                {
+                    try { enemy.SetEnemyOutside(outside); } catch { }
+                    enemy.transform.position = destination;
+                }
+            }
+            enemy.isOutside = outside;
+            data.ManualDestination = destination;
+            BuddyPoseSync143.SendImmediate(data);
+            Plugin.Log?.LogWarning($"Buddy safe teleport recovery reason={reason} outside={outside} position={destination}.");
         }
 
         private static void MaybeObserve(CrewmateData data)

@@ -93,6 +93,9 @@ jobs:
       - name: Build release DLL
         run: dotnet build src/LethalAICrewmate.csproj -c Release --no-restore -p:ContinuousIntegrationBuild=true
 
+      - name: Run protocol and audio release checks
+        run: dotnet run --project tests/ReleaseChecks/ReleaseChecks.csproj -c Release
+
       - name: Validate compiled DLL
         shell: pwsh
         run: |

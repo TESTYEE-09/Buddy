@@ -23,7 +23,7 @@ namespace LethalAICrewmate
         public const string MsgTtsChunk = "LethalAICrewmate_TtsChunk";
 
         // Increment whenever a wire format becomes incompatible.
-        public const int ProtocolVersion = 3;
+        public const int ProtocolVersion = 4;
 
         private const float HelloIntervalSeconds = 2.5f;
         private const float MissingModGraceSeconds = 8f;
@@ -69,7 +69,7 @@ namespace LethalAICrewmate
 
         private static readonly Dictionary<ulong, PeerState> Peers = new Dictionary<ulong, PeerState>();
         private static readonly List<PendingItemAttach> PendingItemAttaches = new List<PendingItemAttach>();
-        private static IncomingAudio _incomingAudio;
+        private static readonly Dictionary<ulong, IncomingAudio> IncomingAudioTransfers = new Dictionary<ulong, IncomingAudio>();
 
         public static string CompatibilityWarning { get; private set; } = "";
         public static string HostCompatibilityWarning { get; private set; } = "";
@@ -99,7 +99,7 @@ namespace LethalAICrewmate
                     HostCompatibilityWarning = "";
                     Peers.Clear();
                     PendingItemAttaches.Clear();
-                    _incomingAudio = null;
+                    IncomingAudioTransfers.Clear();
                     return;
                 }
 
@@ -125,8 +125,7 @@ namespace LethalAICrewmate
                     }
 
                     RetryPendingItemAttaches(nm);
-                    if (_incomingAudio != null && Time.unscaledTime > _incomingAudio.ExpiresAt)
-                        _incomingAudio = null;
+                    ExpireIncomingAudio();
                 }
             }
             catch (Exception ex)
@@ -145,7 +144,7 @@ namespace LethalAICrewmate
             _lastAnnouncedHostWarning = "";
             Peers.Clear();
             PendingItemAttaches.Clear();
-            _incomingAudio = null;
+            IncomingAudioTransfers.Clear();
         }
 
         public static void TryRegisterHandlers()
@@ -308,12 +307,12 @@ namespace LethalAICrewmate
             return false;
         }
 
-        private static bool IsCompatibleClient(ulong clientId)
+        internal static bool IsCompatibleClient(ulong clientId)
         {
             return Peers.TryGetValue(clientId, out var peer) && peer != null && peer.Compatible;
         }
 
-        private static List<ulong> CompatibleClientIds()
+        internal static List<ulong> CompatibleClientIds()
         {
             var result = new List<ulong>();
             var nm = NetworkManager.Singleton;
@@ -604,7 +603,7 @@ namespace LethalAICrewmate
                         start.WriteValueSafe(pcm16.Length);
                         start.WriteValueSafe(sampleRate);
                         start.WriteValueSafe(position);
-                        nm.CustomMessagingManager.SendNamedMessage(MsgTtsStart, clientId, start, NetworkDelivery.Reliable);
+                        nm.CustomMessagingManager.SendNamedMessage(MsgTtsStart, clientId, start, NetworkDelivery.ReliableFragmentedSequenced);
                     }
 
                     for (int offset = 0; offset < pcm16.Length; offset += AudioChunkBytes)
@@ -640,7 +639,7 @@ namespace LethalAICrewmate
             return nm != null && !nm.IsServer && senderId == NetworkManager.ServerClientId;
         }
 
-        private static bool CanAcceptServerStateMessage(ulong senderId)
+        internal static bool CanAcceptServerStateMessage(ulong senderId)
         {
             return IsServerSender(senderId) && _helloAcked && string.IsNullOrEmpty(CompatibilityWarning);
         }
@@ -656,7 +655,13 @@ namespace LethalAICrewmate
                 if (!ReadString(reader, out string text, 8192)) return;
                 reader.ReadValueSafe(out Vector3 position);
                 reader.ReadValueSafe(out ulong crewmateNetId);
-                ProximityChat.TryShowLocal(name, text, position);
+                if (crewmateNetId != 0)
+                    CrewmateRegistry.RegisterRemote(crewmateNetId);
+                Plugin.Log?.LogInfo($"Buddy chat packet received from server (netId={crewmateNetId}, chars={text.Length}).");
+                bool displayed = ProximityChat.TryShowLocal(name, text, position, out string result);
+                Plugin.Log?.LogInfo(displayed
+                    ? "Buddy chat displayed on client."
+                    : $"Buddy chat dropped on client: {result}.");
             }
             catch (Exception ex)
             {
@@ -765,11 +770,16 @@ namespace LethalAICrewmate
                     sampleRate < 8000 || sampleRate > 48000)
                 {
                     Plugin.Log?.LogWarning("Rejected invalid Buddy audio transfer header.");
-                    _incomingAudio = null;
                     return;
                 }
 
-                _incomingAudio = new IncomingAudio
+                if (!IncomingAudioTransfers.ContainsKey(transferId) && IncomingAudioTransfers.Count >= 2)
+                {
+                    Plugin.Log?.LogWarning("Rejected Buddy audio transfer: client transfer queue is full.");
+                    return;
+                }
+
+                IncomingAudioTransfers[transferId] = new IncomingAudio
                 {
                     TransferId = transferId,
                     Data = new byte[totalBytes],
@@ -778,11 +788,11 @@ namespace LethalAICrewmate
                     ReceivedBytes = 0,
                     ExpiresAt = Time.unscaledTime + 15f
                 };
+                Plugin.Log?.LogInfo($"Buddy TTS transfer started id={transferId} bytes={totalBytes} rate={sampleRate}.");
             }
             catch (Exception ex)
             {
                 Plugin.Log?.LogWarning($"OnTtsStart: {ex.Message}");
-                _incomingAudio = null;
             }
         }
 
@@ -790,15 +800,17 @@ namespace LethalAICrewmate
         {
             try
             {
-                if (!CanAcceptServerStateMessage(senderId) || _incomingAudio == null)
+                if (!CanAcceptServerStateMessage(senderId))
                     return;
 
                 reader.ReadValueSafe(out ulong transferId);
                 reader.ReadValueSafe(out int offset);
                 reader.ReadValueSafe(out int len);
 
-                if (transferId != _incomingAudio.TransferId || len <= 0 || len > AudioChunkBytes ||
-                    offset < 0 || offset + len > _incomingAudio.Data.Length)
+                if (!IncomingAudioTransfers.TryGetValue(transferId, out var incoming) || incoming == null)
+                    return;
+
+                if (!TransportValidation.IsExactChunk(incoming.Data.Length, AudioChunkBytes, offset, len))
                 {
                     Plugin.Log?.LogWarning("Rejected invalid Buddy audio chunk.");
                     return;
@@ -807,24 +819,38 @@ namespace LethalAICrewmate
                 byte[] chunk = new byte[len];
                 reader.ReadBytesSafe(ref chunk, len);
 
-                if (_incomingAudio.ReceivedOffsets.Add(offset))
+                if (incoming.ReceivedOffsets.Add(offset))
                 {
-                    Buffer.BlockCopy(chunk, 0, _incomingAudio.Data, offset, len);
-                    _incomingAudio.ReceivedBytes += len;
+                    Buffer.BlockCopy(chunk, 0, incoming.Data, offset, len);
+                    incoming.ReceivedBytes += len;
                 }
-                _incomingAudio.ExpiresAt = Time.unscaledTime + 15f;
+                incoming.ExpiresAt = Time.unscaledTime + 15f;
 
-                if (_incomingAudio.ReceivedBytes >= _incomingAudio.Data.Length)
+                if (incoming.ReceivedBytes == incoming.Data.Length)
                 {
-                    var complete = _incomingAudio;
-                    _incomingAudio = null;
+                    IncomingAudioTransfers.Remove(transferId);
+                    var complete = incoming;
+                    Plugin.Log?.LogInfo($"Buddy TTS transfer complete id={transferId} bytes={complete.Data.Length}.");
                     BuddyNetworkAudio.PlayReplicatedPcm(complete.Data, complete.SampleRate, complete.Position);
                 }
             }
             catch (Exception ex)
             {
                 Plugin.Log?.LogWarning($"OnTtsChunk: {ex.Message}");
-                _incomingAudio = null;
+            }
+        }
+
+        private static void ExpireIncomingAudio()
+        {
+            if (IncomingAudioTransfers.Count == 0) return;
+            float now = Time.unscaledTime;
+            var expired = new List<ulong>();
+            foreach (var kv in IncomingAudioTransfers)
+                if (kv.Value == null || now > kv.Value.ExpiresAt) expired.Add(kv.Key);
+            foreach (ulong id in expired)
+            {
+                IncomingAudioTransfers.Remove(id);
+                Plugin.Log?.LogWarning($"Buddy TTS transfer expired id={id}.");
             }
         }
 

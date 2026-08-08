@@ -8,23 +8,36 @@ namespace LethalAICrewmate
     {
         public static void TryShowLocal(string crewmateName, string text, Vector3 crewmatePosition)
         {
+            TryShowLocal(crewmateName, text, crewmatePosition, out _);
+        }
+
+        public static bool TryShowLocal(string crewmateName, string text, Vector3 crewmatePosition, out string result)
+        {
+            result = "unknown";
             try
             {
-                if (string.IsNullOrEmpty(text)) return;
-                if (HUDManager.Instance == null) return;
+                if (string.IsNullOrEmpty(text)) { result = "empty text"; return false; }
+                if (HUDManager.Instance == null) { result = "HUD unavailable"; return false; }
 
                 if (!ShouldHear(crewmatePosition))
-                    return;
+                {
+                    result = "outside configured hearing range";
+                    return false;
+                }
 
                 string name = string.IsNullOrEmpty(crewmateName)
                     ? (Plugin.CrewmateName?.Value ?? "Buddy")
                     : crewmateName;
 
                 HUDManager.Instance.AddChatMessage(text, name);
+                result = "displayed";
+                return true;
             }
             catch (Exception ex)
             {
                 Plugin.Log?.LogError($"TryShowLocal: {ex}");
+                result = "HUD exception: " + ex.Message;
+                return false;
             }
         }
 

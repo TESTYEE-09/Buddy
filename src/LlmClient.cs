@@ -10,16 +10,19 @@ namespace LethalAICrewmate
     public static class LlmClient
     {
         private const string GroqChatEndpoint = "https://api.groq.com/openai/v1/chat/completions";
-        private const int MaxHistory = 12;
+        private const int MaxHistory = 8;
         private const int MaxQueue = 3;
         private const float MinInterval = 1.5f; // Groq is fast
-        private const int MaxTokens = 220;
+        private const int MaxTokens = 140;
+        private const float DuplicateWindowSeconds = 2f;
 
         private static readonly Queue<PendingRequest> Queue = new Queue<PendingRequest>();
         private static readonly List<ChatTurn> History = new List<ChatTurn>();
         private static bool _inFlight;
         private static float _lastCallTime = -999f;
         private static Coroutine _running;
+        private static string _lastRequestKey = "";
+        private static float _lastRequestAt = -999f;
 
         public static void ResetSession()
         {
@@ -34,6 +37,8 @@ namespace LethalAICrewmate
                     try { Plugin.Host.StopCoroutine(_running); } catch { /* ignore */ }
                 }
                 _running = null;
+                _lastRequestKey = "";
+                _lastRequestAt = -999f;
             }
             catch (Exception ex)
             {
@@ -44,6 +49,7 @@ namespace LethalAICrewmate
         private struct PendingRequest
         {
             public string UserContent;
+            public string HistoryContent;
             public bool IsObservation;
             public bool WantVision;
         }
@@ -80,6 +86,23 @@ namespace LethalAICrewmate
 
         private static void Enqueue(string userContent, bool isObservation, bool withVision = false)
         {
+            string historyContent = BuildHistoryContent(userContent, isObservation);
+            string requestKey = (isObservation ? "observation:" : "player:") + historyContent.Trim().ToLowerInvariant();
+            float now = Time.unscaledTime;
+            if (!isObservation && requestKey == _lastRequestKey && now - _lastRequestAt < DuplicateWindowSeconds)
+            {
+                Plugin.Log?.LogInfo("Dropped duplicate Buddy request before Groq.");
+                return;
+            }
+
+            // Observations are disposable background work. Never stack stale observations behind
+            // player speech/chat and never let one displace a player request.
+            if (isObservation)
+            {
+                foreach (var queued in Queue)
+                    if (queued.IsObservation) return;
+            }
+
             if (Queue.Count >= MaxQueue)
             {
                 Plugin.Log?.LogInfo("LLM queue full; dropping request.");
@@ -88,9 +111,47 @@ namespace LethalAICrewmate
             Queue.Enqueue(new PendingRequest
             {
                 UserContent = userContent,
+                HistoryContent = historyContent,
                 IsObservation = isObservation,
                 WantVision = withVision
             });
+            if (!isObservation)
+            {
+                _lastRequestKey = requestKey;
+                _lastRequestAt = now;
+            }
+        }
+
+        private static string BuildHistoryContent(string userContent, bool isObservation)
+        {
+            if (string.IsNullOrWhiteSpace(userContent)) return "";
+            if (isObservation) return "[Observation] " + ExtractAfter(userContent, "[Observation]");
+
+            const string playerMarker = "[PLAYER MESSAGE ";
+            int marker = userContent.IndexOf(playerMarker, StringComparison.Ordinal);
+            if (marker >= 0)
+            {
+                int lineStart = userContent.IndexOf('\n', marker);
+                if (lineStart >= 0)
+                {
+                    int context = userContent.IndexOf("[LIVE GAME CONTEXT", lineStart, StringComparison.Ordinal);
+                    string clean = context >= 0
+                        ? userContent.Substring(lineStart + 1, context - lineStart - 1)
+                        : userContent.Substring(lineStart + 1);
+                    return clean.Trim();
+                }
+            }
+
+            int sensorEnd = userContent.IndexOf("[END SENSOR]", StringComparison.Ordinal);
+            return sensorEnd >= 0
+                ? userContent.Substring(Math.Min(userContent.Length, sensorEnd + "[END SENSOR]".Length)).Trim()
+                : userContent.Trim();
+        }
+
+        private static string ExtractAfter(string value, string marker)
+        {
+            int index = value.IndexOf(marker, StringComparison.Ordinal);
+            return index < 0 ? value.Trim() : value.Substring(index + marker.Length).Trim();
         }
 
         public static void Tick()
@@ -124,14 +185,16 @@ namespace LethalAICrewmate
             _lastCallTime = Time.time;
 
             string systemPrompt = BuildSystemPrompt();
-            History.Add(new ChatTurn { Role = "user", Content = pending.UserContent });
-            TrimHistory();
+            var requestHistory = new List<ChatTurn>(History)
+            {
+                new ChatTurn { Role = "user", Content = pending.UserContent }
+            };
 
             string imageB64 = null;
             if (pending.WantVision)
                 VisionCapture.TryCaptureJpegBase64(out imageB64);
 
-            string body = BuildRequestJson(systemPrompt, History, imageB64);
+            string body = BuildRequestJson(systemPrompt, requestHistory, imageB64);
             string model = Plugin.Model?.Value ?? "qwen/qwen3.6-27b";
 
             using (var uwr = new UnityWebRequest(GroqChatEndpoint, "POST"))
@@ -141,6 +204,8 @@ namespace LethalAICrewmate
                 uwr.downloadHandler = new DownloadHandlerBuffer();
                 uwr.SetRequestHeader("Content-Type", "application/json");
                 uwr.SetRequestHeader("Authorization", "Bearer " + Plugin.ApiKey.Value);
+
+                Plugin.Log?.LogInfo($"Groq chat payload bytes={raw.Length} historyMessages={requestHistory.Count} maxTokens={MaxTokens}.");
 
                 Plugin.Log?.LogInfo($"Groq chat → model={model} vision={(imageB64 != null)}");
                 yield return uwr.SendWebRequest();
@@ -163,7 +228,7 @@ namespace LethalAICrewmate
                         string content = ParseAssistantContent(responseText);
                         content = StripThinking(content);
                         if (!string.IsNullOrEmpty(content))
-                            HandleAssistantReply(content);
+                            HandleAssistantReply(content, pending.HistoryContent);
                         else
                             Plugin.Log?.LogWarning("Groq chat: empty assistant content (after stripping thinking)");
                     }
@@ -176,7 +241,7 @@ namespace LethalAICrewmate
                 if (needRetryNoVision)
                 {
                     Plugin.Log?.LogInfo("Retrying chat without vision…");
-                    yield return SendRequestNoVision(systemPrompt, model);
+                    yield return SendRequestNoVision(systemPrompt, model, requestHistory, pending.HistoryContent);
                 }
             }
 
@@ -184,9 +249,9 @@ namespace LethalAICrewmate
             _running = null;
         }
 
-        private static IEnumerator SendRequestNoVision(string systemPrompt, string model)
+        private static IEnumerator SendRequestNoVision(string systemPrompt, string model, List<ChatTurn> requestHistory, string historyContent)
         {
-            string body = BuildRequestJson(systemPrompt, History, null);
+            string body = BuildRequestJson(systemPrompt, requestHistory, null);
             using (var uwr = new UnityWebRequest(GroqChatEndpoint, "POST"))
             {
                 byte[] raw = Encoding.UTF8.GetBytes(body);
@@ -199,7 +264,7 @@ namespace LethalAICrewmate
                 {
                     string content = StripThinking(ParseAssistantContent(uwr.downloadHandler?.text ?? ""));
                     if (!string.IsNullOrEmpty(content))
-                        HandleAssistantReply(content);
+                        HandleAssistantReply(content, historyContent);
                 }
                 else
                     Plugin.Log?.LogWarning($"Groq chat retry HTTP {uwr.responseCode}: {uwr.error}");
@@ -435,7 +500,7 @@ namespace LethalAICrewmate
             return sb.ToString().Trim();
         }
 
-        private static void HandleAssistantReply(string content)
+        private static void HandleAssistantReply(string content, string historyContent)
         {
             string display = StripThinking(content);
             string moveTag = null;
@@ -446,6 +511,7 @@ namespace LethalAICrewmate
             string termFb = TerminalBuddy.ApplyLlmTags(display, ref cleaned);
             display = cleaned;
 
+            History.Add(new ChatTurn { Role = "user", Content = historyContent ?? "" });
             History.Add(new ChatTurn { Role = "assistant", Content = display });
             TrimHistory();
 
@@ -475,6 +541,18 @@ namespace LethalAICrewmate
                 ProximityChat.TryShowLocal(name, termFb, pos);
                 Plugin.Log?.LogInfo($"Terminal feedback: {termFb}");
             }
+        }
+
+        internal static void PublishLocalReply(string display)
+        {
+            if (string.IsNullOrWhiteSpace(display)) return;
+            var primary = CrewmateRegistry.GetPrimary();
+            Vector3 pos = primary?.Enemy != null ? primary.Enemy.transform.position : Vector3.zero;
+            ulong netId = primary?.NetworkObjectId ?? 0;
+            string name = Plugin.CrewmateName?.Value ?? "Buddy";
+            NetMessenger.BroadcastCrewmateChat(name, display, pos, netId);
+            ProximityChat.TryShowLocal(name, display, pos);
+            BuddyTts.Speak(display, pos + Vector3.up * 1.6f);
         }
 
         private static void ExtractMoveTag(ref string display, ref string tag)

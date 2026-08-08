@@ -89,6 +89,18 @@ namespace LethalAICrewmate
         private static IEnumerator RequestAndPlay(string input, Vector3 worldPos)
         {
             _inFlight = true;
+            try
+            {
+                yield return RequestAndPlayCore(input, worldPos);
+            }
+            finally
+            {
+                _inFlight = false;
+            }
+        }
+
+        private static IEnumerator RequestAndPlayCore(string input, Vector3 worldPos)
+        {
             string model = ResolveTtsModel();
             string voice = Plugin.TtsVoice?.Value ?? "troy";
             if (string.IsNullOrWhiteSpace(voice)) voice = "troy";
@@ -110,6 +122,7 @@ namespace LethalAICrewmate
                 uwr.timeout = 30;
 
                 Plugin.Log?.LogInfo($"Orpheus TTS → model={model} voice={voice} chars={input.Length}");
+                Plugin.Log?.LogInfo($"Buddy TTS request started model={model} voice={voice} chars={input.Length}.");
                 yield return uwr.SendWebRequest();
 
                 if (!string.IsNullOrEmpty(uwr.error) || uwr.responseCode < 200 || uwr.responseCode >= 300)
@@ -119,6 +132,7 @@ namespace LethalAICrewmate
                     yield break;
                 }
                 audioBytes = uwr.downloadHandler?.data;
+                Plugin.Log?.LogInfo($"Buddy TTS HTTP {uwr.responseCode} returned {audioBytes?.Length ?? 0} bytes.");
             }
 
             if (audioBytes == null || audioBytes.Length < 64)
@@ -145,6 +159,7 @@ namespace LethalAICrewmate
                 int frames = samples.Length / channels;
                 var clip = AudioClip.Create("BuddyOrpheus", frames, channels, sampleRate, false);
                 clip.SetData(samples, 0);
+                Plugin.Log?.LogInfo($"Buddy TTS decoded clip length={clip.length:F2}s samples={clip.samples} rate={clip.frequency} channels={clip.channels}.");
                 PlayClip(clip, worldPos);
             }
             else

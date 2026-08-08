@@ -55,25 +55,8 @@ namespace LethalAICrewmate
 
         internal static void BoostHostClip(AudioClip clip)
         {
-            try
-            {
-                // Boost once on the host before BuddyNetworkAudio converts the clip to network
-                // PCM. Clients receive the already-boosted PCM, so they must not boost it again.
-                if (!CrewmateSpawner.IsHost() || clip == null || clip.samples <= 0 || clip.channels <= 0)
-                    return;
-
-                float[] samples = new float[clip.samples * clip.channels];
-                if (!clip.GetData(samples, 0)) return;
-
-                for (int i = 0; i < samples.Length; i++)
-                    samples[i] = Mathf.Clamp(samples[i] * StockVoiceGain, -0.98f, 0.98f);
-
-                clip.SetData(samples, 0);
-            }
-            catch (Exception ex)
-            {
-                Plugin.Log?.LogWarning($"Buddy voice gain: {ex.Message}");
-            }
+            // v1.4.4 performs one normalization/limiting pass in BuddyPolish143. Keeping this
+            // compatibility hook as a no-op avoids stacking two hard-clipping gain stages.
         }
     }
 

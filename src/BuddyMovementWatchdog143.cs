@@ -30,10 +30,6 @@ namespace LethalAICrewmate
         }
 
         private static readonly Dictionary<ulong, Track> Tracks = new Dictionary<ulong, Track>();
-        private static readonly MethodInfo TeleportBesidePlayerMethod = AccessTools.Method(
-            typeof(CrewmateAI),
-            "TeleportBesidePlayer",
-            new[] { typeof(MaskedPlayerEnemy), typeof(PlayerControllerB), typeof(bool) });
         private static float _nextSampleAt;
 
         internal static void Tick()
@@ -113,27 +109,23 @@ namespace LethalAICrewmate
             if (stalledFor < PathRecoveryAfter || now - track.LastRecoveryAt < RecoveryCooldown)
                 return;
 
-            if (stalledFor >= TeleportRecoveryAfter && data.State == CrewmateState.FollowOwner)
+            if (stalledFor >= TeleportRecoveryAfter)
             {
-                var owner = ResolveOwner(data);
-                if (owner != null && TeleportBesidePlayerMethod != null)
+                try
                 {
-                    bool setOutside = !owner.isInsideFactory && !owner.isInHangarShipRoom;
-                    try
+                    if (CrewmateAI.RecoverStalled(data))
                     {
-                        TeleportBesidePlayerMethod.Invoke(null, new object[] { enemy, owner, setOutside });
                         track.LastPosition = enemy.transform.position;
                         track.LastProgressAt = now;
                         track.LastRecoveryAt = now;
                         track.Recoveries = 0;
-                        BuddyPoseSync143.SendImmediate(data);
-                        Plugin.Log?.LogWarning($"Buddy movement watchdog: teleported after {stalledFor:F1}s without progress.");
+                        Plugin.Log?.LogWarning($"Buddy movement watchdog: safe recovery after {stalledFor:F1}s without progress in state {data.State}.");
                         return;
                     }
-                    catch (Exception ex)
-                    {
-                        Plugin.Log?.LogWarning($"Buddy watchdog teleport recovery failed: {ex.Message}");
-                    }
+                }
+                catch (Exception ex)
+                {
+                    Plugin.Log?.LogWarning($"Buddy watchdog teleport recovery failed: {ex.Message}");
                 }
             }
 

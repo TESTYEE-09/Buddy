@@ -40,8 +40,10 @@ namespace LethalAICrewmate
                 // Don't mimic a dead player
                 masked.mimickingPlayer = null;
 
-                // Soften combat stats so it doesn't tank hits for sport
-                if (masked.enemyHP < 5) masked.enemyHP = 5;
+                // Buddy is intentionally invincible. Damage entry points are also blocked below,
+                // but restoring these fields makes a partial resync self-healing.
+                masked.enemyHP = int.MaxValue;
+                masked.isEnemyDead = false;
 
                 // Stop any chase targeting
                 masked.targetPlayer = null;
@@ -216,20 +218,18 @@ namespace LethalAICrewmate
     [HarmonyPatch(typeof(MaskedPlayerEnemy), nameof(MaskedPlayerEnemy.HitEnemy))]
     internal static class Patch_Masked_HitEnemy
     {
-        [HarmonyPostfix]
-        private static void Postfix(MaskedPlayerEnemy __instance)
+        [HarmonyPrefix]
+        private static bool Prefix(MaskedPlayerEnemy __instance)
         {
             try
             {
-                if (!CrewmateRegistry.IsCrewmate(__instance)) return;
-                __instance.targetPlayer = null;
-                __instance.movingTowardsTargetPlayer = false;
-                __instance.inKillAnimation = false;
+                if (CrewmateRegistry.IsCrewmate(__instance)) return false;
             }
             catch (Exception ex)
             {
-                Plugin.Log?.LogError($"Masked.HitEnemy post: {ex}");
+                Plugin.Log?.LogError($"Masked.HitEnemy guard: {ex}");
             }
+            return true;
         }
     }
 
@@ -255,22 +255,28 @@ namespace LethalAICrewmate
     [HarmonyPatch(typeof(EnemyAI), nameof(EnemyAI.HitEnemy))]
     internal static class Patch_EnemyAI_HitEnemy
     {
-        // Let the crewmate take damage, but never retaliate via masked kill paths.
-        [HarmonyPostfix]
-        private static void Postfix(EnemyAI __instance)
+        [HarmonyPrefix]
+        private static bool Prefix(EnemyAI __instance)
         {
             try
             {
-                if (CrewmateRegistry.IsCrewmate(__instance))
-                {
-                    __instance.targetPlayer = null;
-                    __instance.movingTowardsTargetPlayer = false;
-                }
+                if (CrewmateRegistry.IsCrewmate(__instance)) return false;
             }
             catch (Exception ex)
             {
-                Plugin.Log?.LogError($"HitEnemy post patch: {ex}");
+                Plugin.Log?.LogError($"HitEnemy guard patch: {ex}");
             }
+            return true;
+        }
+    }
+
+    [HarmonyPatch(typeof(EnemyAI), nameof(EnemyAI.KillEnemy))]
+    internal static class Patch_EnemyAI_KillEnemy
+    {
+        [HarmonyPrefix]
+        private static bool Prefix(EnemyAI __instance)
+        {
+            return !CrewmateRegistry.IsCrewmate(__instance);
         }
     }
 
