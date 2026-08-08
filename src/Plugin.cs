@@ -12,7 +12,7 @@ namespace LethalAICrewmate
     {
         public const string ModGuid = "com.lethalaicrewmate.buddy";
         public const string ModName = "LethalAICrewmate";
-        public const string ModVersion = "2.2.3";
+        public const string ModVersion = "2.2.4";
 
         internal static Plugin Instance;
         internal static ManualLogSource Log;
@@ -63,8 +63,8 @@ namespace LethalAICrewmate
                 "Legacy setting retained for compatibility. Menu keys now persist securely in Windows Credential Manager instead of plaintext config.");
             Model = Config.Bind("Groq", "Model", "gpt-5.6-luna",
                 "Selected provider's chat model. OpenAI stock: gpt-5.6-luna through the Responses API.");
-            SttModel = Config.Bind("Groq", "SttModel", "gpt-realtime-whisper",
-                "Selected provider's speech-to-text model. OpenAI stock: gpt-realtime-whisper.");
+            SttModel = Config.Bind("Groq", "SttModel", "gpt-live-transcribe",
+                "Selected provider's speech-to-text model. OpenAI stock: gpt-live-transcribe.");
             TtsModel = Config.Bind("Groq", "TtsModel", "gpt-4o-mini-tts",
                 "Selected provider's text-to-speech model. OpenAI stock: gpt-4o-mini-tts.");
             TtsVoice = Config.Bind("Groq", "TtsVoice", "ash",
@@ -191,9 +191,8 @@ namespace LethalAICrewmate
                         if (string.Equals(Provider.Value?.Trim(), "OpenAI", StringComparison.OrdinalIgnoreCase))
                         {
                             if (string.IsNullOrWhiteSpace(SttModel.Value) ||
-                                string.Equals(SttModel.Value?.Trim(), "gpt-4o-mini-transcribe", StringComparison.OrdinalIgnoreCase) ||
-                                string.Equals(SttModel.Value?.Trim(), "gpt-live-transcribe", StringComparison.OrdinalIgnoreCase))
-                                SttModel.Value = "gpt-realtime-whisper";
+                                string.Equals(SttModel.Value?.Trim(), "gpt-4o-mini-transcribe", StringComparison.OrdinalIgnoreCase))
+                                SttModel.Value = "gpt-live-transcribe";
                             if (string.IsNullOrWhiteSpace(TtsModel.Value) ||
                                 string.Equals(TtsModel.Value?.Trim(), "tts-1", StringComparison.OrdinalIgnoreCase))
                                 TtsModel.Value = "gpt-4o-mini-tts";
@@ -213,6 +212,16 @@ namespace LethalAICrewmate
                              string.Equals(TtsVoice.Value?.Trim(), "alloy", StringComparison.OrdinalIgnoreCase)))
                             TtsVoice.Value = "ash";
                         ConfigRevision.Value = 8;
+                    }
+                    // v2.2.4 uses the requested GPT Live Transcribe model for both native
+                    // Realtime input transcription and non-native OpenAI STT paths.
+                    if (ConfigRevision.Value < 9)
+                    {
+                        if (string.Equals(Provider.Value?.Trim(), "OpenAI", StringComparison.OrdinalIgnoreCase) &&
+                            (string.IsNullOrWhiteSpace(SttModel.Value) ||
+                             string.Equals(SttModel.Value?.Trim(), "gpt-realtime-whisper", StringComparison.OrdinalIgnoreCase)))
+                            SttModel.Value = "gpt-live-transcribe";
+                        ConfigRevision.Value = 9;
                     }
                     if (string.IsNullOrWhiteSpace(Model.Value) ||
                         Model.Value.IndexOf("whisper", StringComparison.OrdinalIgnoreCase) >= 0 ||
@@ -245,7 +254,7 @@ namespace LethalAICrewmate
                     // including when an older config previously opted into vision.
                     VisionEnabled.Value = false;
                     if (string.IsNullOrWhiteSpace(SttModel.Value))
-                        SttModel.Value = GroqSecrets.IsOpenAi ? "gpt-realtime-whisper" : "whisper-large-v3-turbo";
+                        SttModel.Value = GroqSecrets.IsOpenAi ? "gpt-live-transcribe" : "whisper-large-v3-turbo";
                     if (string.IsNullOrWhiteSpace(TtsModel.Value))
                         TtsModel.Value = GroqSecrets.IsOpenAi ? "gpt-4o-mini-tts" : "canopylabs/orpheus-v1-english";
                     Config.Save();

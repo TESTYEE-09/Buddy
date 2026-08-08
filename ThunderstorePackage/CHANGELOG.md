@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.2.4
+
+- Switches OpenAI speech transcription to the requested `gpt-live-transcribe` model for both native Realtime voice sessions and the non-native OpenAI STT path.
+- Removes the old migration that silently converted `gpt-live-transcribe` back to `gpt-realtime-whisper`.
+
 ## 2.2.3
 
 - Natural pleaded requests now work: "Can I please have a flashlight? I'm begging you" is treated as the same bounded, validated item-spawn request as "please spawn a flashlight".

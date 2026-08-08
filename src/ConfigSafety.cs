@@ -34,7 +34,7 @@ namespace LethalAICrewmate
                 changed |= SetIfDifferent(Plugin.Model, model);
 
                 string stt = CleanSingleLine(Plugin.SttModel?.Value, 128,
-                    GroqSecrets.IsOpenAi ? "gpt-realtime-whisper" : "whisper-large-v3-turbo");
+                    GroqSecrets.IsOpenAi ? "gpt-live-transcribe" : "whisper-large-v3-turbo");
                 if (!GroqSecrets.IsOpenAi && stt.IndexOf("whisper", StringComparison.OrdinalIgnoreCase) < 0)
                     stt = "whisper-large-v3-turbo";
                 changed |= SetIfDifferent(Plugin.SttModel, stt);

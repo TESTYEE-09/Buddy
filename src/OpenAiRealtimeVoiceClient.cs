@@ -330,12 +330,18 @@ namespace LethalAICrewmate
                    "\"instructions\":\"" + LlmClient.Escape(instructions) + "\"," +
                    "\"audio\":{\"input\":{\"format\":{\"type\":\"audio/pcm\",\"rate\":24000}," +
                    "\"noise_reduction\":{\"type\":\"far_field\"}," +
-                   "\"transcription\":{\"model\":\"gpt-realtime-whisper\"},\"turn_detection\":null}," +
+                   "\"transcription\":{\"model\":\"" + LlmClient.Escape(ResolveTranscriptionModel()) + "\"},\"turn_detection\":null}," +
                    "\"output\":{\"format\":{\"type\":\"audio/pcm\",\"rate\":24000},\"voice\":\"ash\"}}," +
                    "\"reasoning\":{\"effort\":\"low\"},\"max_output_tokens\":\"inf\"," +
                    "\"tool_choice\":\"auto\",\"tools\":[{\"type\":\"function\",\"name\":\"execute_game_command\"," +
                    "\"description\":\"Execute an explicit Lethal Company movement, scouting, scrap, ship, terminal, purchase, facility, status, or polite spawn command. Do not call for ordinary conversation.\"," +
                    "\"parameters\":{\"type\":\"object\",\"properties\":{\"command\":{\"type\":\"string\",\"description\":\"The speaker's exact command including target, quantity, code and politeness.\"}},\"required\":[\"command\"]}}]}}";
+        }
+
+        private static string ResolveTranscriptionModel()
+        {
+            string model = Plugin.SttModel?.Value;
+            return string.IsNullOrWhiteSpace(model) ? "gpt-live-transcribe" : model.Trim();
         }
 
         private static async Task<string> ExecuteCommandOnMainThread(int playerId, string command)

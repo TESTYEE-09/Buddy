@@ -607,7 +607,7 @@ namespace LethalAICrewmate
         {
             string model = Plugin.SttModel?.Value;
             if (GroqSecrets.IsOpenAi)
-                return string.IsNullOrWhiteSpace(model) ? "gpt-realtime-whisper" : model.Trim();
+                return string.IsNullOrWhiteSpace(model) ? "gpt-live-transcribe" : model.Trim();
             if (string.IsNullOrWhiteSpace(model) ||
                 model.IndexOf("whisper", StringComparison.OrdinalIgnoreCase) < 0)
                 return "whisper-large-v3-turbo";

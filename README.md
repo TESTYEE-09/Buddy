@@ -91,7 +91,7 @@ Provider = OpenAI
 [Groq]
 ApiKey =
 Model = gpt-5.6-luna
-SttModel = gpt-realtime-whisper
+SttModel = gpt-live-transcribe
 TtsModel = gpt-4o-mini-tts
 TtsVoice = ash
 TtsEnabled = true
@@ -102,7 +102,7 @@ TtsVolume = 1
 RealtimeVoiceModel = gpt-realtime-2.1-mini
 ```
 
-The main-menu Save button persists the selected provider key in Windows Credential Manager for that Windows user. `LETHAL_AI_OPENAI_API_KEY` is still supported and takes precedence when set before launching Steam. Text chat uses `gpt-5.6-luna` through Responses with low reasoning, low verbosity and Fast service tier. Push-to-talk uses a persistent `gpt-realtime-2.1-mini` WebSocket with 24 kHz PCM input/output, Ash voice, `gpt-realtime-whisper` transcription, far-field noise reduction, low reasoning and host-side function calling. PTT defines the turn boundary, so automatic VAD is disabled in the mod. The separate `gpt-realtime-whisper` and `gpt-4o-mini-tts` settings remain available for non-native/fallback speech paths. The older Groq provider remains selectable with `[AI] Provider = Groq` and `LETHAL_AI_GROQ_API_KEY`.
+The main-menu Save button persists the selected provider key in Windows Credential Manager for that Windows user. `LETHAL_AI_OPENAI_API_KEY` is still supported and takes precedence when set before launching Steam. Text chat uses `gpt-5.6-luna` through Responses with low reasoning, low verbosity and Fast service tier. Push-to-talk uses a persistent `gpt-realtime-2.1-mini` WebSocket with 24 kHz PCM input/output, Ash voice, `gpt-live-transcribe` transcription, far-field noise reduction, low reasoning and host-side function calling. PTT defines the turn boundary, so automatic VAD is disabled in the mod. The separate `gpt-live-transcribe` and `gpt-4o-mini-tts` settings remain available for non-native/fallback speech paths. The older Groq provider remains selectable with `[AI] Provider = Groq` and `LETHAL_AI_GROQ_API_KEY`.
 
 Screenshot capture is disabled in v1.5.3. Stock Buddy is text-only and does not capture the host screen.
 

@@ -66,7 +66,7 @@ Groq requires the organization owner to accept the Orpheus model terms once in i
 - Buddy brain: `gpt-5.6-luna` through Responses with low reasoning, low verbosity and Fast service tier
 - Native PTT voice: `gpt-realtime-2.1-mini` with Ash, 24 kHz PCM, far-field noise reduction, low reasoning, persistent WebSocket audio and host-side tool calls
 - Screenshot capture: disabled; stock Buddy is text-only
-- STT: `gpt-realtime-whisper`
+- STT: `gpt-live-transcribe`
 - TTS: `gpt-4o-mini-tts`
 - Fallback TTS voice: `ash` at natural playback speed
 - TTS volume: `1.0`

@@ -80,7 +80,7 @@ namespace LethalAICrewmate
         {
             string m = Plugin.SttModel?.Value;
             if (GroqSecrets.IsOpenAi)
-                return string.IsNullOrWhiteSpace(m) ? "gpt-realtime-whisper" : m.Trim();
+                return string.IsNullOrWhiteSpace(m) ? "gpt-live-transcribe" : m.Trim();
             if (string.IsNullOrWhiteSpace(m) ||
                 m.IndexOf("whisper", StringComparison.OrdinalIgnoreCase) < 0)
             {
