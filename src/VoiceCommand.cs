@@ -80,7 +80,7 @@ namespace LethalAICrewmate
         {
             string m = Plugin.SttModel?.Value;
             if (GroqSecrets.IsOpenAi)
-                return string.IsNullOrWhiteSpace(m) ? "gpt-4o-mini-transcribe" : m.Trim();
+                return string.IsNullOrWhiteSpace(m) ? "gpt-realtime-whisper" : m.Trim();
             if (string.IsNullOrWhiteSpace(m) ||
                 m.IndexOf("whisper", StringComparison.OrdinalIgnoreCase) < 0)
             {
@@ -95,6 +95,8 @@ namespace LethalAICrewmate
         {
             try
             {
+                if (OpenAiRealtimeVoiceClient.Enabled)
+                    OpenAiRealtimeVoiceClient.BeginPushToTalk();
                 // End any leftover session first
                 try
                 {
@@ -199,6 +201,28 @@ namespace LethalAICrewmate
                 MaybeHint("Buddy heard silence. Set Voice.InputDevice if Windows chose the wrong mic.");
                 _busy = false;
                 yield break;
+            }
+
+            if (OpenAiRealtimeVoiceClient.Enabled)
+            {
+                int playerId = 0;
+                string playerName = "Player";
+                try
+                {
+                    var local = StartOfRound.Instance?.localPlayerController;
+                    if (local != null)
+                    {
+                        playerId = (int)local.playerClientId;
+                        playerName = local.playerUsername ?? "Player";
+                    }
+                }
+                catch { }
+                if (OpenAiRealtimeVoiceClient.EnqueueWav(wav, playerId, playerName))
+                {
+                    Plugin.Log?.LogInfo($"Queued native realtime voice turn for {playerName} ({wav.Length} WAV bytes).");
+                    _busy = false;
+                    yield break;
+                }
             }
 
             yield return null;
@@ -349,7 +373,7 @@ namespace LethalAICrewmate
             part("language", "en");
             part("temperature", "0");
             // Nudge model away from silence hallucinations
-            part("prompt", "Lethal Company gameplay. Crew talking to Buddy AI. Commands: follow, stay, ship, fetch scrap, go forward, scout ahead, check in front, status, time, credits, buy items, open door, disable turret, ship lights.");
+            part("prompt", "Lethal Company Version 80 gameplay. Crew talking verbatim to Buddy. Commands and vocabulary: follow, stay still, do not move, return to ship, fetch scrap, move forwards, scout ahead, status, time, credits, buy items, route moons, open door, disable turret, ship lights, please spawn an item, Backwater Gunkfish, Feiopar, Cadaver Growth, Kidnapper Fox.");
 
             var head = Encoding.UTF8.GetBytes(sb.ToString());
             var fileHeader = Encoding.UTF8.GetBytes(

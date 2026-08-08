@@ -5,6 +5,30 @@ namespace LethalAICrewmate
 {
     internal static class ShipCommandParsing
     {
+        internal static bool TryParsePoliteSpawn(string value, out string item, out int quantity)
+        {
+            item = null;
+            quantity = 0;
+            string lower = value?.Trim().ToLowerInvariant() ?? "";
+            bool pleaded = lower.Contains("please") || lower.Contains("i beg you") ||
+                           lower.Contains("we beg you") || lower.Contains("im begging") ||
+                           lower.Contains("i'm begging");
+            if (!pleaded) return false;
+
+            var match = Regex.Match(lower,
+                @"\bspawn\s+(?:me\s+|us\s+)?(?:(\d{1,2})\s+)?(?:an?\s+|the\s+|some\s+)?(.+?)(?:\s+(?:in\s+front\s+of|for)\s+(?:me|us))?(?:\s+please)?[.!?]*$",
+                RegexOptions.IgnoreCase);
+            if (!match.Success) return false;
+            quantity = 1;
+            if (match.Groups[1].Success) int.TryParse(match.Groups[1].Value, out quantity);
+            quantity = Math.Max(1, Math.Min(3, quantity));
+            item = match.Groups[2].Value.Trim();
+            item = Regex.Replace(item, @"\s+(?:in\s+front\s+of|for)\s+(?:me|us)$", "", RegexOptions.IgnoreCase).Trim();
+            item = Regex.Replace(item, @"\s+please$", "", RegexOptions.IgnoreCase).Trim();
+            item = Regex.Replace(item, @"^(?:an?|the|some)\s+", "", RegexOptions.IgnoreCase).Trim();
+            return item.Length > 0;
+        }
+
         internal static bool IsStatusRequest(string value)
         {
             string lower = value?.Trim().ToLowerInvariant() ?? "";
@@ -13,7 +37,8 @@ namespace LethalAICrewmate
                    lower.Contains("what time") || lower.Contains("current time") || lower == "time" ||
                    lower.Contains("how late") || lower.Contains("credits") || lower.Contains("credit balance") ||
                    lower.Contains("quota") || lower.Contains("deadline") || lower.Contains("days left") ||
-                   lower.Contains("weather") || lower.Contains("ship scrap") || lower.Contains("scrap value") ||
+                   (lower.Contains("weather") && (lower.Contains("moon") || lower.Contains("current") || lower == "weather")) ||
+                   lower.Contains("ship scrap") || lower.Contains("scrap value") ||
                    lower.Contains("crew status") || lower.Contains("how many alive") ||
                    lower.Contains("where are we") || lower.Contains("current moon");
         }

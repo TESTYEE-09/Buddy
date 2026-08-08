@@ -2,7 +2,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Text;
-using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.Networking;
 
@@ -10,10 +9,12 @@ namespace LethalAICrewmate
 {
     public static class LlmClient
     {
-        private const int MaxHistory = 8;
+        // Twelve messages retain roughly six complete player/Buddy exchanges. Replies stay
+        // capped separately, so the character remembers more without becoming long-winded.
+        private const int MaxHistory = 12;
         private const int MaxQueue = 3;
-        private const float MinInterval = 1.5f; // Groq is fast
-        private const int MaxTokens = 220;
+        private const float MinInterval = 0.5f;
+        private const int MaxTokens = 96;
         private const float DuplicateWindowSeconds = 2f;
         private const float HardRequestCeilingSeconds = 45f;
 
@@ -214,33 +215,8 @@ namespace LethalAICrewmate
 
             string model = imageB64 != null
                 ? (Plugin.VisionModel?.Value ?? "qwen/qwen3.6-27b")
-                : (Plugin.Model?.Value ?? (GroqSecrets.IsOpenAi ? "gpt-realtime-2.1-mini" : "openai/gpt-oss-120b"));
-            bool useResponses = GroqSecrets.IsOpenAi && IsRealtimeModel(model) && imageB64 == null;
-            if (useResponses)
-            {
-                string realtimeEvent = BuildRealtimeResponseCreateJson(systemPrompt, requestHistory);
-                Plugin.Log?.LogInfo($"OpenAI Realtime WebSocket -> model={model} text-only inputChars={realtimeEvent.Length}.");
-                Task<OpenAiRealtimeTextClient.Result> realtimeTask = OpenAiRealtimeTextClient.SendAsync(
-                    model, GroqSecrets.CurrentKey, realtimeEvent);
-                while (!realtimeTask.IsCompleted)
-                    yield return null;
-
-                if (realtimeTask.IsFaulted)
-                    Plugin.Log?.LogError($"OpenAI Realtime task failed: {realtimeTask.Exception?.GetBaseException().Message}");
-                else
-                {
-                    OpenAiRealtimeTextClient.Result realtimeResult = realtimeTask.Result;
-                    if (realtimeResult.Success)
-                        HandleAssistantReply(StripThinking(realtimeResult.Text), pending.HistoryContent);
-                    else
-                        Plugin.Log?.LogWarning($"OpenAI Realtime failed: {realtimeResult.Error}");
-                }
-
-                _inFlight = false;
-                _running = null;
-                _requestStartedAt = -999f;
-                yield break;
-            }
+                : (Plugin.Model?.Value ?? (GroqSecrets.IsOpenAi ? "gpt-5.6-luna" : "openai/gpt-oss-120b"));
+            bool useResponses = GroqSecrets.IsOpenAi && imageB64 == null;
             string body = useResponses
                 ? BuildResponsesRequestJson(systemPrompt, requestHistory, model)
                 : BuildRequestJson(systemPrompt, requestHistory, imageB64, model);
@@ -253,7 +229,7 @@ namespace LethalAICrewmate
                 uwr.downloadHandler = new DownloadHandlerBuffer();
                 uwr.SetRequestHeader("Content-Type", "application/json");
                 uwr.SetRequestHeader("Authorization", "Bearer " + GroqSecrets.CurrentKey);
-                uwr.timeout = 30;
+                uwr.timeout = 20;
 
                 Plugin.Log?.LogInfo($"{GroqSecrets.ProviderName} chat payload bytes={raw.Length} historyMessages={requestHistory.Count} maxTokens={MaxTokens}.");
 
@@ -293,7 +269,7 @@ namespace LethalAICrewmate
                 if (needRetryNoVision)
                 {
                     Plugin.Log?.LogInfo("Retrying chat without vision…");
-                    string fallbackModel = Plugin.Model?.Value ?? (GroqSecrets.IsOpenAi ? "gpt-realtime-2.1-mini" : "openai/gpt-oss-120b");
+                    string fallbackModel = Plugin.Model?.Value ?? (GroqSecrets.IsOpenAi ? "gpt-5.6-luna" : "openai/gpt-oss-120b");
                     yield return SendRequestNoVision(systemPrompt, fallbackModel, requestHistory, pending.HistoryContent);
                 }
             }
@@ -305,19 +281,26 @@ namespace LethalAICrewmate
 
         private static IEnumerator SendRequestNoVision(string systemPrompt, string model, List<ChatTurn> requestHistory, string historyContent)
         {
-            string body = BuildRequestJson(systemPrompt, requestHistory, null, model);
-            using (var uwr = new UnityWebRequest(GroqSecrets.ChatEndpoint, "POST"))
+            bool useResponses = GroqSecrets.IsOpenAi;
+            string body = useResponses
+                ? BuildResponsesRequestJson(systemPrompt, requestHistory, model)
+                : BuildRequestJson(systemPrompt, requestHistory, null, model);
+            string endpoint = useResponses ? GroqSecrets.OpenAiResponsesEndpoint : GroqSecrets.ChatEndpoint;
+            using (var uwr = new UnityWebRequest(endpoint, "POST"))
             {
                 byte[] raw = Encoding.UTF8.GetBytes(body);
                 uwr.uploadHandler = new UploadHandlerRaw(raw);
                 uwr.downloadHandler = new DownloadHandlerBuffer();
                 uwr.SetRequestHeader("Content-Type", "application/json");
                 uwr.SetRequestHeader("Authorization", "Bearer " + GroqSecrets.CurrentKey);
-                uwr.timeout = 30;
+                uwr.timeout = 20;
                 yield return uwr.SendWebRequest();
                 if (string.IsNullOrEmpty(uwr.error) && uwr.responseCode >= 200 && uwr.responseCode < 300)
                 {
-                    string content = StripThinking(ParseAssistantContent(uwr.downloadHandler?.text ?? ""));
+                    string responseText = uwr.downloadHandler?.text ?? "";
+                    string content = StripThinking(useResponses
+                        ? ParseResponsesContent(responseText)
+                        : ParseAssistantContent(responseText));
                     if (!string.IsNullOrEmpty(content))
                         HandleAssistantReply(content, historyContent);
                 }
@@ -339,7 +322,7 @@ namespace LethalAICrewmate
 
         private static string BuildRequestJson(string systemPrompt, List<ChatTurn> history, string imageJpegBase64, string model)
         {
-            if (string.IsNullOrWhiteSpace(model)) model = GroqSecrets.IsOpenAi ? "gpt-realtime-2.1-mini" : "openai/gpt-oss-120b";
+            if (string.IsNullOrWhiteSpace(model)) model = GroqSecrets.IsOpenAi ? "gpt-5.6-luna" : "openai/gpt-oss-120b";
             var sb = new StringBuilder(Math.Max(8192, (imageJpegBase64?.Length ?? 0) + 4096));
             sb.Append("{\"model\":\"").Append(Escape(model)).Append("\",");
             if (GroqSecrets.IsOpenAi)
@@ -388,19 +371,14 @@ namespace LethalAICrewmate
             return sb.ToString();
         }
 
-        private static bool IsRealtimeModel(string model)
-        {
-            return !string.IsNullOrWhiteSpace(model) &&
-                   model.StartsWith("gpt-realtime", StringComparison.OrdinalIgnoreCase);
-        }
-
         private static string BuildResponsesRequestJson(string systemPrompt, List<ChatTurn> history, string model)
         {
             var sb = new StringBuilder(8192);
             sb.Append("{\"model\":\"").Append(Escape(model)).Append("\",");
             sb.Append("\"instructions\":\"").Append(Escape(systemPrompt)).Append("\",");
             sb.Append("\"max_output_tokens\":").Append(MaxTokens).Append(',');
-            sb.Append("\"reasoning\":{\"effort\":\"none\"},\"store\":false,\"input\":[");
+            sb.Append("\"reasoning\":{\"effort\":\"low\",\"context\":\"current_turn\"},");
+            sb.Append("\"text\":{\"verbosity\":\"low\"},\"service_tier\":\"fast\",\"store\":false,\"input\":[");
             for (int i = 0; i < history.Count; i++)
             {
                 if (i > 0) sb.Append(',');
@@ -408,26 +386,6 @@ namespace LethalAICrewmate
                   .Append(Escape(history[i].Content)).Append("\"}");
             }
             sb.Append("]}");
-            return sb.ToString();
-        }
-
-        private static string BuildRealtimeResponseCreateJson(string systemPrompt, List<ChatTurn> history)
-        {
-            var transcript = new StringBuilder(4096);
-            for (int i = 0; i < history.Count; i++)
-            {
-                transcript.Append(history[i].Role == "assistant" ? "Buddy: " : "Player: ")
-                          .AppendLine(history[i].Content ?? "");
-            }
-
-            var sb = new StringBuilder(Math.Max(8192, systemPrompt.Length + transcript.Length + 512));
-            sb.Append("{\"type\":\"response.create\",\"response\":{");
-            sb.Append("\"conversation\":\"none\",\"output_modalities\":[\"text\"],");
-            sb.Append("\"max_output_tokens\":").Append(MaxTokens).Append(',');
-            sb.Append("\"instructions\":\"").Append(Escape(systemPrompt)).Append("\",");
-            sb.Append("\"input\":[{\"type\":\"message\",\"role\":\"user\",\"content\":[{");
-            sb.Append("\"type\":\"input_text\",\"text\":\"").Append(Escape(transcript.ToString())).Append("\"}");
-            sb.Append("]}]}}");
             return sb.ToString();
         }
 

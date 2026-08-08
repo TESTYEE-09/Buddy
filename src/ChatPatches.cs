@@ -89,11 +89,11 @@ namespace LethalAICrewmate
 
             // Explicit terminal/orbit actions are deterministic player commands. The LLM is never
             // allowed to execute these side effects.
-            if (addressed || restLower.StartsWith("route") || restLower.StartsWith("buy") ||
+            if (addressed || restLower.StartsWith("route") || restLower.StartsWith("buy") || restLower.Contains("spawn") ||
                 restLower == "moons" || restLower.StartsWith("terminal") || restLower == "store" ||
                 restLower == "credits")
             {
-                string termResult = TerminalBuddy.HandleChatCommand(msg);
+                string termResult = TerminalBuddy.HandleChatCommand(msg, playerId);
                 if (!string.IsNullOrEmpty(termResult))
                 {
                     Plugin.Log?.LogInfo($"Terminal cmd: {termResult}");
@@ -151,6 +151,36 @@ namespace LethalAICrewmate
             }
         }
 
+        internal static string ExecuteDeterministicOnly(string command, int playerId)
+        {
+            if (!CrewmateSpawner.IsHost()) return "Rejected: only the host can execute Buddy commands.";
+            if (string.IsNullOrWhiteSpace(command)) return "Rejected: empty command.";
+
+            string message = command.Trim();
+            string buddyName = Plugin.CrewmateName?.Value ?? "Buddy";
+            if (message.IndexOf("buddy", StringComparison.OrdinalIgnoreCase) < 0 &&
+                message.IndexOf(buddyName, StringComparison.OrdinalIgnoreCase) < 0)
+                message = buddyName + " " + message;
+
+            string terminal = TerminalBuddy.HandleChatCommand(message, playerId);
+            if (!string.IsNullOrWhiteSpace(terminal)) return terminal;
+
+            string rest = message;
+            if (rest.StartsWith(buddyName, StringComparison.OrdinalIgnoreCase))
+                rest = rest.Substring(buddyName.Length).TrimStart(' ', ',', ':', '-');
+            else if (rest.StartsWith("buddy", StringComparison.OrdinalIgnoreCase))
+                rest = rest.Substring(5).TrimStart(' ', ',', ':', '-');
+
+            MovementCommand movement = MovementCommandParsing.Parse(rest.ToLowerInvariant());
+            if (movement.Kind != MovementCommandKind.None)
+            {
+                if (CrewmateAI.ApplyCommandFromChat(rest, playerId, out string failure))
+                    return "Confirmed: " + CommandName(movement.Kind) + " command started.";
+                return string.IsNullOrWhiteSpace(failure) ? "Command could not be executed." : failure;
+            }
+            return "No supported deterministic game command matched. Do not claim an action occurred; answer conversationally.";
+        }
+
         private static string CommandName(MovementCommandKind command)
         {
             if (command == MovementCommandKind.Follow) return "follow";
@@ -165,11 +195,11 @@ namespace LethalAICrewmate
         {
             string[][] lines =
             {
-                new[] { "On you.", "Following.", "Right behind you." },
-                new[] { "I'll hold here.", "Staying put.", "I'll wait here." },
-                new[] { "Heading back to the ship.", "Back to the ship, got it.", "Returning to the ship." },
-                new[] { "I'll look for scrap.", "Going for scrap.", "I'll grab what I can." },
-                new[] { "I'll check ahead.", "Taking point.", "I'll scout forward and report back." }
+                new[] { "On you. Personal space revoked.", "Following. Try walking professionally.", "Right behind you, workplace hazard." },
+                new[] { "Parked. Try not to miss me.", "Staying put. Thrilling assignment.", "Holding here like expensive furniture." },
+                new[] { "Back to the ship. Cowardice, but organised.", "Heading home. Excellent survival instinct.", "Shipward bound, dignity optional." },
+                new[] { "Scrap run. Capitalism needs me.", "Looking for scrap and poor decisions.", "I'll fetch loot. Guard my imaginary pension." },
+                new[] { "Taking point. Terrible promotion.", "Checking ahead. Screaming counts as intel.", "Scouting forward. Prepare my tiny memorial." }
             };
             int group = command == "follow" ? 0 : command == "stay" ? 1 : command == "ship" ? 2 : command == "fetch" ? 3 : 4;
             var choices = lines[group];
