@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.5.1
+
+- Fixes a confirmed remote voice failure where a friend's WAV reached the host and Whisper started, but post-request exceptions could silently wedge or drop the transcript.
+- Logs remote Whisper success, failure and queue completion explicitly so the relay can no longer fail without evidence.
+- Preserves valid transcripts briefly across level transitions and falls back to Lethal Company's live player array when Netcode temporarily has no `PlayerObject`.
+- Sends the speaking client a useful in-game error if delivery still cannot complete.
+
 ## 1.5.0
 
 - Accepts both B and V as Buddy push-to-talk keys on every correctly modded peer, while tracking the key that began each recording so mixed key releases cannot truncate clips.

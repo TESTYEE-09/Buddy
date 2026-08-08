@@ -464,15 +464,29 @@ namespace LethalAICrewmate
                     Plugin.Log?.LogInfo($"Groq remote STT -> client={request.SenderId} model={model} bytes={request.Wav.Length}");
                     yield return uwr.SendWebRequest();
 
-                    bool ok = string.IsNullOrEmpty(uwr.error) && uwr.responseCode >= 200 && uwr.responseCode < 300;
-                    if (!ok)
+                    string text = null;
+                    bool responseFailed = false;
+                    try
                     {
-                        Plugin.Log?.LogWarning($"Remote Groq STT HTTP {uwr.responseCode}: {uwr.error}");
-                        SendClientHint(request.SenderId, "Buddy's speech service failed for that clip. Try again.");
-                        yield break;
+                        bool ok = string.IsNullOrEmpty(uwr.error) && uwr.responseCode >= 200 && uwr.responseCode < 300;
+                        if (!ok)
+                        {
+                            responseFailed = true;
+                            Plugin.Log?.LogWarning($"Remote Groq STT HTTP {uwr.responseCode}: {uwr.error} {uwr.downloadHandler?.text}");
+                            SendClientHint(request.SenderId, "Buddy's speech service failed for that clip. Try again.");
+                        }
+                        else
+                        {
+                            text = ParseTranscription(uwr.downloadHandler?.text);
+                        }
                     }
-
-                    string text = ParseTranscription(uwr.downloadHandler?.text);
+                    catch (Exception ex)
+                    {
+                        responseFailed = true;
+                        Plugin.Log?.LogError($"Remote Buddy STT response failed client={request.SenderId}: {ex}");
+                        SendClientHint(request.SenderId, "Buddy's voice relay hit an error. Try once more.");
+                    }
+                    if (responseFailed) yield break;
                     if (string.IsNullOrWhiteSpace(text) || IsWhisperHallucination(text))
                     {
                         Plugin.Log?.LogWarning($"Remote STT client={request.SenderId} returned no usable transcript.");
@@ -480,36 +494,61 @@ namespace LethalAICrewmate
                         yield break;
                     }
 
-                    HandleRemoteTranscript(request.SenderId, text.Trim());
+                    text = text.Trim();
+                    Plugin.Log?.LogInfo($"Remote Whisper transcript ready client={request.SenderId}: {text}");
+
+                    // PlayerObject can briefly be null while Lethal Company changes levels even
+                    // though the peer remains connected. Keep the valid transcript for a short
+                    // grace period instead of silently throwing it away.
+                    float resolveDeadline = Time.unscaledTime + 3f;
+                    while (!HandleRemoteTranscript(request.SenderId, text) &&
+                           Time.unscaledTime < resolveDeadline &&
+                           IsConnectedRemote(NetworkManager.Singleton, request.SenderId))
+                    {
+                        yield return null;
+                    }
+
+                    if (ResolveRemotePlayer(request.SenderId) == null)
+                    {
+                        Plugin.Log?.LogWarning($"Remote transcript dropped only after player lookup timeout client={request.SenderId}.");
+                        SendClientHint(request.SenderId, "Buddy heard you, but your player was still loading. Try once more.");
+                    }
                 }
             }
             finally
             {
                 _hostBusy = false;
+                Plugin.Log?.LogInfo($"Remote Buddy STT finished client={request?.SenderId}; queued={HostQueue.Count}.");
             }
         }
 
-        private static void HandleRemoteTranscript(ulong senderId, string text)
+        private static bool HandleRemoteTranscript(ulong senderId, string text)
         {
-            var player = ResolveRemotePlayer(senderId);
-            if (player == null || string.IsNullOrWhiteSpace(text))
-                return;
-
             try
             {
+                var player = ResolveRemotePlayer(senderId);
+                if (player == null || string.IsNullOrWhiteSpace(text))
+                    return false;
+
                 if (HUDManager.Instance != null)
                     HUDManager.Instance.AddChatMessage(text, (player.playerUsername ?? "Player") + " (voice)");
+
+                string buddyName = Plugin.CrewmateName?.Value ?? "Buddy";
+                string lower = text.ToLowerInvariant();
+                string message = text;
+                if (!lower.Contains(buddyName.ToLowerInvariant()) && !lower.Contains("buddy"))
+                    message = buddyName + " " + text;
+
+                Plugin.Log?.LogInfo($"Remote STT client={senderId} player='{player.playerUsername}': {text}");
+                ChatObserver.OnServerChat(message, (int)player.playerClientId);
+                return true;
             }
-            catch { }
-
-            string buddyName = Plugin.CrewmateName?.Value ?? "Buddy";
-            string lower = text.ToLowerInvariant();
-            string message = text;
-            if (!lower.Contains(buddyName.ToLowerInvariant()) && !lower.Contains("buddy"))
-                message = buddyName + " " + text;
-
-            Plugin.Log?.LogInfo($"Remote STT client={senderId} player='{player.playerUsername}': {text}");
-            ChatObserver.OnServerChat(message, (int)player.playerClientId);
+            catch (Exception ex)
+            {
+                Plugin.Log?.LogError($"Remote transcript delivery failed client={senderId}: {ex}");
+                SendClientHint(senderId, "Buddy heard you but could not process the command. Try again.");
+                return true;
+            }
         }
 
         private static PlayerControllerB ResolveRemotePlayer(ulong senderId)
@@ -519,9 +558,23 @@ namespace LethalAICrewmate
                 var nm = NetworkManager.Singleton;
                 if (nm == null || !nm.IsServer)
                     return null;
-                if (!nm.ConnectedClients.TryGetValue(senderId, out var client) || client?.PlayerObject == null)
-                    return null;
-                return client.PlayerObject.GetComponent<PlayerControllerB>();
+                if (nm.ConnectedClients.TryGetValue(senderId, out var client) && client?.PlayerObject != null)
+                {
+                    var direct = client.PlayerObject.GetComponent<PlayerControllerB>();
+                    if (direct != null) return direct;
+                }
+
+                var players = StartOfRound.Instance?.allPlayerScripts;
+                if (players != null)
+                {
+                    for (int i = 0; i < players.Length; i++)
+                    {
+                        var player = players[i];
+                        if (player != null && player.playerClientId == senderId)
+                            return player;
+                    }
+                }
+                return null;
             }
             catch
             {
