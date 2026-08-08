@@ -29,7 +29,7 @@ namespace LethalAICrewmate
         private const float MissingModGraceSeconds = 8f;
         private const float PendingAttachLifetimeSeconds = 12f;
         private const int MaxAudioBytes = 512 * 1024;
-        private const int AudioChunkBytes = 16000;
+        private const int AudioChunkBytes = 8000;
 
         private static bool _registered;
         private static NetworkManager _registeredOn;
@@ -399,8 +399,6 @@ namespace LethalAICrewmate
                         NetworkDelivery.Reliable);
                 }
 
-                // Only compatible clients receive state. This avoids feeding a changed wire format
-                // to an older build while still telling that client exactly why Buddy is disabled.
                 if (compatible)
                     SendCurrentStateToClient(senderId);
 
@@ -576,7 +574,7 @@ namespace LethalAICrewmate
 
         /// <summary>
         /// Replicate already-generated speech as 16-bit mono PCM. The Groq key never leaves the host.
-        /// Audio is chunked well below typical transport payload limits and capped to 512 KiB.
+        /// Audio is chunked into small fragmented-reliable messages and capped to 512 KiB.
         /// </summary>
         public static void BroadcastTtsPcm(byte[] pcm16, int sampleRate, Vector3 position)
         {
@@ -621,7 +619,11 @@ namespace LethalAICrewmate
                             writer.WriteValueSafe(offset);
                             writer.WriteValueSafe(len);
                             writer.WriteBytesSafe(chunk, len);
-                            nm.CustomMessagingManager.SendNamedMessage(MsgTtsChunk, clientId, writer, NetworkDelivery.Reliable);
+                            nm.CustomMessagingManager.SendNamedMessage(
+                                MsgTtsChunk,
+                                clientId,
+                                writer,
+                                NetworkDelivery.ReliableFragmentedSequenced);
                         }
                     }
                 }
