@@ -55,7 +55,7 @@ Ship and terminal actions are host-authoritative and use the same game state as 
 
 ## Personality
 
-Buddy is conversation-first: he responds to what players actually say instead of dumping sensor/entity facts. v1.4.9 makes ordinary replies a little shorter and gives him more quick, understated wit. Harmless wildlife such as Manticoils and Roaming Locusts is treated as background unless the player asks about it.
+Buddy is conversation-first: he responds to what players actually say instead of dumping sensor/entity facts. v1.5.0 uses a substantially richer behavior prompt covering grounded multiplayer awareness, tool honesty, danger calibration, vision limits and natural dry humor. Harmless wildlife such as Manticoils and Roaming Locusts is treated as background unless the player asks about it.
 
 Buddy can very rarely make a subtle fourth-wall joke when the moment fits. The rare beat is rate-limited in game code so it stays surprising instead of becoming his gimmick.
 
@@ -118,6 +118,7 @@ ObservationIntervalSeconds = 0
 [Voice]
 Enabled = true
 PushToTalkKey = B
+AlternatePushToTalkKey = V
 MaxRecordSeconds = 8
 InputDevice =
 ```

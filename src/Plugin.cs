@@ -12,7 +12,7 @@ namespace LethalAICrewmate
     {
         public const string ModGuid = "com.lethalaicrewmate.buddy";
         public const string ModName = "LethalAICrewmate";
-        public const string ModVersion = "1.4.9";
+        public const string ModVersion = "1.5.0";
 
         internal static Plugin Instance;
         internal static ManualLogSource Log;
@@ -35,6 +35,7 @@ namespace LethalAICrewmate
         internal static ConfigEntry<bool> VoiceEnabled;
         internal static ConfigEntry<bool> AllowRemoteVoice;
         internal static ConfigEntry<KeyCode> VoiceKey;
+        internal static ConfigEntry<KeyCode> VoiceAlternateKey;
         internal static ConfigEntry<float> VoiceMaxSeconds;
         internal static ConfigEntry<string> VoiceInputDevice;
         internal static ConfigEntry<bool> VisionEnabled;
@@ -111,6 +112,8 @@ namespace LethalAICrewmate
                 "Allow matching remote players to upload bounded push-to-talk audio to the host for Groq transcription. Disable this in public lobbies.");
             VoiceKey = Config.Bind("Voice", "PushToTalkKey", KeyCode.B,
                 "Hold this key to record mic audio for Buddy. B avoids the game's common V push-to-talk binding; on clients the clip is relayed to the host.");
+            VoiceAlternateKey = Config.Bind("Voice", "AlternatePushToTalkKey", KeyCode.V,
+                "Optional second Buddy push-to-talk key. V also activates normal Lethal Company voice chat; set this equal to PushToTalkKey to disable the alternate.");
             VoiceMaxSeconds = Config.Bind("Voice", "MaxRecordSeconds", 8f,
                 "Max push-to-talk length in seconds (capped at 12 by runtime).");
             VoiceInputDevice = Config.Bind("Voice", "InputDevice", "",
