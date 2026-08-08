@@ -30,7 +30,7 @@ $trackedBinaries = @(git -C $root ls-files 'LethalAICrewmate-*.zip' 'Thunderstor
 if ($trackedBinaries.Count -gt 0) { throw "Generated release binaries must not be tracked: $($trackedBinaries -join ', ')" }
 
 # Block accidental key shipping before compilation.
-$secretPattern = 'gsk_[A-Za-z0-9_-]{20,}'
+$secretPattern = '(gsk_|sk-(?:proj-)?)[A-Za-z0-9_-]{20,}'
 $extensions = @('.cs', '.md', '.json', '.yml', '.yaml', '.ps1', '.csproj', '.txt')
 Get-ChildItem $root -Recurse -File | Where-Object {
     $_.FullName -notmatch '[\\/](bin|obj|\.git)[\\/]' -and $extensions -contains $_.Extension.ToLowerInvariant()

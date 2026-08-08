@@ -9,7 +9,6 @@ namespace LethalAICrewmate
 {
     public static class LlmClient
     {
-        private const string GroqChatEndpoint = "https://api.groq.com/openai/v1/chat/completions";
         private const int MaxHistory = 8;
         private const int MaxQueue = 3;
         private const float MinInterval = 1.5f; // Groq is fast
@@ -214,10 +213,10 @@ namespace LethalAICrewmate
 
             string model = imageB64 != null
                 ? (Plugin.VisionModel?.Value ?? "qwen/qwen3.6-27b")
-                : (Plugin.Model?.Value ?? "openai/gpt-oss-120b");
+                : (Plugin.Model?.Value ?? (GroqSecrets.IsOpenAi ? "gpt-5.6-luna" : "openai/gpt-oss-120b"));
             string body = BuildRequestJson(systemPrompt, requestHistory, imageB64, model);
 
-            using (var uwr = new UnityWebRequest(GroqChatEndpoint, "POST"))
+            using (var uwr = new UnityWebRequest(GroqSecrets.ChatEndpoint, "POST"))
             {
                 byte[] raw = Encoding.UTF8.GetBytes(body);
                 uwr.uploadHandler = new UploadHandlerRaw(raw);
@@ -226,9 +225,9 @@ namespace LethalAICrewmate
                 uwr.SetRequestHeader("Authorization", "Bearer " + GroqSecrets.CurrentKey);
                 uwr.timeout = 30;
 
-                Plugin.Log?.LogInfo($"Groq chat payload bytes={raw.Length} historyMessages={requestHistory.Count} maxTokens={MaxTokens}.");
+                Plugin.Log?.LogInfo($"{GroqSecrets.ProviderName} chat payload bytes={raw.Length} historyMessages={requestHistory.Count} maxTokens={MaxTokens}.");
 
-                Plugin.Log?.LogInfo($"Groq chat → model={model} vision={(imageB64 != null)}");
+                Plugin.Log?.LogInfo($"{GroqSecrets.ProviderName} chat -> model={model} vision={(imageB64 != null)}");
                 yield return uwr.SendWebRequest();
 
                 bool ok = string.IsNullOrEmpty(uwr.error)
@@ -238,7 +237,7 @@ namespace LethalAICrewmate
 
                 if (!ok)
                 {
-                    Plugin.Log?.LogWarning($"Groq chat HTTP {uwr.responseCode}: {uwr.error} {uwr.downloadHandler?.text}");
+                    Plugin.Log?.LogWarning($"{GroqSecrets.ProviderName} chat HTTP {uwr.responseCode}: {uwr.error} {uwr.downloadHandler?.text}");
                     needRetryNoVision = imageB64 != null;
                 }
                 else
@@ -262,7 +261,7 @@ namespace LethalAICrewmate
                 if (needRetryNoVision)
                 {
                     Plugin.Log?.LogInfo("Retrying chat without vision…");
-                    string fallbackModel = Plugin.Model?.Value ?? "openai/gpt-oss-120b";
+                    string fallbackModel = Plugin.Model?.Value ?? (GroqSecrets.IsOpenAi ? "gpt-5.6-luna" : "openai/gpt-oss-120b");
                     yield return SendRequestNoVision(systemPrompt, fallbackModel, requestHistory, pending.HistoryContent);
                 }
             }
@@ -275,7 +274,7 @@ namespace LethalAICrewmate
         private static IEnumerator SendRequestNoVision(string systemPrompt, string model, List<ChatTurn> requestHistory, string historyContent)
         {
             string body = BuildRequestJson(systemPrompt, requestHistory, null, model);
-            using (var uwr = new UnityWebRequest(GroqChatEndpoint, "POST"))
+            using (var uwr = new UnityWebRequest(GroqSecrets.ChatEndpoint, "POST"))
             {
                 byte[] raw = Encoding.UTF8.GetBytes(body);
                 uwr.uploadHandler = new UploadHandlerRaw(raw);
@@ -291,7 +290,7 @@ namespace LethalAICrewmate
                         HandleAssistantReply(content, historyContent);
                 }
                 else
-                    Plugin.Log?.LogWarning($"Groq chat retry HTTP {uwr.responseCode}: {uwr.error}");
+                    Plugin.Log?.LogWarning($"{GroqSecrets.ProviderName} chat retry HTTP {uwr.responseCode}: {uwr.error}");
             }
         }
 
@@ -308,11 +307,19 @@ namespace LethalAICrewmate
 
         private static string BuildRequestJson(string systemPrompt, List<ChatTurn> history, string imageJpegBase64, string model)
         {
-            if (string.IsNullOrWhiteSpace(model)) model = "openai/gpt-oss-120b";
+            if (string.IsNullOrWhiteSpace(model)) model = GroqSecrets.IsOpenAi ? "gpt-5.6-luna" : "openai/gpt-oss-120b";
             var sb = new StringBuilder(Math.Max(8192, (imageJpegBase64?.Length ?? 0) + 4096));
             sb.Append("{\"model\":\"").Append(Escape(model)).Append("\",");
-            sb.Append("\"max_tokens\":").Append(MaxTokens).Append(',');
-            sb.Append("\"temperature\":0.6,");
+            if (GroqSecrets.IsOpenAi)
+            {
+                sb.Append("\"max_completion_tokens\":").Append(MaxTokens).Append(',');
+                sb.Append("\"reasoning_effort\":\"none\",");
+            }
+            else
+            {
+                sb.Append("\"max_tokens\":").Append(MaxTokens).Append(',');
+                sb.Append("\"temperature\":0.6,");
+            }
             if (model.IndexOf("qwen", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 sb.Append("\"reasoning_effort\":\"none\",");

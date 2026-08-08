@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.0
+
+- Adds a provider-aware OpenAI path for text chat, host/friend transcription, speech generation, key testing and host-only secret handling while retaining optional Groq compatibility.
+- Uses the cost-focused OpenAI stack: `gpt-5.6-luna`, `gpt-4o-mini-transcribe`, and realtime-optimized `tts-1` with WAV output for Buddy's existing synchronized playback.
+- Adds `LETHAL_AI_OPENAI_API_KEY` as the preferred persistent key source and supports session-only OpenAI keys from the main-menu panel.
+- Sends Luna a Chat Completions-compatible reasoning payload with `reasoning_effort=none`, and keeps screenshots disabled.
+- Expands release secret scanning to reject both Groq and OpenAI-shaped API keys.
+
 ## 1.5.3
 
 - Switches Buddy's stock text model to Groq `openai/gpt-oss-120b` for stronger conversation, instruction following and reasoning.

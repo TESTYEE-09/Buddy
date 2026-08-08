@@ -23,25 +23,36 @@ namespace LethalAICrewmate
                 string name = CleanSingleLine(Plugin.CrewmateName?.Value, 24, "Buddy");
                 changed |= SetIfDifferent(Plugin.CrewmateName, name);
 
-                string model = CleanSingleLine(Plugin.Model?.Value, 128, "openai/gpt-oss-120b");
+                string provider = CleanSingleLine(Plugin.Provider?.Value, 16, "OpenAI");
+                if (!string.Equals(provider, "OpenAI", StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(provider, "Groq", StringComparison.OrdinalIgnoreCase)) provider = "OpenAI";
+                provider = string.Equals(provider, "Groq", StringComparison.OrdinalIgnoreCase) ? "Groq" : "OpenAI";
+                changed |= SetIfDifferent(Plugin.Provider, provider);
+
+                string model = CleanSingleLine(Plugin.Model?.Value, 128,
+                    GroqSecrets.IsOpenAi ? "gpt-5.6-luna" : "openai/gpt-oss-120b");
                 changed |= SetIfDifferent(Plugin.Model, model);
 
-                string stt = CleanSingleLine(Plugin.SttModel?.Value, 128, "whisper-large-v3-turbo");
-                if (stt.IndexOf("whisper", StringComparison.OrdinalIgnoreCase) < 0)
+                string stt = CleanSingleLine(Plugin.SttModel?.Value, 128,
+                    GroqSecrets.IsOpenAi ? "gpt-4o-mini-transcribe" : "whisper-large-v3-turbo");
+                if (!GroqSecrets.IsOpenAi && stt.IndexOf("whisper", StringComparison.OrdinalIgnoreCase) < 0)
                     stt = "whisper-large-v3-turbo";
                 changed |= SetIfDifferent(Plugin.SttModel, stt);
 
-                string tts = CleanSingleLine(Plugin.TtsModel?.Value, 128, "canopylabs/orpheus-v1-english");
-                if (tts.IndexOf("orpheus", StringComparison.OrdinalIgnoreCase) < 0)
+                string tts = CleanSingleLine(Plugin.TtsModel?.Value, 128,
+                    GroqSecrets.IsOpenAi ? "tts-1" : "canopylabs/orpheus-v1-english");
+                if (!GroqSecrets.IsOpenAi && tts.IndexOf("orpheus", StringComparison.OrdinalIgnoreCase) < 0)
                     tts = "canopylabs/orpheus-v1-english";
                 changed |= SetIfDifferent(Plugin.TtsModel, tts);
 
-                string voice = CleanSingleLine(Plugin.TtsVoice?.Value, 16, "austin").ToLowerInvariant();
-                string[] allowedVoices = { "autumn", "diana", "hannah", "austin", "daniel", "troy" };
+                string voice = CleanSingleLine(Plugin.TtsVoice?.Value, 16, GroqSecrets.IsOpenAi ? "alloy" : "austin").ToLowerInvariant();
+                string[] allowedVoices = GroqSecrets.IsOpenAi
+                    ? new[] { "alloy", "echo", "fable", "onyx", "nova", "shimmer" }
+                    : new[] { "autumn", "diana", "hannah", "austin", "daniel", "troy" };
                 bool validVoice = false;
                 foreach (string allowed in allowedVoices)
                     if (voice == allowed) { validVoice = true; break; }
-                if (!validVoice) voice = "austin";
+                if (!validVoice) voice = GroqSecrets.IsOpenAi ? "alloy" : "austin";
                 changed |= SetIfDifferent(Plugin.TtsVoice, voice);
 
                 // Empty is intentionally valid: it disables Orpheus direction tags.
@@ -53,6 +64,12 @@ namespace LethalAICrewmate
                     string trimmedKey = (Plugin.ApiKey.Value ?? "").Trim();
                     if (trimmedKey.Length > 256) trimmedKey = trimmedKey.Substring(0, 256);
                     changed |= SetIfDifferent(Plugin.ApiKey, trimmedKey);
+                }
+                if (Plugin.OpenAiApiKey != null)
+                {
+                    string trimmedKey = (Plugin.OpenAiApiKey.Value ?? "").Trim();
+                    if (trimmedKey.Length > 256) trimmedKey = trimmedKey.Substring(0, 256);
+                    changed |= SetIfDifferent(Plugin.OpenAiApiKey, trimmedKey);
                 }
 
                 changed |= ClampFloat(Plugin.TtsVolume, 0f, 1f, 1f);

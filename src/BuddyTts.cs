@@ -13,7 +13,6 @@ namespace LethalAICrewmate
     /// </summary>
     public static class BuddyTts
     {
-        private const string Endpoint = "https://api.groq.com/openai/v1/audio/speech";
         private const int MaxChars = 200;
 
         private static bool _inFlight;
@@ -72,6 +71,8 @@ namespace LethalAICrewmate
         private static string ResolveTtsModel()
         {
             string m = Plugin.TtsModel?.Value;
+            if (GroqSecrets.IsOpenAi)
+                return string.IsNullOrWhiteSpace(m) ? "tts-1" : m.Trim();
             if (string.IsNullOrWhiteSpace(m) ||
                 m.IndexOf("orpheus", StringComparison.OrdinalIgnoreCase) < 0 ||
                 m.IndexOf("canopy", StringComparison.OrdinalIgnoreCase) < 0)
@@ -112,7 +113,7 @@ namespace LethalAICrewmate
 
             byte[] audioBytes = null;
 
-            using (var uwr = new UnityWebRequest(Endpoint, "POST"))
+            using (var uwr = new UnityWebRequest(GroqSecrets.TtsEndpoint, "POST"))
             {
                 byte[] raw = Encoding.UTF8.GetBytes(body);
                 uwr.uploadHandler = new UploadHandlerRaw(raw);
@@ -127,8 +128,8 @@ namespace LethalAICrewmate
                 if (!string.IsNullOrEmpty(uwr.error) || uwr.responseCode < 200 || uwr.responseCode >= 300)
                 {
                     string response = uwr.downloadHandler?.text ?? "";
-                    Plugin.Log?.LogWarning($"Orpheus TTS HTTP {uwr.responseCode}: {uwr.error} {response}");
-                    if (response.IndexOf("model_terms_required", StringComparison.OrdinalIgnoreCase) >= 0)
+                    Plugin.Log?.LogWarning($"{GroqSecrets.ProviderName} TTS HTTP {uwr.responseCode}: {uwr.error} {response}");
+                    if (!GroqSecrets.IsOpenAi && response.IndexOf("model_terms_required", StringComparison.OrdinalIgnoreCase) >= 0)
                     {
                         _blockedByModelTerms = true;
                         try
@@ -150,13 +151,13 @@ namespace LethalAICrewmate
 
             if (audioBytes == null || audioBytes.Length < 64)
             {
-                Plugin.Log?.LogWarning("Orpheus TTS: empty body");
+                Plugin.Log?.LogWarning(GroqSecrets.ProviderName + " TTS: empty body");
                 yield break;
             }
 
             if (audioBytes[0] == (byte)'{')
             {
-                Plugin.Log?.LogWarning("Orpheus TTS returned JSON: " + Encoding.UTF8.GetString(audioBytes));
+                Plugin.Log?.LogWarning(GroqSecrets.ProviderName + " TTS returned JSON: " + Encoding.UTF8.GetString(audioBytes));
                 yield break;
             }
 

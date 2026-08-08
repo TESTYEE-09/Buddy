@@ -13,7 +13,6 @@ namespace LethalAICrewmate
     /// </summary>
     public static class VoiceCommand
     {
-        private const string GroqSttEndpoint = "https://api.groq.com/openai/v1/audio/transcriptions";
         private const int SampleRate = 16000;
 
         private static bool _recording;
@@ -80,6 +79,8 @@ namespace LethalAICrewmate
         private static string ResolveSttModel()
         {
             string m = Plugin.SttModel?.Value;
+            if (GroqSecrets.IsOpenAi)
+                return string.IsNullOrWhiteSpace(m) ? "gpt-4o-mini-transcribe" : m.Trim();
             if (string.IsNullOrWhiteSpace(m) ||
                 m.IndexOf("whisper", StringComparison.OrdinalIgnoreCase) < 0)
             {
@@ -207,7 +208,7 @@ namespace LethalAICrewmate
             string boundary = "----LethalAIBuddy" + UnityEngine.Random.Range(100000, 999999);
             byte[] body = BuildMultipart(boundary, wav, model);
 
-            using (var uwr = new UnityWebRequest(GroqSttEndpoint, "POST"))
+            using (var uwr = new UnityWebRequest(GroqSecrets.SttEndpoint, "POST"))
             {
                 uwr.uploadHandler = new UploadHandlerRaw(body);
                 uwr.downloadHandler = new DownloadHandlerBuffer();

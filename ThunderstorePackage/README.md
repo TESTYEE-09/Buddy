@@ -1,13 +1,13 @@
 # LethalAICrewmate
 
-Buddy is a friendly AI crewmate for **Lethal Company v81**. He follows the crew, answers chat, obeys simple commands, fetches scrap and can speak with Groq TTS.
+Buddy is a friendly AI crewmate for **Lethal Company v81**. He follows the crew, answers chat, obeys commands, fetches scrap and speaks through the host's selected AI provider.
 
 ## Install
 
 - Install **BepInExPack 5.4.2100**.
 - Install the **same LethalAICrewmate version on every player**.
-- The host adds a Groq API key from the small main-menu panel and presses **Test**.
-- Only the host needs a Groq key.
+- The host adds an OpenAI API key from the small main-menu panel and presses **Test**.
+- Only the host needs the selected provider key.
 
 ## Multiplayer
 
@@ -61,9 +61,10 @@ Groq requires the organization owner to accept the Orpheus model terms once in i
 
 ## Defaults
 
-- Text chat: `openai/gpt-oss-120b`
+- Text chat: `gpt-5.6-luna`
 - Screenshot capture: disabled; stock Buddy is text-only
-- STT: `whisper-large-v3-turbo`
+- STT: `gpt-4o-mini-transcribe`
+- TTS: `tts-1` with `alloy`
 - TTS: `canopylabs/orpheus-v1-english`
 - TTS voice: `austin`
 - TTS direction: `friendly`
