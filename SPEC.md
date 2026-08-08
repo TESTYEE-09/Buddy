@@ -1,89 +1,142 @@
-# LethalAICrewmate — Design Spec
+# LethalAICrewmate — v1.4.0 Design Spec
 
-BepInEx 5 plugin for **Lethal Company v81**. Adds an AI-driven crewmate NPC ("Buddy",
-name configurable) that helps the crew and chats via an LLM on OpenRouter (free models).
+BepInEx 5 plugin for **Lethal Company v81**. Adds a friendly AI-driven crewmate NPC (default name **Buddy**) backed by Groq on the host.
 
-## Core architecture
+## Release architecture
 
-- Single assembly `LethalAICrewmate.dll`, BepInEx 5.4.x plugin, netstandard2.1,
-  Harmony patches only (no asset bundles, no custom network prefabs).
-- **Host-authoritative**: all AI logic, spawning, and LLM calls run on the host only.
-  Clients receive chat lines via Unity Netcode `CustomMessagingManager` named messages
-  (works without prefab registration).
-- Body: spawn a **MaskedPlayerEnemy** via `RoundManager.Instance.SpawnEnemyGameObject`
-  (already a registered NetworkObject → transform sync is free). Immediately neutralize it:
-  - disable its hostile AI behaviours (patch `MaskedPlayerEnemy.Update`/`DoAIInterval`
-    and the attack/kill methods to no-op when the instance is flagged as a crewmate),
-  - hide the mask (`maskTypes` / mask GameObjects disabled), call `SetSuit` so it looks
-    like a normal crewmate,
-  - keep the NavMeshAgent for movement.
-  - Track crewmate instances in a static registry keyed by NetworkObjectId so patches
-    can early-out (`if (CrewmateRegistry.IsCrewmate(__instance)) ...`).
-  - Other enemies must not be distracted into killing it constantly; acceptable v1: leave as-is.
+- One `netstandard2.1` BepInEx assembly: `LethalAICrewmate.dll`.
+- Pinned game references: `LethalCompany.GameLibs.Steam 81.0.5-ngd.0`.
+- Harmony patches only; no custom network prefab or asset bundle required.
+- Buddy uses the game's registered `MaskedPlayerEnemy` NetworkObject, then the mod neutralizes the hostile Masked behaviour and drives a host-side state machine.
+- **Host authoritative:** spawning, movement decisions, commands, item actions, LLM calls, STT and TTS generation happen on the host.
+- **All multiplayer players must install the exact same release.** Buddy does not spawn until every connected remote player completes the exact version/protocol handshake.
 
-## Behaviour (host-side state machine, ticked from the enemy's DoAIInterval patch)
+## Multiplayer protocol
 
-States: `FollowOwner` (default — follow nearest living player at ~3m),
-`Stay`, `ReturnToShip`, `FetchScrap`.
+Protocol version is maintained in `NetMessenger.ProtocolVersion` and must be incremented when a wire format becomes incompatible.
 
-- Commands via in-game text chat (case-insensitive, message starts with the crewmate
-  name or "buddy"): "follow", "stay", "go to ship", "fetch/collect scrap". Commands are
-  also passed to the LLM so it can acknowledge in character.
-- **FetchScrap**: find nearest unheld `GrabbableObject` with `itemProperties.isScrap`,
-  path to it; when within 2m, "pick it up" (host: set `heldByEnemy`-style hidden state —
-  simplest robust approach: disable the item's mesh + colliders via
-  `item.EnablePhysics(false)`, parent visual position to the crewmate each frame
-  host-side and broadcast pickup/drop via the custom message channel so clients mirror
-  the visual attach), walk to the ship, then drop: place at ship position via existing
-  game flow (`item.transform.position`, `item.targetFloorPosition`, mark
-  `isInShipRoom/isInElevator`, call `RoundManager.Instance.CollectNewScrapForPlayer`-style
-  accounting only if a safe public path exists — otherwise just physically deliver it).
-  Keep it simple and crash-proof: any failure → drop item in place and return to Follow.
-- Periodic "observations" (every ~45–90 s, configurable, off by default at 0): the host
-  builds a short game-state summary (planet, time of day, nearby enemies within 20m,
-  nearby scrap count, ship scrap total) and asks the LLM for a one-liner remark.
+Client outbound custom messages:
 
-## Chat / LLM integration
+- `Hello`: local mod version + protocol only.
 
-- Patch the server-side chat entry point (`HUDManager.AddPlayerChatMessageServerRpc`
-  or `AddTextToChatOnServer`) on the **host** to observe player messages.
-- A message triggers an LLM reply if it mentions the crewmate's name OR the player is
-  within `ChatTriggerRange` (default 25 units) of the crewmate and the message ends in "?".
-- LLM call: plain HTTPS POST `https://openrouter.ai/api/v1/chat/completions`,
-  `Authorization: Bearer <key>`, JSON body {model, messages, max_tokens:150}. Use
-  `UnityWebRequest` on a coroutine (run on a persistent plugin MonoBehaviour host object) —
-  **never block the main thread**. Maintain a rolling history of the last ~12 exchanges.
-  System prompt: configurable personality; instruct short (<25 words) in-character replies,
-  and to output `[FOLLOW]/[STAY]/[SHIP]/[FETCH]` tags when the player asked for an action
-  (parse tags out of the reply, execute the command, strip from displayed text).
-- JSON: hand-rolled minimal serializer/parser or Unity JsonUtility with wrapper classes
-  (no Newtonsoft dependency).
-- **Proximity chat display**: host broadcasts the reply text + crewmate position via a
-  named CustomMessagingManager message to all clients; each client shows it with
-  `HUDManager.Instance.AddChatMessage(text, crewmateName)` **only if its local player is
-  within `ChatHearRange`** (default 25 units, 0 = everyone). Dead players always hear it.
-- Rate limiting: min 5 s between LLM calls, one in flight at a time, queue length 3 max.
+Server outbound custom messages:
 
-## Config (BepInEx config file)
+- `Welcome`: host mod version/protocol + compatibility result.
+- `CrewmateSync`: identify/remove the Buddy NetworkObject ID.
+- `ItemAttach`: mirror held scrap visuals.
+- `CrewmateChat`: Buddy name/text/position.
+- `TtsStart` / `TtsChunk`: already-generated, downsampled Buddy speech.
 
-- `OpenRouter.ApiKey` (string, empty default — mod stays silent-but-functional NPC without it)
-- `OpenRouter.Model` (default: `openai/gpt-oss-20b:free`)
-- `Crewmate.Name` (default "Buddy"), `Crewmate.Personality` (system-prompt fragment)
-- `Crewmate.Enabled`, `Crewmate.ChatHearRange`, `Crewmate.ChatTriggerRange`,
-  `Crewmate.ObservationIntervalSeconds` (0=off)
-- Spawn: one crewmate, spawned when the ship lands (`StartOfRound.OnShipLandedMiscEvents`
-  or equivalent post-landing hook), despawned on ship leave. Host only spawns.
+Rules:
 
-## Robustness rules
+- Clients accept Buddy state only from `NetworkManager.ServerClientId` and only after a successful handshake.
+- Host sends custom Buddy state only to compatible clients.
+- Late joiners request current Buddy + held-item state through the handshake path.
+- Item attach messages are retried briefly client-side while spawned objects are still becoming available.
+- If an unmodded or incompatible client is present, Buddy stays disabled. If one joins mid-round, an active Buddy is despawned until the session is compatible again.
+- The Groq API key is never part of a network message.
 
-- Every Harmony patch body wrapped so an exception can never break vanilla flow
-  (try/catch + log).
-- All reflection/API touches of MaskedPlayerEnemy internals via publicized game libs
-  (GameLibs nupkg) — no runtime reflection strings where a compile-time member exists.
-- Mod must be safe when installed only on host (clients just won't see chat/visual attach;
-  body still syncs). Ideally also no-op cleanly when a non-host has it installed.
+## Buddy body and AI
 
-## Deliverables
+Buddy is a `MaskedPlayerEnemy` spawned by the host with `RoundManager.Instance.SpawnEnemyGameObject` when possible.
 
-- `src/` C# project (csproj provided) compiling with zero errors/warnings-as-errors off.
-- Thunderstore package: manifest.json, README.md, icon.png (256x256), CHANGELOG.md.
+Neutralization:
+
+- hide mask visuals,
+- clear kill/chase targets,
+- skip hostile Masked AI/update/kill paths for registered Buddy instances,
+- apply a normal suit,
+- retain the NavMeshAgent for movement,
+- identify Buddy by network ID in `CrewmateRegistry`.
+
+Host state machine:
+
+- `FollowOwner`
+- `Stay`
+- `ReturnToShip`
+- `FetchScrap`
+
+The host polls for a valid landed state and retries spawning. `MultiplayerSpawnGate` also guards both the public spawn request and the internal spawn attempt so event/retry paths cannot bypass compatibility checks.
+
+## Chat and commands
+
+Server chat is observed on the host. Duplicate Harmony observations are deduped by **player ID + message + short time window**.
+
+Deterministic movement commands include:
+
+- `buddy follow`
+- `buddy stay`
+- `buddy go to ship`
+- `buddy fetch scrap`
+
+Questions can trigger a reply when addressed to Buddy, or when the player is within `ChatTriggerRange` and the message ends with `?`.
+
+Explicit terminal actions (`route`, `buy`, `moons`, etc.) are parsed deterministically from player chat. **LLM output is never permitted to execute terminal side effects.** Model-produced `[ROUTE:]`, `[BUY:]` and `[TERMINAL:]` tags are stripped without running them.
+
+## Groq
+
+Host config section:
+
+- `Groq.ApiKey`: empty by default; saved locally.
+- `Groq.Model`: `llama-3.3-70b-versatile` production default.
+- `Groq.SttModel`: `whisper-large-v3-turbo`.
+- `Groq.TtsModel`: `canopylabs/orpheus-v1-english`.
+- `Groq.TtsVoice`: `troy` by default.
+
+The main-menu panel supports **Save / Test / Clear**. Test validates the key against Groq's models endpoint.
+
+Vision is disabled by default. If the host opts in, use a Groq model that supports images, such as `qwen/qwen3.6-27b` while available.
+
+LLM rules:
+
+- live game sensor context is included,
+- the model is instructed not to invent unseen enemies/hazards,
+- replies are short,
+- movement tags can be parsed for Buddy movement only,
+- one request at a time with a bounded queue,
+- no API work blocks the Unity main thread.
+
+## Voice
+
+Host push-to-talk defaults to **V**:
+
+`host microphone -> Groq Whisper -> LLM -> Groq Orpheus -> Buddy speech`
+
+TTS is generated exactly once on the host. The decoded clip is downmixed/downsampled to 16 kHz mono PCM, capped, chunked over reliable NGO named messages, rebuilt on clients and played locally near Buddy. Multiplayer clients do not make Groq calls.
+
+## Scrap
+
+Fetch mode finds valid unheld scrap, moves to it, mirrors a held visual on clients, returns toward the ship and drops it. Failures should fall back to dropping safely and returning to Follow.
+
+## Privacy and security
+
+- No API key default in source or binaries.
+- Never log the API key.
+- Never transmit the API key to clients.
+- Legacy `[OpenRouter] ApiKey` migration only accepts a Groq-shaped `gsk_` key; other provider keys are ignored.
+- Historical private builds contained a shared key; that historical key must be revoked/rotated externally.
+- Generated DLLs and release ZIPs are not tracked in source.
+
+## Release gates
+
+GitHub Actions and `pack.ps1` enforce:
+
+- manifest / csproj / `Plugin.ModVersion` equality,
+- warnings-as-errors compilation,
+- source scan for Groq-key-shaped secrets,
+- compiled DLL scan for Groq-key-shaped secrets,
+- exact Thunderstore package file whitelist,
+- ZIP extraction/validation,
+- SHA-256 checksum generation.
+
+A version tag `vX.Y.Z` must match the package version; tag CI can publish the tested ZIP + checksum as a GitHub Release.
+
+## Shipping package
+
+Exactly:
+
+- `LethalAICrewmate.dll`
+- `manifest.json`
+- `README.md`
+- `CHANGELOG.md`
+- `icon.png`
