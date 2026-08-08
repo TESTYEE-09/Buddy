@@ -1,6 +1,6 @@
 # LethalAICrewmate
 
-Buddy is an AI crewmate for **Lethal Company v81**. He joins the crew as a friendly networked Masked, follows players, answers chat, takes simple orders, fetches scrap and speaks with Groq TTS.
+Buddy is an AI crewmate for **Lethal Company v81**. He joins the crew as a friendly networked Masked, follows players, answers chat, takes simple orders, fetches scrap and speaks through a host-selected AI provider.
 
 ## Install
 
@@ -8,10 +8,10 @@ Buddy is an AI crewmate for **Lethal Company v81**. He joins the crew as a frien
 2. Install the same `LethalAICrewmate` release on **every player** in the lobby.
 3. Put `LethalAICrewmate.dll` in `BepInEx/plugins/LethalAICrewmate/`, or install the release ZIP with a compatible mod manager.
 4. Launch Lethal Company.
-5. The host pastes a Groq API key into the **Lethal AI Crewmate — Groq** box on the main menu, presses **Save**, then **Test**.
+5. The host pastes an OpenAI API key into the **Lethal AI Crewmate - OpenAI** box on the main menu, presses **Save**, then **Test**.
 6. Host a lobby. Buddy appears physically in the ship once every connected player passes the mod compatibility handshake, including while in orbit.
 
-Only the host needs a Groq key. Prefer the host environment variable or the session-only menu field; the key is never sent to other players.
+Only the host needs an API key. Prefer `LETHAL_AI_OPENAI_API_KEY` or the session-only menu field; the key is never sent to other players.
 
 ## Multiplayer safety and sync
 
@@ -78,23 +78,26 @@ Clients do not need a Groq key. Remote microphone audio is captured only while t
 
 v1.4.8 uses the same active microphone as Lethal Company's normal Dissonance voice chat, adaptively amplifies quiet speech, and shows the speaking client when Whisper could not understand a clip. If an explicit override is needed, set `[Voice] InputDevice` to the device's full name or a unique part of it.
 
-## Groq setup
+## AI setup
 
 New installs default to:
 
 ```ini
+[AI]
+Provider = OpenAI
+
 [Groq]
 ApiKey =
-Model = openai/gpt-oss-120b
-SttModel = whisper-large-v3-turbo
-TtsModel = canopylabs/orpheus-v1-english
-TtsVoice = austin
+Model = gpt-5.6-luna
+SttModel = gpt-4o-mini-transcribe
+TtsModel = tts-1
+TtsVoice = alloy
 TtsEnabled = true
-TtsDirection = friendly
+TtsDirection =
 TtsVolume = 1
 ```
 
-For a persistent key without writing it to the BepInEx config, set the host-machine environment variable `LETHAL_AI_GROQ_API_KEY` before launching Steam. Keys entered through the main-menu panel are session-only by default.
+For a persistent key without writing it to the BepInEx config, set `LETHAL_AI_OPENAI_API_KEY` on the host before launching Steam. Keys entered through the main-menu panel are session-only by default. The older Groq provider remains selectable with `[AI] Provider = Groq` and `LETHAL_AI_GROQ_API_KEY`.
 
 Screenshot capture is disabled in v1.5.3. Stock Buddy is text-only and does not capture the host screen.
 
@@ -104,7 +107,7 @@ Enabled = false
 Model = qwen/qwen3.6-27b
 ```
 
-The main-menu **Test** button validates the host key against Groq before a lobby starts.
+The main-menu **Test** button validates the selected provider key before a lobby starts.
 
 Orpheus TTS also requires the Groq organization owner to accept that model's terms once. If Groq returns `model_terms_required`, open [the Orpheus playground](https://console.groq.com/playground?model=canopylabs%2Forpheus-v1-english), accept the terms, then restart the game. Text replies continue working without TTS.
 

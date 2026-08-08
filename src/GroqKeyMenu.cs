@@ -12,7 +12,6 @@ namespace LethalAICrewmate
     /// </summary>
     public sealed class GroqKeyMenu : MonoBehaviour
     {
-        private const string ModelsEndpoint = "https://api.groq.com/openai/v1/models";
         private const float PanelWidth = 390f;
         private const float PanelHeight = 166f;
 
@@ -55,7 +54,7 @@ namespace LethalAICrewmate
             GUI.Box(new Rect(x, y, PanelWidth, PanelHeight), GUIContent.none);
             GUILayout.BeginArea(new Rect(x + 14f, y + 11f, PanelWidth - 28f, PanelHeight - 22f));
 
-            GUILayout.Label("Lethal AI Crewmate — Groq");
+            GUILayout.Label("Lethal AI Crewmate - " + GroqSecrets.ProviderName);
             GUILayout.Label("API key (host only — never shared with clients)");
 
             _keyBuffer = GUILayout.PasswordField(_keyBuffer ?? "", '*', GUILayout.Height(26f));
@@ -81,7 +80,7 @@ namespace LethalAICrewmate
             else if (GroqSecrets.HasKey)
                 line = "Key available to this host only.";
             else
-                line = "Paste a Groq key, Save, then Test.";
+                line = "Paste a " + GroqSecrets.ProviderName + " key, Save, then Test.";
 
             GUILayout.Label(line);
             GUILayout.EndArea();
@@ -97,20 +96,20 @@ namespace LethalAICrewmate
             string key = NormalizeBuffer();
             if (string.IsNullOrEmpty(key))
             {
-                if (showStatus) SetStatus("Paste a Groq key first.");
+                if (showStatus) SetStatus("Paste a " + GroqSecrets.ProviderName + " key first.");
                 return false;
             }
 
             if (!GroqSecrets.SetFromMenu(key))
             {
-                if (showStatus) SetStatus("Invalid Groq key.");
+                if (showStatus) SetStatus("Invalid " + GroqSecrets.ProviderName + " key.");
                 return false;
             }
             _keyBuffer = key;
             if (showStatus) SetStatus(Plugin.PersistApiKey?.Value == true
-                ? "Groq key saved locally."
-                : "Groq key saved for this game session only.");
-            Plugin.Log?.LogInfo("Groq API key updated from the main menu without logging its value.");
+                ? GroqSecrets.ProviderName + " key saved locally."
+                : GroqSecrets.ProviderName + " key saved for this game session only.");
+            Plugin.Log?.LogInfo(GroqSecrets.ProviderName + " API key updated from the main menu without logging its value.");
             return true;
         }
 
@@ -118,8 +117,8 @@ namespace LethalAICrewmate
         {
             _keyBuffer = "";
             GroqSecrets.ClearMenuKey();
-            SetStatus("Groq key cleared.");
-            Plugin.Log?.LogInfo("Groq API key cleared from local config.");
+            SetStatus(GroqSecrets.ProviderName + " key cleared.");
+            Plugin.Log?.LogInfo(GroqSecrets.ProviderName + " API key cleared from local config.");
         }
 
         private void BeginTest()
@@ -127,7 +126,7 @@ namespace LethalAICrewmate
             if (_testing) return;
             if (!SaveKey(showStatus: false))
             {
-                SetStatus("Paste a Groq key first.");
+                SetStatus("Paste a " + GroqSecrets.ProviderName + " key first.");
                 return;
             }
             if (Plugin.Host == null)
@@ -137,13 +136,13 @@ namespace LethalAICrewmate
             }
 
             _testing = true;
-            SetStatus("Testing Groq key...");
+            SetStatus("Testing " + GroqSecrets.ProviderName + " key...");
             Plugin.Host.StartCoroutine(TestKey(NormalizeBuffer()));
         }
 
         private IEnumerator TestKey(string key)
         {
-            using (var request = UnityWebRequest.Get(ModelsEndpoint))
+            using (var request = UnityWebRequest.Get(GroqSecrets.ModelsEndpoint))
             {
                 request.SetRequestHeader("Authorization", "Bearer " + key);
                 request.SetRequestHeader("Content-Type", "application/json");
@@ -152,13 +151,13 @@ namespace LethalAICrewmate
 
                 bool ok = string.IsNullOrEmpty(request.error) && request.responseCode >= 200 && request.responseCode < 300;
                 if (ok)
-                    SetStatus("Groq key works.");
+                    SetStatus(GroqSecrets.ProviderName + " key works.");
                 else if (request.responseCode == 401 || request.responseCode == 403)
-                    SetStatus("Groq rejected this key.");
+                    SetStatus(GroqSecrets.ProviderName + " rejected this key.");
                 else if (request.responseCode > 0)
-                    SetStatus("Groq test failed (HTTP " + request.responseCode + ").");
+                    SetStatus(GroqSecrets.ProviderName + " test failed (HTTP " + request.responseCode + ").");
                 else
-                    SetStatus("Could not reach Groq. Check internet.");
+                    SetStatus("Could not reach " + GroqSecrets.ProviderName + ". Check internet.");
             }
             _testing = false;
         }

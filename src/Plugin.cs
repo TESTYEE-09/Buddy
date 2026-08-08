@@ -12,12 +12,14 @@ namespace LethalAICrewmate
     {
         public const string ModGuid = "com.lethalaicrewmate.buddy";
         public const string ModName = "LethalAICrewmate";
-        public const string ModVersion = "1.5.3";
+        public const string ModVersion = "1.6.0";
 
         internal static Plugin Instance;
         internal static ManualLogSource Log;
 
         internal static ConfigEntry<string> ApiKey;
+        internal static ConfigEntry<string> OpenAiApiKey;
+        internal static ConfigEntry<string> Provider;
         internal static ConfigEntry<bool> PersistApiKey;
         internal static ConfigEntry<string> Model;
         internal static ConfigEntry<string> SttModel;
@@ -50,21 +52,25 @@ namespace LethalAICrewmate
             Instance = this;
             Log = Logger;
 
+            Provider = Config.Bind("AI", "Provider", "OpenAI",
+                "AI API provider: OpenAI or Groq. The host alone sends requests and holds the selected provider key.");
             ApiKey = Config.Bind("Groq", "ApiKey", "",
                 "Legacy plaintext Groq API key fallback. Prefer the LETHAL_AI_GROQ_API_KEY environment variable or a session-only key entered in the main menu.");
+            OpenAiApiKey = Config.Bind("OpenAI", "ApiKey", "",
+                "Legacy plaintext OpenAI API key fallback. Prefer LETHAL_AI_OPENAI_API_KEY or a session-only main-menu key.");
             PersistApiKey = Config.Bind("Security", "PersistApiKey", false,
-                "Write a key entered in the menu to the plaintext BepInEx config. Disabled by default; use LETHAL_AI_GROQ_API_KEY for persistent secure setup.");
-            Model = Config.Bind("Groq", "Model", "openai/gpt-oss-120b",
-                "Groq text chat model. Stock Buddy uses openai/gpt-oss-120b for stronger conversation and reasoning.");
-            SttModel = Config.Bind("Groq", "SttModel", "whisper-large-v3-turbo",
-                "Groq speech-to-text model. Recommended: whisper-large-v3-turbo.");
-            TtsModel = Config.Bind("Groq", "TtsModel", "canopylabs/orpheus-v1-english",
-                "Groq text-to-speech model. Orpheus is optional; chat keeps working if TTS is unavailable.");
-            TtsVoice = Config.Bind("Groq", "TtsVoice", "austin",
-                "Orpheus voice: autumn, diana, hannah (F) / austin, daniel, troy (M). Austin is the brighter stock Buddy voice.");
+                "Write a key entered in the menu to plaintext config. Disabled by default; prefer the selected provider's environment variable.");
+            Model = Config.Bind("Groq", "Model", "gpt-5.6-luna",
+                "Selected provider's text model. OpenAI stock: gpt-5.6-luna.");
+            SttModel = Config.Bind("Groq", "SttModel", "gpt-4o-mini-transcribe",
+                "Selected provider's speech-to-text model. OpenAI stock: gpt-4o-mini-transcribe.");
+            TtsModel = Config.Bind("Groq", "TtsModel", "tts-1",
+                "Selected provider's text-to-speech model. OpenAI stock: tts-1.");
+            TtsVoice = Config.Bind("Groq", "TtsVoice", "alloy",
+                "Selected provider's TTS voice. OpenAI stock: alloy; Groq Orpheus supports its named voices.");
             TtsEnabled = Config.Bind("Groq", "TtsEnabled", true,
                 "Generate Buddy speech on the host and replicate it to compatible multiplayer clients.");
-            TtsDirection = Config.Bind("Groq", "TtsDirection", "friendly",
+            TtsDirection = Config.Bind("Groq", "TtsDirection", "",
                 "Optional Orpheus vocal direction (no brackets). Stock Buddy uses friendly for a lighter conversational delivery; empty = fully natural.");
             TtsVolume = Config.Bind("Groq", "TtsVolume", 1f,
                 "Buddy voice volume 0–1. Speech is normalized once with a soft limiter before playback and replication.");
@@ -107,9 +113,9 @@ namespace LethalAICrewmate
                 "Seconds between unsolicited LLM observations (0 = off).");
 
             VoiceEnabled = Config.Bind("Voice", "Enabled", true,
-                "Push-to-talk for every modded player. Clients relay bounded mic audio to the host; only the host uses the Groq Whisper API key.");
+                "Push-to-talk for every modded player. Clients relay bounded mic audio to the host; only the host calls the selected transcription provider.");
             AllowRemoteVoice = Config.Bind("Security", "AllowRemoteVoice", true,
-                "Allow matching remote players to upload bounded push-to-talk audio to the host for Groq transcription. Disable this in public lobbies.");
+                "Allow matching remote players to upload bounded push-to-talk audio to the host for transcription. Disable this in public lobbies.");
             VoiceKey = Config.Bind("Voice", "PushToTalkKey", KeyCode.B,
                 "Hold this key to record mic audio for Buddy. B avoids the game's common V push-to-talk binding; on clients the clip is relayed to the host.");
             VoiceAlternateKey = Config.Bind("Voice", "AlternatePushToTalkKey", KeyCode.V,
@@ -139,10 +145,20 @@ namespace LethalAICrewmate
                 // Self-heal obviously crossed audio/chat model config values from older builds.
                 try
                 {
+                    if (ConfigRevision.Value < 3)
+                    {
+                        Provider.Value = "OpenAI";
+                        Model.Value = "gpt-5.6-luna";
+                        SttModel.Value = "gpt-4o-mini-transcribe";
+                        TtsModel.Value = "tts-1";
+                        TtsVoice.Value = "alloy";
+                        TtsDirection.Value = "";
+                        ConfigRevision.Value = 3;
+                    }
                     if (string.IsNullOrWhiteSpace(Model.Value) ||
                         Model.Value.IndexOf("whisper", StringComparison.OrdinalIgnoreCase) >= 0 ||
                         Model.Value.IndexOf("orpheus", StringComparison.OrdinalIgnoreCase) >= 0)
-                        Model.Value = "openai/gpt-oss-120b";
+                        Model.Value = GroqSecrets.IsOpenAi ? "gpt-5.6-luna" : "openai/gpt-oss-120b";
                     if (string.Equals(Model.Value?.Trim(), "llama-3.3-70b-versatile", StringComparison.OrdinalIgnoreCase))
                         Model.Value = "openai/gpt-oss-120b";
                     if (string.IsNullOrWhiteSpace(VisionModel.Value))
@@ -169,10 +185,10 @@ namespace LethalAICrewmate
                     // Stock v1.5.3 is deliberately text-only: never capture the host screen,
                     // including when an older config previously opted into vision.
                     VisionEnabled.Value = false;
-                    if (SttModel.Value == null || SttModel.Value.IndexOf("whisper", StringComparison.OrdinalIgnoreCase) < 0)
-                        SttModel.Value = "whisper-large-v3-turbo";
-                    if (TtsModel.Value == null || TtsModel.Value.IndexOf("orpheus", StringComparison.OrdinalIgnoreCase) < 0)
-                        TtsModel.Value = "canopylabs/orpheus-v1-english";
+                    if (string.IsNullOrWhiteSpace(SttModel.Value))
+                        SttModel.Value = GroqSecrets.IsOpenAi ? "gpt-4o-mini-transcribe" : "whisper-large-v3-turbo";
+                    if (string.IsNullOrWhiteSpace(TtsModel.Value))
+                        TtsModel.Value = GroqSecrets.IsOpenAi ? "tts-1" : "canopylabs/orpheus-v1-english";
                     Config.Save();
                 }
                 catch (Exception ex)
@@ -183,7 +199,7 @@ namespace LethalAICrewmate
             BuddyAudioTuning.MigrateLegacyConfig();
             ConfigSafety.NormalizeOnce();
 
-                Log.LogInfo($"{ModName} v{ModVersion} loaded (chat={Model.Value}, stt={SttModel.Value}, tts={TtsModel.Value}).");
+                Log.LogInfo($"{ModName} v{ModVersion} loaded (provider={GroqSecrets.ProviderName}, chat={Model.Value}, stt={SttModel.Value}, tts={TtsModel.Value}).");
             }
             catch (Exception ex)
             {

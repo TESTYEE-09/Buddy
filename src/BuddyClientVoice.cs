@@ -21,7 +21,6 @@ namespace LethalAICrewmate
         private const string MsgVoiceStart = "LethalAICrewmate_VoiceStart";
         private const string MsgVoiceChunk = "LethalAICrewmate_VoiceChunk";
         private const string MsgVoiceHint = "LethalAICrewmate_VoiceHint";
-        private const string GroqSttEndpoint = "https://api.groq.com/openai/v1/audio/transcriptions";
         private const int SampleRate = 16000;
         private const int MaxVoiceBytes = 300 * 1024;
         private const int VoiceChunkBytes = 7000;
@@ -453,7 +452,7 @@ namespace LethalAICrewmate
                 string boundary = "----LethalAIRemote" + UnityEngine.Random.Range(100000, 999999);
                 byte[] body = BuildMultipart(boundary, request.Wav, model);
 
-                using (var uwr = new UnityWebRequest(GroqSttEndpoint, "POST"))
+                using (var uwr = new UnityWebRequest(GroqSecrets.SttEndpoint, "POST"))
                 {
                     uwr.uploadHandler = new UploadHandlerRaw(body);
                     uwr.downloadHandler = new DownloadHandlerBuffer();
@@ -594,6 +593,8 @@ namespace LethalAICrewmate
         private static string ResolveSttModel()
         {
             string model = Plugin.SttModel?.Value;
+            if (GroqSecrets.IsOpenAi)
+                return string.IsNullOrWhiteSpace(model) ? "gpt-4o-mini-transcribe" : model.Trim();
             if (string.IsNullOrWhiteSpace(model) ||
                 model.IndexOf("whisper", StringComparison.OrdinalIgnoreCase) < 0)
                 return "whisper-large-v3-turbo";
