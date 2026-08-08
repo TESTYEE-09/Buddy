@@ -85,6 +85,10 @@ namespace LethalAICrewmate
 
                 if (nm.IsServer)
                 {
+                    // Tell the host once they are in a public lobby that remote voice is off,
+                    // even before any stranger tries to speak.
+                    if (Plugin.RemoteVoiceInPublicLobbies?.Value == false && LobbySafety.IsPublicLobby())
+                        WarnPublicLobbyVoiceOnce();
                     ExpireHostTransfers();
                     StartNextHostTranscription();
                 }
@@ -109,6 +113,7 @@ namespace LethalAICrewmate
             _hostBusy = false;
             _clientRecording = false;
             _clientSending = false;
+            _publicVoiceWarned = false;
             if (_clientClip != null)
             {
                 AudioClip old = _clientClip;
@@ -328,6 +333,22 @@ namespace LethalAICrewmate
             }
         }
 
+        private static bool _publicVoiceWarned;
+
+        private static void WarnPublicLobbyVoiceOnce()
+        {
+            if (_publicVoiceWarned) return;
+            _publicVoiceWarned = true;
+            Plugin.Log?.LogWarning("Public lobby detected: remote Buddy push-to-talk is disabled (Security.RemoteVoiceInPublicLobbies=false). Friends lobbies are unaffected.");
+            try
+            {
+                HUDManager.Instance?.DisplayTip("Buddy",
+                    "Public lobby: remote Buddy voice is disabled to protect the host's API budget and privacy. Set [Security] RemoteVoiceInPublicLobbies = true to allow it.",
+                    false, false, "BuddyPublicVoiceTip");
+            }
+            catch { /* optional */ }
+        }
+
         private static void OnVoiceStart(ulong senderId, FastBufferReader reader)
         {
             try
@@ -338,6 +359,14 @@ namespace LethalAICrewmate
                     return;
                 if (!NetMessenger.IsCompatibleClient(senderId))
                     return;
+                // Public-lobby hardening: remote push-to-talk costs the host API budget and
+                // processes strangers' audio, so it is rejected in public lobbies unless the
+                // host explicitly opts in. Friends/invite-only lobbies are unaffected.
+                if (Plugin.RemoteVoiceInPublicLobbies?.Value == false && LobbySafety.IsPublicLobby())
+                {
+                    WarnPublicLobbyVoiceOnce();
+                    return;
+                }
 
                 reader.ReadValueSafe(out ulong transferId);
                 reader.ReadValueSafe(out int totalBytes);

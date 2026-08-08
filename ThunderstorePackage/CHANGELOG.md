@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.4.2
+
+- Public-lobby hardening: remote push-to-talk voice is rejected by default in public Steam lobbies, protecting the host's API budget and keeping strangers' audio away from the speech service. Friends/invite-only lobbies are unaffected; hosts can opt in with `[Security] RemoteVoiceInPublicLobbies = true`. The host gets an in-game notice when the lobby is public.
+
 ## 2.4.1
 
 - Commands with real side effects (`buy`, `route`, `moons`, `store`, `credits`, terminal actions) now only run when Buddy is actually addressed, so plain chat like "buy 3 flashlights" or "route titan" can no longer spend credits or move the ship by itself. Pleaded spawn requests stay available without addressing and remain plea/item/cap sandboxed.

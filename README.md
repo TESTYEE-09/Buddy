@@ -140,9 +140,10 @@ InputDevice =
 [Security]
 PersistApiKey = false
 AllowRemoteVoice = true
+RemoteVoiceInPublicLobbies = false
 ```
 
-`AllowRemoteVoice = true` lets matching friends send tightly bounded PTT audio to the host; turn it off in public lobbies. `PersistApiKey` is retained only for old config compatibility: menu keys are now saved in Windows Credential Manager, not in plaintext config.
+`AllowRemoteVoice = true` lets matching friends send tightly bounded PTT audio to the host. In public Steam lobbies remote voice is rejected by default (`RemoteVoiceInPublicLobbies = false`) so strangers cannot consume the host's API budget or send audio to the speech service; set it to `true` to allow remote voice everywhere. `PersistApiKey` is retained only for old config compatibility: menu keys are now saved in Windows Credential Manager, not in plaintext config.
 
 `ChatHearRange = 0` makes Buddy chat/voice global. `ChatTriggerRange = 0` makes nearby unaddressed questions range-unlimited; explicit client Buddy PTT already works at any distance.
 
@@ -154,7 +155,7 @@ The old 70m reply default automatically migrates to global delivery. Other custo
 - The key is never included in multiplayer messages.
 - Host push-to-talk audio goes directly to Groq when the host uses the Buddy voice key.
 - Client push-to-talk audio is relayed only while that client holds the Buddy voice key; the host can disable remote audio for public lobbies.
-- v1.5.3 does not capture or transmit host screenshots.
+- Host screenshots are captured only when `[Vision] Enabled = true` (default off) and only for explicit visual questions; they are never transmitted to clients.
 - Generated Buddy speech is sent from the host to compatible clients as downsampled PCM audio.
 
 ## Build
