@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Text.RegularExpressions;
+using GameNetcodeStuff;
+using Unity.Netcode;
 using UnityEngine;
 
 namespace LethalAICrewmate
@@ -10,6 +13,10 @@ namespace LethalAICrewmate
     /// </summary>
     public static class TerminalBuddy
     {
+        private const int MaxSpawnedObjectsPerRound = 12;
+        private static int _spawnRoundSeed = int.MinValue;
+        private static int _spawnedThisRound;
+
         public static bool IsInSpace()
         {
             try
@@ -24,7 +31,7 @@ namespace LethalAICrewmate
             }
         }
 
-        public static string HandleChatCommand(string message)
+        public static string HandleChatCommand(string message, int requestingPlayerId = -1)
         {
             if (string.IsNullOrWhiteSpace(message)) return null;
             if (!CrewmateSpawner.IsHost()) return null;
@@ -40,6 +47,9 @@ namespace LethalAICrewmate
 
             try
             {
+                if (ShipCommandParsing.TryParsePoliteSpawn(lower, out string spawnItem, out int spawnQuantity))
+                    return SpawnItemInFront(spawnItem, spawnQuantity, requestingPlayerId);
+
                 if (lower.StartsWith("route ") || lower.StartsWith("moon ") ||
                     (lower.StartsWith("go to ") && !lower.Contains("ship") && !lower.Contains("home") &&
                      !lower.Contains("forward") && !lower.Contains("ahead")))
@@ -94,6 +104,97 @@ namespace LethalAICrewmate
             }
 
             return null;
+        }
+
+        private static string SpawnItemInFront(string query, int quantity, int requestingPlayerId)
+        {
+            if (!CrewmateSpawner.IsHost()) return "Only the host can spawn objects.";
+            var sor = StartOfRound.Instance;
+            var round = RoundManager.Instance;
+            if (sor?.allItemsList?.itemsList == null || round == null)
+                return "Object list isn't ready yet.";
+
+            int seed = sor.randomMapSeed;
+            if (_spawnRoundSeed != seed)
+            {
+                _spawnRoundSeed = seed;
+                _spawnedThisRound = 0;
+            }
+            quantity = Mathf.Clamp(quantity, 1, 3);
+            if (_spawnedThisRound + quantity > MaxSpawnedObjectsPerRound)
+                return $"Spawn limit is {MaxSpawnedObjectsPerRound} objects per round. Even magic has paperwork.";
+
+            PlayerControllerB player = ResolvePlayer(requestingPlayerId);
+            if (player == null) return "I can't find who asked for that.";
+
+            string wanted = NormalizeItemName(query);
+            Item found = null;
+            foreach (Item candidate in sor.allItemsList.itemsList)
+            {
+                if (candidate == null || candidate.spawnPrefab == null || string.IsNullOrWhiteSpace(candidate.itemName)) continue;
+                string candidateName = NormalizeItemName(candidate.itemName);
+                if (candidateName == wanted || candidateName.Contains(wanted) || wanted.Contains(candidateName))
+                {
+                    found = candidate;
+                    break;
+                }
+            }
+            if (found == null) return $"I can't safely spawn '{query}'. Use the exact item name.";
+
+            Vector3 forward = player.transform.forward;
+            forward.y = 0f;
+            if (forward.sqrMagnitude < 0.01f) forward = Vector3.forward;
+            forward.Normalize();
+            Vector3 basePosition = player.transform.position + forward * 1.8f + Vector3.up * 0.35f;
+
+            int spawned = 0;
+            for (int i = 0; i < quantity; i++)
+            {
+                try
+                {
+                    Vector3 side = player.transform.right * ((i - (quantity - 1) * 0.5f) * 0.55f);
+                    GameObject go = UnityEngine.Object.Instantiate(found.spawnPrefab, basePosition + side,
+                        Quaternion.identity, round.spawnedScrapContainer);
+                    var grabbable = go.GetComponent<GrabbableObject>();
+                    var networkObject = go.GetComponent<NetworkObject>();
+                    if (grabbable == null || networkObject == null)
+                    {
+                        UnityEngine.Object.Destroy(go);
+                        continue;
+                    }
+                    grabbable.fallTime = 0f;
+                    networkObject.Spawn(true);
+                    spawned++;
+                }
+                catch (Exception ex)
+                {
+                    Plugin.Log?.LogWarning($"Polite item spawn failed for '{found.itemName}': {ex.Message}");
+                }
+            }
+
+            _spawnedThisRound += spawned;
+            if (spawned == 0) return $"Couldn't safely spawn {found.itemName}.";
+            return $"Spawned {spawned} {found.itemName} in front of {player.playerUsername}. Politeness remains alarmingly effective.";
+        }
+
+        private static PlayerControllerB ResolvePlayer(int playerId)
+        {
+            var players = StartOfRound.Instance?.allPlayerScripts;
+            if (players == null) return null;
+            foreach (var player in players)
+                if (player != null && (int)player.playerClientId == playerId) return player;
+            return playerId >= 0 && playerId < players.Length ? players[playerId] : null;
+        }
+
+        private static string NormalizeItemName(string value)
+        {
+            string clean = (value ?? "").ToLowerInvariant().Trim();
+            clean = Regex.Replace(clean, @"^(?:an?|the|some)\s+", "", RegexOptions.IgnoreCase);
+            clean = Regex.Replace(clean, @"\b(?:item|object|thing)\b", "", RegexOptions.IgnoreCase);
+            clean = Regex.Replace(clean, @"[^a-z0-9]+", "");
+            if (clean.Length > 3 && clean.EndsWith("s", StringComparison.Ordinal))
+                clean = clean.Substring(0, clean.Length - 1);
+            return clean;
         }
 
         public static string ApplyLlmTags(string display, ref string cleanedDisplay)

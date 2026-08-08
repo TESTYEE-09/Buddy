@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using UnityEngine;
@@ -14,9 +15,17 @@ namespace LethalAICrewmate
     public static class BuddyTts
     {
         private const int MaxChars = 200;
+        private const int MaxQueuedLines = 3;
 
         private static bool _inFlight;
         private static bool _blockedByModelTerms;
+        private static readonly Queue<SpeechRequest> Pending = new Queue<SpeechRequest>();
+
+        private struct SpeechRequest
+        {
+            public string Text;
+            public Vector3 Position;
+        }
 
         public static void Speak(string text, Vector3 worldPos)
         {
@@ -28,18 +37,22 @@ namespace LethalAICrewmate
                 if (string.IsNullOrWhiteSpace(text)) return;
                 if (!CrewmateSpawner.IsHost()) return;
                 if (Plugin.Host == null) return;
-                if (_inFlight)
-                {
-                    Plugin.Log?.LogInfo("TTS busy; dropping line.");
-                    return;
-                }
-
                 string cleaned = SanitizeForTts(text);
                 if (string.IsNullOrEmpty(cleaned)) return;
                 if (cleaned.Length > MaxChars)
                     cleaned = cleaned.Substring(0, MaxChars - 1).TrimEnd() + ".";
 
-                Plugin.Host.StartCoroutine(RequestAndPlay(cleaned, worldPos));
+                if (Pending.Count >= MaxQueuedLines)
+                {
+                    Plugin.Log?.LogInfo("TTS queue full; dropping oldest stale line.");
+                    Pending.Dequeue();
+                }
+                Pending.Enqueue(new SpeechRequest { Text = cleaned, Position = worldPos });
+                if (!_inFlight)
+                {
+                    _inFlight = true;
+                    Plugin.Host.StartCoroutine(ProcessQueue());
+                }
             }
             catch (Exception ex)
             {
@@ -72,7 +85,7 @@ namespace LethalAICrewmate
         {
             string m = Plugin.TtsModel?.Value;
             if (GroqSecrets.IsOpenAi)
-                return string.IsNullOrWhiteSpace(m) ? "tts-1" : m.Trim();
+                return string.IsNullOrWhiteSpace(m) ? "gpt-4o-mini-tts" : m.Trim();
             if (string.IsNullOrWhiteSpace(m) ||
                 m.IndexOf("orpheus", StringComparison.OrdinalIgnoreCase) < 0 ||
                 m.IndexOf("canopy", StringComparison.OrdinalIgnoreCase) < 0)
@@ -87,12 +100,17 @@ namespace LethalAICrewmate
             return m.Trim();
         }
 
-        private static IEnumerator RequestAndPlay(string input, Vector3 worldPos)
+        private static IEnumerator ProcessQueue()
         {
-            _inFlight = true;
             try
             {
-                yield return RequestAndPlayCore(input, worldPos);
+                while (Pending.Count > 0)
+                {
+                    SpeechRequest request = Pending.Dequeue();
+                    yield return RequestAndPlayCore(request.Text, request.Position);
+                    while (BuddyNetworkAudio.IsPlaying)
+                        yield return null;
+                }
             }
             finally
             {
@@ -103,13 +121,16 @@ namespace LethalAICrewmate
         private static IEnumerator RequestAndPlayCore(string input, Vector3 worldPos)
         {
             string model = ResolveTtsModel();
-            string voice = Plugin.TtsVoice?.Value ?? "troy";
-            if (string.IsNullOrWhiteSpace(voice)) voice = "troy";
+            string voice = Plugin.TtsVoice?.Value ?? (GroqSecrets.IsOpenAi ? "ash" : "troy");
+            if (string.IsNullOrWhiteSpace(voice)) voice = GroqSecrets.IsOpenAi ? "ash" : "troy";
 
             string body = "{\"model\":\"" + LlmClient.Escape(model) +
                           "\",\"voice\":\"" + LlmClient.Escape(voice) +
                           "\",\"input\":\"" + LlmClient.Escape(input) +
-                          "\",\"response_format\":\"wav\"}";
+                          "\",\"response_format\":\"wav\"" +
+                          (GroqSecrets.IsOpenAi
+                              ? ",\"instructions\":\"Perform this as a natural, expressive goofy male coworker in a dangerous workplace. Sound warm, lively, cheeky, and conversational with varied emphasis and timing. React to the line: dry amusement for banter, alert urgency for danger, relief after success, and restrained concern for bad news. Never sound like an announcer, assistant, cartoon, or forced comedian. Do not rush or change the words.\""
+                              : "") + "}";
 
             byte[] audioBytes = null;
 
@@ -120,7 +141,7 @@ namespace LethalAICrewmate
                 uwr.downloadHandler = new DownloadHandlerBuffer();
                 uwr.SetRequestHeader("Content-Type", "application/json");
                 uwr.SetRequestHeader("Authorization", "Bearer " + GroqSecrets.CurrentKey);
-                uwr.timeout = 30;
+                uwr.timeout = 15;
 
                 Plugin.Log?.LogInfo($"Buddy TTS request started model={model} voice={voice} chars={input.Length}.");
                 yield return uwr.SendWebRequest();

@@ -1,5 +1,87 @@
 # Changelog
 
+## 2.2.4
+
+- Switches OpenAI speech transcription to the requested `gpt-live-transcribe` model for both native Realtime voice sessions and the non-native OpenAI STT path.
+- Removes the old migration that silently converted `gpt-live-transcribe` back to `gpt-realtime-whisper`.
+
+## 2.2.3
+
+- Natural pleaded requests now work: "Can I please have a flashlight? I'm begging you" is treated as the same bounded, validated item-spawn request as "please spawn a flashlight".
+- Prevents tool-turn preambles from playing before Buddy receives the real command result, so he no longer promises an item and then contradicts himself.
+- Raises native Ash Realtime voice output slightly with a soft ceiling.
+- Reworks Buddy's personality into dry, practical coworker humour and removes forced chaotic/internet-style jokes.
+
+## 2.2.2
+
+- Fixes a native Realtime cancellation race: pressing push-to-talk between completed responses no longer disconnects Buddy with "Cancellation failed: no active response found".
+- Keeps Ash voice and makes spoken responses tighter: normally 3-12 words, led by danger, scrap, route, or the next useful crew action.
+
+## 2.2.1
+
+- Fixes OpenAI immediately rejecting native Realtime voice sessions by supplying the required 24 kHz output PCM rate.
+- Uses Ash voice with `gpt-realtime-whisper`, far-field noise reduction, unlimited output tokens and low reasoning.
+- Keeps turn detection explicit for Buddy's hold-to-talk controls and shows the actual API error in-game instead of the generic disconnected message.
+
+## 2.2.0
+
+- Rebuilds OpenAI push-to-talk as genuine `gpt-realtime-2.1-mini` speech-to-speech instead of a text-only Realtime request followed by separate TTS.
+- Keeps one authenticated host WebSocket session, sends committed 24 kHz PCM turns, and starts playing native streamed PCM output in bounded chunks with the Ash voice.
+- Gives host and remote players the same Realtime path; remote audio remains bounded, validated and host-authoritative.
+- Adds native input transcripts, synchronized Buddy audio/chat, session reconnect handling and clean disconnect cancellation.
+- Adds a Realtime function tool backed by the existing deterministic host command parser, so movement, scouting, scrap, purchases, ship/facility controls, status and polite spawning execute before Buddy reports success.
+- Keeps Luna Fast mode for text chat while native voice uses the dedicated low-cost Realtime mini model.
+
+## 2.1.0
+
+- Moves Luna Responses requests to the OpenAI Fast service tier while keeping low reasoning and short replies.
+- Switches stock OpenAI speech to `gpt-realtime-whisper` and `gpt-4o-mini-tts` with the natural-speed `cedar` voice.
+- Makes Buddy's writing and voice performance more expressive, reactive and situationally funny without lengthening routine answers.
+- Fixes remote-player replies being silently lost while Buddy was already speaking by queueing a small number of speech lines in order.
+- Refocuses Buddy on safe scrap recovery, enemy avoidance, exits and concrete next actions instead of unrelated trivia or generic chatter.
+- Fixes ordinary real-world weather questions being mistaken for the current moon-weather status command.
+- Makes polite item spawning accept natural articles and common plurals while preserving host authority, prefab validation and hard quantity limits.
+
+## 2.0.0
+
+- Promotes the OpenAI-first release to v2 with Luna low reasoning, low verbosity, a purpose-built coworker prompt and deterministic host-side commands.
+- Adds a deliberately silly but bounded polite item spawner: a player must explicitly say please or beg, only validated grabbable game items can spawn, quantities are capped at 3 and each round is capped at 12.
+- Places spawned items in front of the requesting host or friend using server network authority; enemies, arbitrary prefabs, hazards and unknown names are rejected.
+- Grounds the prompt in Version 80 official notes, current wiki mechanics and practical community guidance, including the new creatures and changed moon assumptions.
+- Documents the exact movement, terminal, ship, facility and spawn contracts with strict untrusted-input and prompt-injection boundaries.
+
+## 1.8.0
+
+- Rebuilds Buddy's system prompt as a compact coworker policy with verbatim command interpretation, complete real capability mapping, multiplayer awareness, strict result grounding and prompt-injection resistance.
+- Enables Luna's lowest non-off reasoning level (`low`) and low response verbosity while retaining the cheap Luna / mini-transcribe / TTS-1 stack.
+- Adds deterministic recognition for `stay still`, `stand still`, `do not move`, `move forwards` and `walk forwards`.
+- Keeps all game-changing actions host-authoritative: the model cannot directly move Buddy, spend credits or control hazards, and generated action tags remain inert.
+- Removes the large always-sent gameplay encyclopedia from the system prompt to reduce request size and latency.
+
+## 1.7.2
+
+- Doubles retained conversation history from three to roughly six complete player/Buddy exchanges while keeping the short 96-token response cap.
+
+## 1.7.1
+
+- Changes untouched OpenAI installs from neutral `alloy` to the lighter male `echo` voice and slightly quickens playback.
+- Recasts Buddy as a goofy, useful male coworker with short situational banter instead of formal assistant phrasing.
+- Caps normal replies more aggressively and trims retained chat history for faster Luna turns.
+- Preserves customized personality and voice settings during migration.
+
+## 1.7.0
+
+- Removes the experimental Realtime WebSocket brain and migrates stock installs to the fast cost-focused OpenAI stack: `gpt-5.6-luna` through Responses with no reasoning delay, `gpt-4o-mini-transcribe`, and speed-optimized `tts-1`.
+- Keeps every gameplay action deterministic and host-authoritative rather than model-controlled: movement, scouting, scrap fetching, purchases, routing, status, ship doors/lights, and facility doors/turrets/mines.
+- Expands natural scouting phrases including `scout forwards`, `check the next room`, `push ahead`, and `clear the way`, while retaining bounded pathing, a real scout report, and return-to-follow behavior.
+- Tightens the system prompt around Buddy's actual capabilities, truthful tool results, short voice-chat replies, multiplayer awareness, and the text-only screen boundary.
+- API keys saved from the menu persist securely in Windows Credential Manager.
+
+## 1.6.5
+
+- API keys saved from Buddy's main-menu panel now survive game restarts in the host's Windows Credential Manager instead of being written as plaintext to the BepInEx config.
+- Environment variables still override a saved key, and Clear removes the saved credential and the legacy plaintext config entry for the selected provider.
+
 ## 1.6.4
 
 - Replaces the rejected REST calls for `gpt-realtime-2.1-mini` with the model's native authenticated Realtime WebSocket endpoint.

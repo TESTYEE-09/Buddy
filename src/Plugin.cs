@@ -12,7 +12,7 @@ namespace LethalAICrewmate
     {
         public const string ModGuid = "com.lethalaicrewmate.buddy";
         public const string ModName = "LethalAICrewmate";
-        public const string ModVersion = "1.6.4";
+        public const string ModVersion = "2.2.4";
 
         internal static Plugin Instance;
         internal static ManualLogSource Log;
@@ -28,6 +28,7 @@ namespace LethalAICrewmate
         internal static ConfigEntry<bool> TtsEnabled;
         internal static ConfigEntry<string> TtsDirection;
         internal static ConfigEntry<float> TtsVolume;
+        internal static ConfigEntry<string> RealtimeVoiceModel;
         internal static ConfigEntry<string> CrewmateName;
         internal static ConfigEntry<string> Personality;
         internal static ConfigEntry<bool> Enabled;
@@ -55,25 +56,28 @@ namespace LethalAICrewmate
             Provider = Config.Bind("AI", "Provider", "OpenAI",
                 "AI API provider: OpenAI or Groq. The host alone sends requests and holds the selected provider key.");
             ApiKey = Config.Bind("Groq", "ApiKey", "",
-                "Legacy plaintext Groq API key fallback. Prefer the LETHAL_AI_GROQ_API_KEY environment variable or a session-only key entered in the main menu.");
+                "Legacy plaintext Groq API key fallback. Menu-saved keys use Windows Credential Manager.");
             OpenAiApiKey = Config.Bind("OpenAI", "ApiKey", "",
-                "Legacy plaintext OpenAI API key fallback. Prefer LETHAL_AI_OPENAI_API_KEY or a session-only main-menu key.");
+                "Legacy plaintext OpenAI API key fallback. Menu-saved keys use Windows Credential Manager.");
             PersistApiKey = Config.Bind("Security", "PersistApiKey", false,
-                "Write a key entered in the menu to plaintext config. Disabled by default; prefer the selected provider's environment variable.");
-            Model = Config.Bind("Groq", "Model", "gpt-realtime-2.1-mini",
-                "Selected provider's chat model. OpenAI stock: gpt-realtime-2.1-mini (tested through Chat Completions; STT/TTS remain separate).");
-            SttModel = Config.Bind("Groq", "SttModel", "gpt-4o-mini-transcribe",
-                "Selected provider's speech-to-text model. OpenAI stock: gpt-4o-mini-transcribe.");
-            TtsModel = Config.Bind("Groq", "TtsModel", "tts-1",
-                "Selected provider's text-to-speech model. OpenAI stock: tts-1.");
-            TtsVoice = Config.Bind("Groq", "TtsVoice", "alloy",
-                "Selected provider's TTS voice. OpenAI stock: alloy; Groq Orpheus supports its named voices.");
+                "Legacy setting retained for compatibility. Menu keys now persist securely in Windows Credential Manager instead of plaintext config.");
+            Model = Config.Bind("Groq", "Model", "gpt-5.6-luna",
+                "Selected provider's chat model. OpenAI stock: gpt-5.6-luna through the Responses API.");
+            SttModel = Config.Bind("Groq", "SttModel", "gpt-live-transcribe",
+                "Selected provider's speech-to-text model. OpenAI stock: gpt-live-transcribe.");
+            TtsModel = Config.Bind("Groq", "TtsModel", "gpt-4o-mini-tts",
+                "Selected provider's text-to-speech model. OpenAI stock: gpt-4o-mini-tts.");
+            TtsVoice = Config.Bind("Groq", "TtsVoice", "ash",
+                "Selected provider's fallback TTS voice. Native OpenAI Realtime voice also uses Ash.");
             TtsEnabled = Config.Bind("Groq", "TtsEnabled", true,
                 "Generate Buddy speech on the host and replicate it to compatible multiplayer clients.");
             TtsDirection = Config.Bind("Groq", "TtsDirection", "",
                 "Optional Orpheus vocal direction (no brackets). Stock Buddy uses friendly for a lighter conversational delivery; empty = fully natural.");
             TtsVolume = Config.Bind("Groq", "TtsVolume", 1f,
                 "Buddy voice volume 0–1. Speech is normalized once with a soft limiter before playback and replication.");
+
+            RealtimeVoiceModel = Config.Bind("OpenAI", "RealtimeVoiceModel", "gpt-realtime-2.1-mini",
+                "Native speech-to-speech model for OpenAI push-to-talk. Uses Ash, far-field noise reduction and low reasoning; text chat remains on the selected AI model.");
 
             // Very old private builds stored a provider key under [OpenRouter]. Only migrate a
             // Groq-shaped key; never silently send an OpenRouter key to the Groq endpoint.
@@ -101,7 +105,7 @@ namespace LethalAICrewmate
             CrewmateName = Config.Bind("Crewmate", "Name", "Buddy",
                 "Display name and chat command prefix for the AI crewmate.");
             Personality = Config.Bind("Crewmate", "Personality",
-                "Friendly, useful crewmate with dry low-key humor. Calm most of the time, a little nervous only when something is actually dangerous.",
+                "Goofy male coworker: quick, useful, casually confident, mildly chaotic, and naturally funny without forcing a joke into every line.",
                 "Optional personality flavor for Buddy. Core conversation/relevance rules always remain active.");
             Enabled = Config.Bind("Crewmate", "Enabled", true,
                 "Master toggle for spawning the AI crewmate.");
@@ -155,19 +159,74 @@ namespace LethalAICrewmate
                         TtsDirection.Value = "";
                         ConfigRevision.Value = 3;
                     }
-                    // v1.6.1 first tests the new realtime model as Buddy's chat brain while
-                    // retaining the proven multiplayer STT and WAV TTS transport paths.
-                    if (ConfigRevision.Value < 4)
+                    // v1.7.0 removes the experimental Realtime chat path. Move only that test
+                    // model back to the fast cost-focused Luna stack; preserve custom choices.
+                    if (ConfigRevision.Value < 5)
                     {
                         if (string.Equals(Provider.Value?.Trim(), "OpenAI", StringComparison.OrdinalIgnoreCase) &&
-                            string.Equals(Model.Value?.Trim(), "gpt-5.6-luna", StringComparison.OrdinalIgnoreCase))
-                            Model.Value = "gpt-realtime-2.1-mini";
-                        ConfigRevision.Value = 4;
+                            (string.IsNullOrWhiteSpace(Model.Value) ||
+                             Model.Value.StartsWith("gpt-realtime", StringComparison.OrdinalIgnoreCase)))
+                            Model.Value = "gpt-5.6-luna";
+                        SttModel.Value = "gpt-4o-mini-transcribe";
+                        TtsModel.Value = "tts-1";
+                        TtsVoice.Value = "alloy";
+                        TtsDirection.Value = "";
+                        ConfigRevision.Value = 5;
+                    }
+                    // v1.7.1 gives untouched OpenAI installs the lighter coworker voice and
+                    // faster character. Preserve every explicitly customized voice/personality.
+                    if (ConfigRevision.Value < 6)
+                    {
+                        if (string.Equals(Provider.Value?.Trim(), "OpenAI", StringComparison.OrdinalIgnoreCase) &&
+                            string.Equals(TtsVoice.Value?.Trim(), "alloy", StringComparison.OrdinalIgnoreCase))
+                            TtsVoice.Value = "echo";
+                        if (string.Equals(Personality.Value?.Trim(), BuddyConversationPrompt.PreviousDefaultPersonality, StringComparison.Ordinal))
+                            Personality.Value = BuddyConversationPrompt.DefaultPersonality;
+                        ConfigRevision.Value = 6;
+                    }
+                    // v2.1 moves untouched OpenAI installs to the requested low-latency speech
+                    // models. Preserve non-stock custom model and voice selections.
+                    if (ConfigRevision.Value < 7)
+                    {
+                        if (string.Equals(Provider.Value?.Trim(), "OpenAI", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (string.IsNullOrWhiteSpace(SttModel.Value) ||
+                                string.Equals(SttModel.Value?.Trim(), "gpt-4o-mini-transcribe", StringComparison.OrdinalIgnoreCase))
+                                SttModel.Value = "gpt-live-transcribe";
+                            if (string.IsNullOrWhiteSpace(TtsModel.Value) ||
+                                string.Equals(TtsModel.Value?.Trim(), "tts-1", StringComparison.OrdinalIgnoreCase))
+                                TtsModel.Value = "gpt-4o-mini-tts";
+                            if (string.IsNullOrWhiteSpace(TtsVoice.Value) ||
+                                string.Equals(TtsVoice.Value?.Trim(), "alloy", StringComparison.OrdinalIgnoreCase) ||
+                                string.Equals(TtsVoice.Value?.Trim(), "echo", StringComparison.OrdinalIgnoreCase))
+                                TtsVoice.Value = "cedar";
+                            TtsDirection.Value = "";
+                        }
+                        ConfigRevision.Value = 7;
+                    }
+                    if (ConfigRevision.Value < 8)
+                    {
+                        if (string.Equals(Provider.Value?.Trim(), "OpenAI", StringComparison.OrdinalIgnoreCase) &&
+                            (string.Equals(TtsVoice.Value?.Trim(), "cedar", StringComparison.OrdinalIgnoreCase) ||
+                             string.Equals(TtsVoice.Value?.Trim(), "echo", StringComparison.OrdinalIgnoreCase) ||
+                             string.Equals(TtsVoice.Value?.Trim(), "alloy", StringComparison.OrdinalIgnoreCase)))
+                            TtsVoice.Value = "ash";
+                        ConfigRevision.Value = 8;
+                    }
+                    // v2.2.4 uses the requested GPT Live Transcribe model for both native
+                    // Realtime input transcription and non-native OpenAI STT paths.
+                    if (ConfigRevision.Value < 9)
+                    {
+                        if (string.Equals(Provider.Value?.Trim(), "OpenAI", StringComparison.OrdinalIgnoreCase) &&
+                            (string.IsNullOrWhiteSpace(SttModel.Value) ||
+                             string.Equals(SttModel.Value?.Trim(), "gpt-realtime-whisper", StringComparison.OrdinalIgnoreCase)))
+                            SttModel.Value = "gpt-live-transcribe";
+                        ConfigRevision.Value = 9;
                     }
                     if (string.IsNullOrWhiteSpace(Model.Value) ||
                         Model.Value.IndexOf("whisper", StringComparison.OrdinalIgnoreCase) >= 0 ||
                         Model.Value.IndexOf("orpheus", StringComparison.OrdinalIgnoreCase) >= 0)
-                        Model.Value = GroqSecrets.IsOpenAi ? "gpt-realtime-2.1-mini" : "openai/gpt-oss-120b";
+                        Model.Value = GroqSecrets.IsOpenAi ? "gpt-5.6-luna" : "openai/gpt-oss-120b";
                     if (string.Equals(Model.Value?.Trim(), "llama-3.3-70b-versatile", StringComparison.OrdinalIgnoreCase))
                         Model.Value = "openai/gpt-oss-120b";
                     if (string.IsNullOrWhiteSpace(VisionModel.Value))
@@ -195,9 +254,9 @@ namespace LethalAICrewmate
                     // including when an older config previously opted into vision.
                     VisionEnabled.Value = false;
                     if (string.IsNullOrWhiteSpace(SttModel.Value))
-                        SttModel.Value = GroqSecrets.IsOpenAi ? "gpt-4o-mini-transcribe" : "whisper-large-v3-turbo";
+                        SttModel.Value = GroqSecrets.IsOpenAi ? "gpt-live-transcribe" : "whisper-large-v3-turbo";
                     if (string.IsNullOrWhiteSpace(TtsModel.Value))
-                        TtsModel.Value = GroqSecrets.IsOpenAi ? "tts-1" : "canopylabs/orpheus-v1-english";
+                        TtsModel.Value = GroqSecrets.IsOpenAi ? "gpt-4o-mini-tts" : "canopylabs/orpheus-v1-english";
                     Config.Save();
                 }
                 catch (Exception ex)
@@ -245,6 +304,7 @@ namespace LethalAICrewmate
                 LlmClient.Tick();
                 VoiceCommand.Tick();
                 BuddyClientVoice.Tick();
+                OpenAiRealtimeVoiceClient.Tick();
                 BuddyPoseSync.Tick();
                 BuddyMovementWatchdog.Tick();
                 BuddyDangerCallout.Tick();

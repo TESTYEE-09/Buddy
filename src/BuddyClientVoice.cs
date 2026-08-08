@@ -160,6 +160,7 @@ namespace LethalAICrewmate
             if (!_clientRecording && (InputCompat.GetKeyDown(primary) ||
                                       (alternate != primary && InputCompat.GetKeyDown(alternate))))
             {
+                BuddyNetworkAudio.StopPlayback();
                 if (Time.unscaledTime - _lastClientPttAt < 0.35f)
                     return;
                 _clientRecordingKey = InputCompat.GetKeyDown(primary) ? primary : alternate;
@@ -448,6 +449,18 @@ namespace LethalAICrewmate
         {
             try
             {
+                if (OpenAiRealtimeVoiceClient.Enabled)
+                {
+                    var player = ResolveRemotePlayer(request.SenderId);
+                    int playerId = player != null ? (int)player.playerClientId : (int)request.SenderId;
+                    string playerName = player?.playerUsername ?? ("Client " + request.SenderId);
+                    if (OpenAiRealtimeVoiceClient.EnqueueWav(request.Wav, playerId, playerName))
+                    {
+                        Plugin.Log?.LogInfo($"Queued remote native realtime voice turn client={request.SenderId} player='{playerName}'.");
+                        yield break;
+                    }
+                }
+
                 string model = ResolveSttModel();
                 string boundary = "----LethalAIRemote" + UnityEngine.Random.Range(100000, 999999);
                 byte[] body = BuildMultipart(boundary, request.Wav, model);
@@ -594,7 +607,7 @@ namespace LethalAICrewmate
         {
             string model = Plugin.SttModel?.Value;
             if (GroqSecrets.IsOpenAi)
-                return string.IsNullOrWhiteSpace(model) ? "gpt-4o-mini-transcribe" : model.Trim();
+                return string.IsNullOrWhiteSpace(model) ? "gpt-live-transcribe" : model.Trim();
             if (string.IsNullOrWhiteSpace(model) ||
                 model.IndexOf("whisper", StringComparison.OrdinalIgnoreCase) < 0)
                 return "whisper-large-v3-turbo";
@@ -608,7 +621,7 @@ namespace LethalAICrewmate
             AppendPart(sb, boundary, "response_format", "json");
             AppendPart(sb, boundary, "language", "en");
             AppendPart(sb, boundary, "temperature", "0");
-            AppendPart(sb, boundary, "prompt", "Lethal Company gameplay. Crew talking to Buddy AI. Commands: follow, stay, ship, fetch scrap, go forward, scout ahead, check in front, status, time, credits, buy items, open door, disable turret, ship lights.");
+            AppendPart(sb, boundary, "prompt", "Lethal Company Version 80 gameplay. Crew talking verbatim to Buddy. Commands and vocabulary: follow, stay still, do not move, return to ship, fetch scrap, move forwards, scout ahead, status, time, credits, buy items, route moons, open door, disable turret, ship lights, please spawn an item, Backwater Gunkfish, Feiopar, Cadaver Growth, Kidnapper Fox.");
 
             byte[] head = Encoding.UTF8.GetBytes(sb.ToString());
             byte[] fileHeader = Encoding.UTF8.GetBytes(

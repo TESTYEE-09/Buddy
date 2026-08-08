@@ -106,9 +106,7 @@ namespace LethalAICrewmate
                 return false;
             }
             _keyBuffer = key;
-            if (showStatus) SetStatus(Plugin.PersistApiKey?.Value == true
-                ? GroqSecrets.ProviderName + " key saved locally."
-                : GroqSecrets.ProviderName + " key saved for this game session only.");
+            if (showStatus) SetStatus(GroqSecrets.ProviderName + " key saved locally for future sessions.");
             Plugin.Log?.LogInfo(GroqSecrets.ProviderName + " API key updated from the main menu without logging its value.");
             return true;
         }

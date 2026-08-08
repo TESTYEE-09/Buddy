@@ -38,6 +38,9 @@ namespace LethalAICrewmate
         {
             if (source == null) return;
             source.volume = Mathf.Clamp01(Plugin.TtsVolume?.Value ?? 1f);
+            // Preserve the generated voice exactly. Latency is handled by faster API models and
+            // processing tiers rather than making Buddy talk unnaturally fast.
+            source.pitch = 1f;
             source.priority = 0;
             source.mute = false;
             source.enabled = true;

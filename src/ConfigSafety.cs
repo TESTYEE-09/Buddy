@@ -30,29 +30,29 @@ namespace LethalAICrewmate
                 changed |= SetIfDifferent(Plugin.Provider, provider);
 
                 string model = CleanSingleLine(Plugin.Model?.Value, 128,
-                    GroqSecrets.IsOpenAi ? "gpt-realtime-2.1-mini" : "openai/gpt-oss-120b");
+                    GroqSecrets.IsOpenAi ? "gpt-5.6-luna" : "openai/gpt-oss-120b");
                 changed |= SetIfDifferent(Plugin.Model, model);
 
                 string stt = CleanSingleLine(Plugin.SttModel?.Value, 128,
-                    GroqSecrets.IsOpenAi ? "gpt-4o-mini-transcribe" : "whisper-large-v3-turbo");
+                    GroqSecrets.IsOpenAi ? "gpt-live-transcribe" : "whisper-large-v3-turbo");
                 if (!GroqSecrets.IsOpenAi && stt.IndexOf("whisper", StringComparison.OrdinalIgnoreCase) < 0)
                     stt = "whisper-large-v3-turbo";
                 changed |= SetIfDifferent(Plugin.SttModel, stt);
 
                 string tts = CleanSingleLine(Plugin.TtsModel?.Value, 128,
-                    GroqSecrets.IsOpenAi ? "tts-1" : "canopylabs/orpheus-v1-english");
+                    GroqSecrets.IsOpenAi ? "gpt-4o-mini-tts" : "canopylabs/orpheus-v1-english");
                 if (!GroqSecrets.IsOpenAi && tts.IndexOf("orpheus", StringComparison.OrdinalIgnoreCase) < 0)
                     tts = "canopylabs/orpheus-v1-english";
                 changed |= SetIfDifferent(Plugin.TtsModel, tts);
 
-                string voice = CleanSingleLine(Plugin.TtsVoice?.Value, 16, GroqSecrets.IsOpenAi ? "alloy" : "austin").ToLowerInvariant();
+                string voice = CleanSingleLine(Plugin.TtsVoice?.Value, 16, GroqSecrets.IsOpenAi ? "ash" : "austin").ToLowerInvariant();
                 string[] allowedVoices = GroqSecrets.IsOpenAi
-                    ? new[] { "alloy", "echo", "fable", "onyx", "nova", "shimmer" }
+                    ? new[] { "alloy", "ash", "ballad", "cedar", "coral", "echo", "fable", "marin", "nova", "onyx", "sage", "shimmer", "verse" }
                     : new[] { "autumn", "diana", "hannah", "austin", "daniel", "troy" };
                 bool validVoice = false;
                 foreach (string allowed in allowedVoices)
                     if (voice == allowed) { validVoice = true; break; }
-                if (!validVoice) voice = GroqSecrets.IsOpenAi ? "alloy" : "austin";
+                if (!validVoice) voice = GroqSecrets.IsOpenAi ? "ash" : "austin";
                 changed |= SetIfDifferent(Plugin.TtsVoice, voice);
 
                 // Empty is intentionally valid: it disables Orpheus direction tags.

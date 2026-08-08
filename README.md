@@ -11,7 +11,7 @@ Buddy is an AI crewmate for **Lethal Company v81**. He joins the crew as a frien
 5. The host pastes an OpenAI API key into the **Lethal AI Crewmate - OpenAI** box on the main menu, presses **Save**, then **Test**.
 6. Host a lobby. Buddy appears physically in the ship once every connected player passes the mod compatibility handshake, including while in orbit.
 
-Only the host needs an API key. Prefer `LETHAL_AI_OPENAI_API_KEY` or the session-only menu field; the key is never sent to other players.
+Only the host needs an API key. The main-menu Save button keeps it in that Windows user's Credential Manager between sessions; the key is never sent to other players.
 
 ## Multiplayer safety and sync
 
@@ -54,9 +54,11 @@ You can also talk to Buddy normally or ask him a question near him.
 
 Ship and terminal actions are host-authoritative and use the same game state as a player. Purchases respect sales, available credits and the 12-item dropship limit. Facility codes respect their normal cooldown, and ship doors still require working controls and hydraulic power.
 
-The stock configuration uses `openai/gpt-oss-120b` for text conversation and keeps screenshot vision disabled. Speech recognition remains `whisper-large-v3-turbo`.
+The stock OpenAI configuration uses `gpt-5.6-luna` for conversation and keeps screenshot vision disabled.
 
 ## Personality
+
+Buddy is a dry, practical coworker: he says the useful Lethal Company answer first, then only adds low-key, situational humour when it fits. He avoids forced catchphrases, hyperactive internet slang, and mascot-style jokes.
 
 Buddy is conversation-first: he responds to what players actually say instead of dumping sensor/entity facts. v1.5.0 uses a substantially richer behavior prompt covering grounded multiplayer awareness, tool honesty, danger calibration, vision limits and natural dry humor. Harmless wildlife such as Manticoils and Roaming Locusts is treated as background unless the player asks about it.
 
@@ -68,11 +70,11 @@ Buddy can very rarely make a subtle fourth-wall joke when the moment fits. The r
 
 Host path:
 
-`host mic -> Groq Whisper -> Buddy reply -> Groq Orpheus -> synced Buddy voice`
+`host mic -> GPT-Realtime-2.1 mini native speech-to-speech (Ash) -> synced Buddy voice`
 
 Client path:
 
-`client mic -> bounded/chunked relay to host -> host Groq Whisper -> Buddy reply -> synced Buddy voice`
+`client mic -> bounded/chunked relay to host -> GPT-Realtime-2.1 mini native speech-to-speech (Ash) -> synced Buddy voice`
 
 Clients do not need a Groq key. Remote microphone audio is captured only while the player holds the Buddy push-to-talk key, is size/rate limited, and is accepted only from connected matching clients. The stock nearby PTT range is 60m.
 
@@ -88,18 +90,23 @@ Provider = OpenAI
 
 [Groq]
 ApiKey =
-Model = gpt-realtime-2.1-mini
-SttModel = gpt-4o-mini-transcribe
-TtsModel = tts-1
-TtsVoice = alloy
+Model = gpt-5.6-luna
+SttModel = gpt-live-transcribe
+TtsModel = gpt-4o-mini-tts
+TtsVoice = ash
 TtsEnabled = true
 TtsDirection =
 TtsVolume = 1
+
+[OpenAI]
+RealtimeVoiceModel = gpt-realtime-2.1-mini
 ```
 
-For a persistent key without writing it to the BepInEx config, set `LETHAL_AI_OPENAI_API_KEY` on the host before launching Steam. Keys entered through the main-menu panel are session-only by default. The older Groq provider remains selectable with `[AI] Provider = Groq` and `LETHAL_AI_GROQ_API_KEY`.
+The main-menu Save button persists the selected provider key in Windows Credential Manager for that Windows user. `LETHAL_AI_OPENAI_API_KEY` is still supported and takes precedence when set before launching Steam. Text chat uses `gpt-5.6-luna` through Responses with low reasoning, low verbosity and Fast service tier. Push-to-talk uses a persistent `gpt-realtime-2.1-mini` WebSocket with 24 kHz PCM input/output, Ash voice, `gpt-live-transcribe` transcription, far-field noise reduction, low reasoning and host-side function calling. PTT defines the turn boundary, so automatic VAD is disabled in the mod. The separate `gpt-live-transcribe` and `gpt-4o-mini-tts` settings remain available for non-native/fallback speech paths. The older Groq provider remains selectable with `[AI] Provider = Groq` and `LETHAL_AI_GROQ_API_KEY`.
 
 Screenshot capture is disabled in v1.5.3. Stock Buddy is text-only and does not capture the host screen.
+
+v2 also supports a bounded joke/admin command: `Buddy, please spawn 2 flashlights in front of me`. Natural pleaded phrasing also works, for example: `Buddy, can I please have a flashlight? I'm begging you.` The requester must explicitly say please or beg; only validated grabbable item prefabs are allowed, quantities are capped at 3, and the lobby is capped at 12 spawned objects per round. Enemies, hazards, arbitrary prefabs and unknown names are rejected.
 
 ```ini
 [Vision]
@@ -135,7 +142,7 @@ PersistApiKey = false
 AllowRemoteVoice = true
 ```
 
-`AllowRemoteVoice = true` lets matching friends send tightly bounded PTT audio to the host; turn it off in public lobbies. `PersistApiKey = true` writes the key in plaintext to the BepInEx config; leave it off when using the environment variable.
+`AllowRemoteVoice = true` lets matching friends send tightly bounded PTT audio to the host; turn it off in public lobbies. `PersistApiKey` is retained only for old config compatibility: menu keys are now saved in Windows Credential Manager, not in plaintext config.
 
 `ChatHearRange = 0` makes Buddy chat/voice global. `ChatTriggerRange = 0` makes nearby unaddressed questions range-unlimited; explicit client Buddy PTT already works at any distance.
 
@@ -143,7 +150,7 @@ The old 70m reply default automatically migrates to global delivery. Other custo
 
 ## Privacy and API usage
 
-- `LETHAL_AI_GROQ_API_KEY` is the preferred persistent host-key source. Main-menu keys are session-only by default; plaintext config persistence is an explicit opt-in.
+- `LETHAL_AI_GROQ_API_KEY` remains an optional persistent host-key source and overrides the menu-saved key. Menu keys are stored in Windows Credential Manager.
 - The key is never included in multiplayer messages.
 - Host push-to-talk audio goes directly to Groq when the host uses the Buddy voice key.
 - Client push-to-talk audio is relayed only while that client holds the Buddy voice key; the host can disable remote audio for public lobbies.
