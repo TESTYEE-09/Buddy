@@ -332,7 +332,7 @@ namespace LethalAICrewmate
                    "\"noise_reduction\":{\"type\":\"far_field\"}," +
                    "\"transcription\":{\"model\":\"" + LlmClient.Escape(ResolveTranscriptionModel()) + "\"},\"turn_detection\":null}," +
                    "\"output\":{\"format\":{\"type\":\"audio/pcm\",\"rate\":24000},\"voice\":\"ash\"}}," +
-                   "\"reasoning\":{\"effort\":\"low\"},\"max_output_tokens\":\"inf\"," +
+                   "\"reasoning\":{\"effort\":\"low\"},\"max_output_tokens\":96," +
                    "\"tool_choice\":\"auto\",\"tools\":[{\"type\":\"function\",\"name\":\"execute_game_command\"," +
                    "\"description\":\"Execute an explicit Lethal Company movement, scouting, scrap, ship, terminal, purchase, facility, status, or polite spawn command. Do not call for ordinary conversation.\"," +
                    "\"parameters\":{\"type\":\"object\",\"properties\":{\"command\":{\"type\":\"string\",\"description\":\"The speaker's exact command including target, quantity, code and politeness.\"}},\"required\":[\"command\"]}}]}}";

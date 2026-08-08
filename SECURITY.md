@@ -2,11 +2,12 @@
 
 ## API keys
 
-Never commit a Groq API key, put one in a release ZIP, log it, or send it through multiplayer messages.
+Never commit a provider API key, put one in a release ZIP, log it, or send it through multiplayer messages.
 
 For the strongest practical setup, set the host machine environment variable
-`LETHAL_AI_GROQ_API_KEY` before starting the game. The mod reads it in memory and never writes
-that value to its config or logs.
+`LETHAL_AI_OPENAI_API_KEY` (OpenAI provider) or `LETHAL_AI_GROQ_API_KEY` (Groq provider)
+before starting the game. The mod reads it in memory and never writes that value to its
+config or logs.
 
 Keys entered in the main-menu panel are session-only by default. Set `[Security] PersistApiKey = true`
 only if you explicitly accept plaintext local storage in:
@@ -21,7 +22,7 @@ Historical private builds contained a shared Groq credential. Any credential tha
 
 ## Multiplayer trust boundary
 
-- The host is authoritative for Buddy spawning, AI, item actions and Groq calls.
+- The host is authoritative for Buddy spawning, AI, item actions and all provider API calls.
 - Remote push-to-talk is enabled for matching friends by default. Set `[Security] AllowRemoteVoice = false`
   when hosting an untrusted public lobby.
 - When enabled, remote voice is sender-bound, compatibility-gated, range-gated before allocation,
@@ -37,8 +38,8 @@ CI rejects:
 
 - mismatched manifest/project/plugin versions,
 - tracked generated release DLL/ZIP files,
-- Groq-key-shaped secrets in source,
-- Groq-key-shaped secrets in compiled DLL bytes (ASCII and UTF-16),
+- Groq-key- and OpenAI-key-shaped secrets in source,
+- Groq-key- and OpenAI-key-shaped secrets in compiled DLL bytes (ASCII and UTF-16),
 - compiler warnings or errors,
 - invalid Thunderstore package structure,
 - an invalid Thunderstore icon size.

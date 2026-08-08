@@ -12,7 +12,7 @@ namespace LethalAICrewmate
     {
         public const string ModGuid = "com.lethalaicrewmate.buddy";
         public const string ModName = "LethalAICrewmate";
-        public const string ModVersion = "2.2.4";
+        public const string ModVersion = "2.3.0";
 
         internal static Plugin Instance;
         internal static ManualLogSource Log;
@@ -105,7 +105,7 @@ namespace LethalAICrewmate
             CrewmateName = Config.Bind("Crewmate", "Name", "Buddy",
                 "Display name and chat command prefix for the AI crewmate.");
             Personality = Config.Bind("Crewmate", "Personality",
-                "Goofy male coworker: quick, useful, casually confident, mildly chaotic, and naturally funny without forcing a joke into every line.",
+                BuddyConversationPrompt.DefaultPersonality,
                 "Optional personality flavor for Buddy. Core conversation/relevance rules always remain active.");
             Enabled = Config.Bind("Crewmate", "Enabled", true,
                 "Master toggle for spawning the AI crewmate.");
@@ -222,6 +222,16 @@ namespace LethalAICrewmate
                              string.Equals(SttModel.Value?.Trim(), "gpt-realtime-whisper", StringComparison.OrdinalIgnoreCase)))
                             SttModel.Value = "gpt-live-transcribe";
                         ConfigRevision.Value = 9;
+                    }
+                    // v2.3 makes the stock public-release personality the dry, practical
+                    // coworker voice. Preserve deliberate custom personality text.
+                    if (ConfigRevision.Value < 10)
+                    {
+                        const string oldGoofyDefault = "Goofy male coworker: quick, useful, casually confident, mildly chaotic, and naturally funny without forcing a joke into every line.";
+                        if (string.Equals(Personality.Value?.Trim(), oldGoofyDefault, StringComparison.Ordinal) ||
+                            string.Equals(Personality.Value?.Trim(), BuddyConversationPrompt.PreviousDefaultPersonality, StringComparison.Ordinal))
+                            Personality.Value = BuddyConversationPrompt.DefaultPersonality;
+                        ConfigRevision.Value = 10;
                     }
                     if (string.IsNullOrWhiteSpace(Model.Value) ||
                         Model.Value.IndexOf("whisper", StringComparison.OrdinalIgnoreCase) >= 0 ||

@@ -13,8 +13,8 @@ namespace LethalAICrewmate
         // capped separately, so the character remembers more without becoming long-winded.
         private const int MaxHistory = 12;
         private const int MaxQueue = 3;
-        private const float MinInterval = 0.5f;
-        private const int MaxTokens = 96;
+        private const float MinInterval = 0.2f;
+        private const int MaxTokens = 64;
         private const float DuplicateWindowSeconds = 2f;
         private const float HardRequestCeilingSeconds = 45f;
 

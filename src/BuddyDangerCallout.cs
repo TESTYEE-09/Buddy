@@ -8,13 +8,17 @@ namespace LethalAICrewmate
     /// <summary>Deterministic emergency warning; it never waits for the LLM or player input.</summary>
     internal static class BuddyDangerCallout
     {
+        private const float WarningDistance = 12.5f;
         private const float DangerDistance = 7.5f;
         private const float ScanInterval = 0.25f;
-        private const float CooldownSeconds = 25f;
+        private const float WarningCooldownSeconds = 10f;
+        private const float DangerCooldownSeconds = 12f;
 
         private static float _nextScanAt;
         private static float _nextCalloutAt;
         private static int _lastThreatId;
+        private static bool _warningSent;
+        private static bool _dangerSent;
 
         internal static void Tick()
         {
@@ -29,25 +33,46 @@ namespace LethalAICrewmate
                 if (threat == null)
                 {
                     _lastThreatId = 0;
+                    _warningSent = false;
+                    _dangerSent = false;
                     return;
                 }
 
                 int id = threat.GetInstanceID();
-                if (Time.unscaledTime < _nextCalloutAt || id == _lastThreatId) return;
-                _lastThreatId = id;
-                _nextCalloutAt = Time.unscaledTime + CooldownSeconds;
+                if (id != _lastThreatId)
+                {
+                    _lastThreatId = id;
+                    _warningSent = false;
+                    _dangerSent = false;
+                }
+
+                float distance = ResolveNearestPlayerDistance(threat);
+                if (distance <= DangerDistance)
+                {
+                    if (_dangerSent || Time.unscaledTime < _nextCalloutAt) return;
+                    _dangerSent = true;
+                    _nextCalloutAt = Time.unscaledTime + DangerCooldownSeconds;
+                }
+                else
+                {
+                    if (_warningSent || Time.unscaledTime < _nextCalloutAt) return;
+                    _warningSent = true;
+                    _nextCalloutAt = Time.unscaledTime + WarningCooldownSeconds;
+                }
 
                 string enemyName = threat.enemyType?.enemyName;
                 if (string.IsNullOrWhiteSpace(enemyName)) enemyName = "monster";
-                string display = "RUN! " + enemyName + " is right on us!";
+                string display = distance <= DangerDistance
+                    ? "RUN! " + enemyName + " is right on us!"
+                    : "Wait—did you see that? " + enemyName + " is close. Keep moving.";
                 Vector3 position = ResolveBuddyPosition();
                 ulong netId = CrewmateRegistry.GetPrimary()?.NetworkObjectId ?? 0;
                 string buddyName = Plugin.CrewmateName?.Value ?? "Buddy";
 
                 ProximityChat.TryShowLocal(buddyName, display, position);
                 NetMessenger.BroadcastCrewmateChat(buddyName, display, position, netId);
-                BuddyTts.Speak("[shout] " + display, position);
-                Plugin.Log?.LogWarning($"Buddy emergency callout: {enemyName} within {DangerDistance:F1}m.");
+                BuddyTts.Speak(distance <= DangerDistance ? "[shout] " + display : display, position);
+                Plugin.Log?.LogWarning($"Buddy danger callout: {enemyName} within {distance:F1}m.");
             }
             catch (Exception ex)
             {
@@ -58,7 +83,7 @@ namespace LethalAICrewmate
         private static EnemyAI FindImmediateThreat()
         {
             EnemyAI nearest = null;
-            float nearestDistance = DangerDistance;
+            float nearestDistance = WarningDistance;
             PlayerControllerB[] players = StartOfRound.Instance?.allPlayerScripts;
             foreach (var enemy in UnityEngine.Object.FindObjectsOfType<EnemyAI>())
             {
@@ -77,6 +102,19 @@ namespace LethalAICrewmate
                         nearest = enemy;
                     }
                 }
+            }
+            return nearest;
+        }
+
+        private static float ResolveNearestPlayerDistance(EnemyAI threat)
+        {
+            float nearest = float.MaxValue;
+            PlayerControllerB[] players = StartOfRound.Instance?.allPlayerScripts;
+            if (players == null || threat == null) return nearest;
+            foreach (var player in players)
+            {
+                if (player == null || !player.isPlayerControlled || player.isPlayerDead) continue;
+                nearest = Mathf.Min(nearest, Vector3.Distance(threat.transform.position, player.transform.position));
             }
             return nearest;
         }
