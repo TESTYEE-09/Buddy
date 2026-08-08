@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.4.3
+
+- Added continuous server-authoritative Buddy pose replication so remote clients see the same movement, facility entry/exit and recovery teleports as the host.
+- Remote Buddy poses are sent as lightweight sequenced snapshots and smoothed client-side, with large corrections snapped immediately to eliminate the "host sees Buddy inside, client sees him on the ship" desync.
+- Added multiplayer push-to-talk for every modded player. Clients record locally and relay only the bounded voice clip to the host; the host performs Whisper transcription with the host-only Groq key.
+- Remote voice uploads are sender-validated, size-limited, chunked, rate-limited and range-checked before transcription. The Groq API key is never sent to clients.
+- Remote voice transcripts enter the same ChatObserver command/conversation path as host speech, so client voice can naturally talk to Buddy and issue supported commands.
+- Added a long-session movement watchdog. If Buddy is supposed to move but makes no progress, the host rebuilds the NavMesh path; repeated stalls while following fall back to a safe beside-player teleport.
+- Added an immediate pose broadcast after watchdog recovery so clients cannot remain at the pre-stall location.
+- Increased stock Buddy hearing/voice range from 50m to 70m and nearby conversation/PTT range from 45m to 60m.
+- Widened the near-full-volume positional-audio bubble and added another bounded 1.20x host-side gain on top of v1.4.2, for roughly 1.44x total PCM gain before multiplayer replication.
+- Existing untouched v1.4.2 stock distance settings migrate automatically to the new ranges.
+
 ## 1.4.2
 
 - Changed the stock Buddy TTS voice from Troy to Austin and added a light `friendly` Orpheus direction so normal lines sound less flat/depressed without becoming overacted.
