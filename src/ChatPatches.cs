@@ -30,7 +30,7 @@ namespace LethalAICrewmate
         {
             try
             {
-                // Host receives ServerRpc; also observe here as a belt-and-suspenders
+                // Host receives ServerRpc; observe here as a belt-and-suspenders path.
                 if (CrewmateSpawner.IsHost())
                     ChatObserver.OnServerChat(chatMessage, playerId);
             }
@@ -44,6 +44,7 @@ namespace LethalAICrewmate
     public static class ChatObserver
     {
         private static string _lastMessage;
+        private static int _lastPlayerId = int.MinValue;
         private static float _lastMessageTime;
 
         public static void OnServerChat(string chatMessage, int playerId)
@@ -52,9 +53,11 @@ namespace LethalAICrewmate
             if (string.IsNullOrWhiteSpace(chatMessage)) return;
             if (Plugin.Enabled != null && !Plugin.Enabled.Value) return;
 
-            // De-dupe if both patches fire for the same message
-            if (chatMessage == _lastMessage && Time.time - _lastMessageTime < 0.25f)
+            // Both Harmony hooks can see the same server chat event. De-dupe only the same
+            // player's same message, so two people saying "buddy follow" together are not merged.
+            if (playerId == _lastPlayerId && chatMessage == _lastMessage && Time.time - _lastMessageTime < 0.25f)
                 return;
+            _lastPlayerId = playerId;
             _lastMessage = chatMessage;
             _lastMessageTime = Time.time;
 
@@ -62,6 +65,11 @@ namespace LethalAICrewmate
             var msg = chatMessage.Trim();
             var lower = msg.ToLowerInvariant();
             var nameLower = name.ToLowerInvariant();
+
+            // Ignore system/join messages before any command parsing.
+            if (lower.Contains("joined the") || lower.Contains("left the") ||
+                lower.Contains("was kicked") || playerId < 0)
+                return;
 
             Plugin.Log?.LogInfo($"Chat observed: '{msg}' (playerId={playerId})");
 
@@ -71,7 +79,6 @@ namespace LethalAICrewmate
                 lower.Contains(nameLower) ||
                 lower.Contains("buddy");
 
-            // Bare commands also work: "follow", "stay", "fetch scrap", "go to ship"
             string rest = msg;
             if (lower.StartsWith(nameLower))
                 rest = msg.Substring(name.Length).TrimStart(' ', ',', ':', '-');
@@ -80,14 +87,8 @@ namespace LethalAICrewmate
 
             string restLower = rest.ToLowerInvariant();
 
-            // Ignore system / join messages (was false-triggering on "joined the ship")
-            if (lower.Contains("joined the") || lower.Contains("left the") ||
-                lower.Contains("was kicked") || playerId < 0)
-            {
-                return;
-            }
-
-            // Terminal / orbit commands (route, buy, moons) — host, preferably in space
+            // Explicit terminal/orbit actions are deterministic player commands. The LLM is never
+            // allowed to execute these side effects (see TerminalSafetyPatches).
             if (addressed || restLower.StartsWith("route") || restLower.StartsWith("buy") ||
                 restLower == "moons" || restLower.StartsWith("terminal") || restLower == "store" ||
                 restLower == "credits")
@@ -102,7 +103,6 @@ namespace LethalAICrewmate
                             HUDManager.Instance.AddChatMessage(termResult, name);
                     }
                     catch { /* ignore */ }
-                    // still let LLM acknowledge if addressed
                 }
             }
 
@@ -127,12 +127,8 @@ namespace LethalAICrewmate
                 CrewmateAI.ApplyCommandFromChat(rest);
             }
 
-            bool shouldReply = false;
-            if (addressed)
-                shouldReply = true;
-            else if (isCommand)
-                shouldReply = true;
-            else if (msg.TrimEnd().EndsWith("?"))
+            bool shouldReply = addressed || isCommand;
+            if (!shouldReply && msg.TrimEnd().EndsWith("?"))
             {
                 var data = CrewmateRegistry.GetPrimary();
                 var player = GetPlayerById(playerId);
@@ -145,7 +141,7 @@ namespace LethalAICrewmate
                 }
             }
 
-            if (shouldReply || isCommand)
+            if (shouldReply)
             {
                 string playerName = GetPlayerName(playerId);
                 LlmClient.EnqueuePlayerMessage(playerName, msg, isCommand);
