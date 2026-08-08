@@ -1,56 +1,97 @@
-# HANDOFF — LethalAICrewmate
+# HANDOFF — LethalAICrewmate v1.4.0
 
-Shippable **v1.0.1** on Windows (2026-07-13). Built, packaged, installed into r2modman profile **THE MOD PACK**.
+## Current status
 
-## Status
+LethalAICrewmate is a BepInEx 5 mod for **Lethal Company v81** adding a friendly AI crewmate named Buddy.
 
-| Item | State |
-|------|--------|
-| Compile (v81 GameLibs) | OK — 0 warnings/errors |
-| Thunderstore zip | `LethalAICrewmate-1.0.1.zip` |
-| r2modman install | `…\profiles\THE MOD PACK\BepInEx\plugins\TESTYEE-LethalAICrewmate\` |
-| In-game test | **Not run** (needs you in a lobby) |
+Release target: **v1.4.0**.
 
-## What 1.0.1 fixed for ship
+Automated release requirements:
 
-- Client-side crewmate net-id sync so hostility patches apply for clients
-- Spawn retries + NavMesh snap after land
-- Extra Masked guards (LateUpdate, DetectNoise, HitEnemy)
-- Scrap double-count guard; LLM session reset on leave; host item-attach loopback skip
+- compile against `LethalCompany.GameLibs.Steam 81.0.5-ngd.0`,
+- warnings treated as errors,
+- source + compiled DLL Groq-key secret scans,
+- manifest/csproj/plugin version equality,
+- exact Thunderstore package whitelist,
+- ZIP extraction validation,
+- SHA-256 checksum,
+- ready-to-install CI artifact.
 
-## What this is
+## Architecture
 
-BepInEx 5 mod for **Lethal Company v81** adding an AI crewmate ("Buddy"):
+- Buddy body: neutralized networked `MaskedPlayerEnemy`.
+- Host authoritative for AI movement, item actions and all Groq calls.
+- Multiplayer clients never receive the Groq key.
+- Every player must run the same LethalAICrewmate version/protocol.
+- Buddy spawn is compatibility-gated. An unmodded/mismatched client disables Buddy rather than allowing a hostile/desynced Masked on that client.
+- Late joins recover Buddy + held-item state.
+- Buddy text and generated TTS audio are replicated to compatible clients.
 
-- Host-only spawns a **MaskedPlayerEnemy** when the ship lands, neutralized + suited, despawn on leave.
-- States: FollowOwner / Stay / ReturnToShip / FetchScrap.
-- Chat commands: `buddy follow / stay / go to ship / fetch scrap`.
-- Optional LLM via OpenRouter; proximity chat net message.
-- Clients: install recommended for chat, attach visuals, and kill suppression.
+## Groq
+
+The host configures the key from the main menu with **Save / Test / Clear**.
+
+Defaults:
+
+- Chat: `llama-3.3-70b-versatile`
+- STT: `whisper-large-v3-turbo`
+- TTS: `canopylabs/orpheus-v1-english`
+- Vision: off by default
+
+Only the host performs Groq requests. The main-menu Test button validates the key before play.
+
+## Commands
+
+- `buddy follow`
+- `buddy stay`
+- `buddy go to ship`
+- `buddy fetch scrap`
+
+Explicit player terminal commands such as route/buy are handled deterministically. LLM-produced terminal tags are stripped and cannot spend credits or route the ship.
 
 ## Build
 
 ```powershell
-dotnet build src/LethalAICrewmate.csproj -c Release
-# or full package:
 powershell -File pack.ps1
 ```
 
-## In-game smoke test (when back)
+or:
 
-1. Launch **THE MOD PACK** via r2modman (not bare Steam — BepInEx lives in the profile).
-2. Host → land on moon → `LogOutput.log`: `Spawning crewmate` → `spawned successfully`.
-3. Commands: follow / stay / ship / fetch scrap.
-4. Optional: set `OpenRouter.ApiKey` in `BepInEx/config/com.lethalaicrewmate.buddy.cfg`.
-5. Second client with mod: proximity chat + no double lines; Buddy should not client-side kill.
+```powershell
+dotnet restore src/LethalAICrewmate.csproj
+dotnet build src/LethalAICrewmate.csproj -c Release
+```
 
-## Fallback if Masked is unworkable
+Generated release binaries are intentionally ignored by Git. Use CI artifacts/releases for distribution.
 
-Player-slot approach like [Lethal-Bots](https://github.com/T-Rizzle12/Lethal-Bots) (v81).
+## Multiplayer test checklist
 
-## Conventions
+When doing a real in-game multi-PC test:
 
-- Every Harmony patch body try/caught.
-- Host-authoritative: `CrewmateSpawner.IsHost()`.
-- No Newtonsoft; hand-rolled JSON in `LlmClient`.
-- Crewmates tracked in `CrewmateRegistry` (+ `KnownCrewmateNetIds` for clients).
+1. Install the exact same release on host + clients.
+2. Host enters a lobby; clients join and handshake.
+3. Land on a moon; one Buddy spawns, never one per client.
+4. Verify no hostile Masked kill behaviour from Buddy on any peer.
+5. Verify follow/stay/ship/fetch commands from different players.
+6. Verify two players can send the same text close together without one being deduped.
+7. Verify late join after Buddy spawn restores Buddy identity/name/item visual.
+8. Verify Buddy text appears once per compatible client and respects range.
+9. Verify host TTS is heard by clients without client Groq keys.
+10. Verify held scrap pickup/drop is mirrored and remains grabbable after drop.
+11. Join with an unmodded/mismatched client: Buddy must remain disabled/despawn rather than becoming hostile.
+12. Return to a fully compatible lobby: Buddy should become spawnable again on the landed round polling path.
+13. Try an explicit `buddy buy ...` command and verify only one purchase occurs.
+14. Clear/break the host Groq key: Buddy movement remains functional and API features fail without crashing the game.
+
+## Security note
+
+Old private builds/history included a shared Groq key. Deleting old tracked binaries from the current branch does **not** revoke a credential or erase Git history. Revoke/rotate that old key in Groq before any public distribution.
+
+## Release flow
+
+1. Make changes on a feature branch.
+2. Require a green GitHub Actions build.
+3. Merge to `main`.
+4. Require the `main` build to pass.
+5. Create tag `v1.4.0` at the tested main commit.
+6. Tag CI publishes the exact tested ZIP + `SHA256SUMS.txt` as a GitHub Release.
