@@ -2,3 +2,6 @@ bin/
 obj/
 *.user
 .vs/
+_ts_staging/
+LethalAICrewmate-*.zip
+ThunderstorePackage/LethalAICrewmate.dll
