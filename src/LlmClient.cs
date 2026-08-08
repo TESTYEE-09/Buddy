@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Text;
+using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.Networking;
 
@@ -215,6 +216,31 @@ namespace LethalAICrewmate
                 ? (Plugin.VisionModel?.Value ?? "qwen/qwen3.6-27b")
                 : (Plugin.Model?.Value ?? (GroqSecrets.IsOpenAi ? "gpt-realtime-2.1-mini" : "openai/gpt-oss-120b"));
             bool useResponses = GroqSecrets.IsOpenAi && IsRealtimeModel(model) && imageB64 == null;
+            if (useResponses)
+            {
+                string realtimeEvent = BuildRealtimeResponseCreateJson(systemPrompt, requestHistory);
+                Plugin.Log?.LogInfo($"OpenAI Realtime WebSocket -> model={model} text-only inputChars={realtimeEvent.Length}.");
+                Task<OpenAiRealtimeTextClient.Result> realtimeTask = OpenAiRealtimeTextClient.SendAsync(
+                    model, GroqSecrets.CurrentKey, realtimeEvent);
+                while (!realtimeTask.IsCompleted)
+                    yield return null;
+
+                if (realtimeTask.IsFaulted)
+                    Plugin.Log?.LogError($"OpenAI Realtime task failed: {realtimeTask.Exception?.GetBaseException().Message}");
+                else
+                {
+                    OpenAiRealtimeTextClient.Result realtimeResult = realtimeTask.Result;
+                    if (realtimeResult.Success)
+                        HandleAssistantReply(StripThinking(realtimeResult.Text), pending.HistoryContent);
+                    else
+                        Plugin.Log?.LogWarning($"OpenAI Realtime failed: {realtimeResult.Error}");
+                }
+
+                _inFlight = false;
+                _running = null;
+                _requestStartedAt = -999f;
+                yield break;
+            }
             string body = useResponses
                 ? BuildResponsesRequestJson(systemPrompt, requestHistory, model)
                 : BuildRequestJson(systemPrompt, requestHistory, imageB64, model);
@@ -382,6 +408,26 @@ namespace LethalAICrewmate
                   .Append(Escape(history[i].Content)).Append("\"}");
             }
             sb.Append("]}");
+            return sb.ToString();
+        }
+
+        private static string BuildRealtimeResponseCreateJson(string systemPrompt, List<ChatTurn> history)
+        {
+            var transcript = new StringBuilder(4096);
+            for (int i = 0; i < history.Count; i++)
+            {
+                transcript.Append(history[i].Role == "assistant" ? "Buddy: " : "Player: ")
+                          .AppendLine(history[i].Content ?? "");
+            }
+
+            var sb = new StringBuilder(Math.Max(8192, systemPrompt.Length + transcript.Length + 512));
+            sb.Append("{\"type\":\"response.create\",\"response\":{");
+            sb.Append("\"conversation\":\"none\",\"output_modalities\":[\"text\"],");
+            sb.Append("\"max_output_tokens\":").Append(MaxTokens).Append(',');
+            sb.Append("\"instructions\":\"").Append(Escape(systemPrompt)).Append("\",");
+            sb.Append("\"input\":[{\"type\":\"message\",\"role\":\"user\",\"content\":[{");
+            sb.Append("\"type\":\"input_text\",\"text\":\"").Append(Escape(transcript.ToString())).Append("\"}");
+            sb.Append("]}]}}");
             return sb.ToString();
         }
 

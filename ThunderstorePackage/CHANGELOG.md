@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.4
+
+- Replaces the rejected REST calls for `gpt-realtime-2.1-mini` with the model's native authenticated Realtime WebSocket endpoint.
+- Sends Buddy's full system prompt and bounded conversation context through a text-only `response.create`, collects streamed `response.output_text` events, and feeds the result into the existing multiplayer chat and synchronized TTS pipeline.
+- Remains a strict `gpt-realtime-2.1-mini` build with no Luna or other chat-model fallback.
+
 ## 1.6.3
 
 - Fixes Buddy ignoring voice and chat with `gpt-realtime-2.1-mini`: OpenAI rejects this model on Chat Completions, so the experimental model now uses the Responses API and parses `output_text` replies.
