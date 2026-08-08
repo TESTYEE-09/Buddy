@@ -1,4 +1,5 @@
 using HarmonyLib;
+using UnityEngine;
 
 namespace LethalAICrewmate
 {
@@ -10,13 +11,19 @@ namespace LethalAICrewmate
     [HarmonyPatch(typeof(CrewmateSpawner), nameof(CrewmateSpawner.SpawnCrewmateIfNeeded))]
     internal static class Patch_CrewmateSpawner_SpawnCompatibilityGate
     {
+        private static float _nextLogAt;
+
         [HarmonyPrefix]
         private static bool Prefix()
         {
             if (NetMessenger.IsHostSessionReadyForBuddy())
                 return true;
 
-            Plugin.Log?.LogInfo("Buddy spawn delayed until every multiplayer client is compatible.");
+            if (Time.unscaledTime >= _nextLogAt)
+            {
+                _nextLogAt = Time.unscaledTime + 8f;
+                Plugin.Log?.LogInfo("Buddy spawn delayed until every multiplayer client is compatible.");
+            }
             return false;
         }
     }

@@ -344,7 +344,7 @@ namespace LethalAICrewmate
             part("language", "en");
             part("temperature", "0");
             // Nudge model away from silence hallucinations
-            part("prompt", "Lethal Company gameplay. Crew talking to Buddy AI. Commands: follow, stay, ship, fetch scrap, status, time, credits, buy items, open door, disable turret, ship lights.");
+            part("prompt", "Lethal Company gameplay. Crew talking to Buddy AI. Commands: follow, stay, ship, fetch scrap, go forward, scout ahead, check in front, status, time, credits, buy items, open door, disable turret, ship lights.");
 
             var head = Encoding.UTF8.GetBytes(sb.ToString());
             var fileHeader = Encoding.UTF8.GetBytes(

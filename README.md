@@ -37,6 +37,8 @@ Type these in normal Lethal Company chat:
 | --- | --- |
 | `buddy follow` | Follow the player who gave the order |
 | `buddy stay` | Hold position |
+| `buddy go forward` | Scout about 10 metres in the requesting player's facing direction, report, then return |
+| `buddy check ahead 15 metres` | Scout a requested safe distance, clamped between 4m and 18m |
 | `buddy go to ship` | Return toward the ship |
 | `buddy fetch scrap` | Find nearby scrap and bring it back |
 | `buddy buy 3 flashlights` | Buy store items using the real price, sale and crew credits |
@@ -53,7 +55,7 @@ Ship and terminal actions are host-authoritative and use the same game state as 
 
 ## Personality
 
-Buddy is conversation-first: he responds to what players actually say instead of dumping sensor/entity facts. Harmless wildlife such as Manticoils and Roaming Locusts is treated as background unless the player asks about it.
+Buddy is conversation-first: he responds to what players actually say instead of dumping sensor/entity facts. v1.4.9 makes ordinary replies a little shorter and gives him more quick, understated wit. Harmless wildlife such as Manticoils and Roaming Locusts is treated as background unless the player asks about it.
 
 Buddy can very rarely make a subtle fourth-wall joke when the moment fits. The rare beat is rate-limited in game code so it stays surprising instead of becoming his gimmick.
 

@@ -234,19 +234,36 @@ namespace LethalAICrewmate
                 if (!peer.HelloReceived)
                 {
                     float age = Time.unscaledTime - peer.FirstSeenAt;
+                    string label = ResolvePeerLabel(nm, id);
                     warning = age < MissingModGraceSeconds
-                        ? $"Waiting for client {id} to load LethalAICrewmate..."
-                        : $"Buddy cannot spawn: client {id} is missing LethalAICrewmate {Plugin.ModVersion}. Install the same ZIP on every player and restart the lobby.";
+                        ? $"Waiting for {label} to load LethalAICrewmate..."
+                        : $"Buddy cannot spawn: {label} is missing LethalAICrewmate {Plugin.ModVersion}. Install the same ZIP on every player and restart the lobby.";
                 }
                 else
                 {
-                    warning = $"Buddy cannot spawn: client {id} has {peer.Version}, host has {Plugin.ModVersion}. Install the same ZIP on every player and restart the lobby.";
+                    string label = ResolvePeerLabel(nm, id);
+                    warning = $"Buddy cannot spawn: {label} has {peer.Version}, host has {Plugin.ModVersion}. Install the same ZIP on every player and restart the lobby.";
                 }
                 break;
             }
 
             HostCompatibilityWarning = warning;
             AnnounceHostWarningIfChanged(warning);
+        }
+
+        private static string ResolvePeerLabel(NetworkManager nm, ulong clientId)
+        {
+            try
+            {
+                if (nm != null && nm.ConnectedClients.TryGetValue(clientId, out var client) && client?.PlayerObject != null)
+                {
+                    var player = client.PlayerObject.GetComponent<GameNetcodeStuff.PlayerControllerB>();
+                    if (player != null && !string.IsNullOrWhiteSpace(player.playerUsername))
+                        return $"{player.playerUsername} (client {clientId})";
+                }
+            }
+            catch { }
+            return $"client {clientId}";
         }
 
         private static void AnnounceHostWarningIfChanged(string warning)

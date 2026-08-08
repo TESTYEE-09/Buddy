@@ -40,6 +40,17 @@ static class Program
               "parse terminal door open");
         Check(ShipCommandParsing.IsStatusRequest("what time is it?"), "parse ship status question");
 
+        Check(MovementCommandParsing.Parse("go forward 12 metres").Kind == MovementCommandKind.ScoutAhead &&
+              MovementCommandParsing.Parse("go forward 12 metres").ScoutDistance == 12f, "parse bounded scout distance");
+        Check(MovementCommandParsing.Parse("check in front").Kind == MovementCommandKind.ScoutAhead, "parse natural scout command");
+        Check(MovementCommandParsing.Parse("stop following me").Kind == MovementCommandKind.Stay, "stop following is not follow");
+        Check(MovementCommandParsing.Parse("go to the ship").Kind == MovementCommandKind.ReturnToShip, "ship return is not moon route");
+        Check(MovementCommandParsing.Parse("what is scrap?").Kind == MovementCommandKind.None, "scrap question is not fetch command");
+        Check(MovementCommandParsing.Parse("can you follow me?").Kind == MovementCommandKind.Follow, "parse polite follow command");
+        Check(MovementCommandParsing.Parse("ship").Kind == MovementCommandKind.ReturnToShip, "retain short ship command");
+        Check(MovementCommandParsing.Parse("no, get off the ship and follow us").Kind == MovementCommandKind.Follow, "parse follow-us correction");
+        Check(MovementCommandParsing.Parse("you are not following us").Kind == MovementCommandKind.None, "complaint is not a fresh follow order");
+
         Console.WriteLine($"Release checks passed: {_checks}");
         return 0;
     }

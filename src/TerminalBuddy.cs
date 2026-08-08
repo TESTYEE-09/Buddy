@@ -40,7 +40,9 @@ namespace LethalAICrewmate
 
             try
             {
-                if (lower.StartsWith("route ") || lower.StartsWith("moon ") || lower.StartsWith("go to "))
+                if (lower.StartsWith("route ") || lower.StartsWith("moon ") ||
+                    (lower.StartsWith("go to ") && !lower.Contains("ship") && !lower.Contains("home") &&
+                     !lower.Contains("forward") && !lower.Contains("ahead")))
                 {
                     string moon = lower
                         .Replace("route ", "")
