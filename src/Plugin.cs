@@ -12,7 +12,7 @@ namespace LethalAICrewmate
     {
         public const string ModGuid = "com.lethalaicrewmate.buddy";
         public const string ModName = "LethalAICrewmate";
-        public const string ModVersion = "1.6.0";
+        public const string ModVersion = "1.6.1";
 
         internal static Plugin Instance;
         internal static ManualLogSource Log;
@@ -60,8 +60,8 @@ namespace LethalAICrewmate
                 "Legacy plaintext OpenAI API key fallback. Prefer LETHAL_AI_OPENAI_API_KEY or a session-only main-menu key.");
             PersistApiKey = Config.Bind("Security", "PersistApiKey", false,
                 "Write a key entered in the menu to plaintext config. Disabled by default; prefer the selected provider's environment variable.");
-            Model = Config.Bind("Groq", "Model", "gpt-5.6-luna",
-                "Selected provider's text model. OpenAI stock: gpt-5.6-luna.");
+            Model = Config.Bind("Groq", "Model", "gpt-realtime-2.1-mini",
+                "Selected provider's chat model. OpenAI stock: gpt-realtime-2.1-mini (tested through Chat Completions; STT/TTS remain separate).");
             SttModel = Config.Bind("Groq", "SttModel", "gpt-4o-mini-transcribe",
                 "Selected provider's speech-to-text model. OpenAI stock: gpt-4o-mini-transcribe.");
             TtsModel = Config.Bind("Groq", "TtsModel", "tts-1",
@@ -155,10 +155,19 @@ namespace LethalAICrewmate
                         TtsDirection.Value = "";
                         ConfigRevision.Value = 3;
                     }
+                    // v1.6.1 first tests the new realtime model as Buddy's chat brain while
+                    // retaining the proven multiplayer STT and WAV TTS transport paths.
+                    if (ConfigRevision.Value < 4)
+                    {
+                        if (string.Equals(Provider.Value?.Trim(), "OpenAI", StringComparison.OrdinalIgnoreCase) &&
+                            string.Equals(Model.Value?.Trim(), "gpt-5.6-luna", StringComparison.OrdinalIgnoreCase))
+                            Model.Value = "gpt-realtime-2.1-mini";
+                        ConfigRevision.Value = 4;
+                    }
                     if (string.IsNullOrWhiteSpace(Model.Value) ||
                         Model.Value.IndexOf("whisper", StringComparison.OrdinalIgnoreCase) >= 0 ||
                         Model.Value.IndexOf("orpheus", StringComparison.OrdinalIgnoreCase) >= 0)
-                        Model.Value = GroqSecrets.IsOpenAi ? "gpt-5.6-luna" : "openai/gpt-oss-120b";
+                        Model.Value = GroqSecrets.IsOpenAi ? "gpt-realtime-2.1-mini" : "openai/gpt-oss-120b";
                     if (string.Equals(Model.Value?.Trim(), "llama-3.3-70b-versatile", StringComparison.OrdinalIgnoreCase))
                         Model.Value = "openai/gpt-oss-120b";
                     if (string.IsNullOrWhiteSpace(VisionModel.Value))

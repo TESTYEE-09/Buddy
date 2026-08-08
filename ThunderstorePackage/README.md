@@ -61,7 +61,7 @@ Groq requires the organization owner to accept the Orpheus model terms once in i
 
 ## Defaults
 
-- Text chat: `gpt-5.6-luna`
+- Buddy brain test: `gpt-realtime-2.1-mini` through Chat Completions
 - Screenshot capture: disabled; stock Buddy is text-only
 - STT: `gpt-4o-mini-transcribe`
 - TTS: `tts-1` with `alloy`
