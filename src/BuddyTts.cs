@@ -17,8 +17,6 @@ namespace LethalAICrewmate
         private const int MaxChars = 200;
 
         private static bool _inFlight;
-        private static AudioSource _source;
-        private static GameObject _audioGo;
 
         public static void Speak(string text, Vector3 worldPos)
         {
@@ -121,14 +119,12 @@ namespace LethalAICrewmate
                 uwr.SetRequestHeader("Authorization", "Bearer " + Plugin.ApiKey.Value);
                 uwr.timeout = 30;
 
-                Plugin.Log?.LogInfo($"Orpheus TTS → model={model} voice={voice} chars={input.Length}");
                 Plugin.Log?.LogInfo($"Buddy TTS request started model={model} voice={voice} chars={input.Length}.");
                 yield return uwr.SendWebRequest();
 
                 if (!string.IsNullOrEmpty(uwr.error) || uwr.responseCode < 200 || uwr.responseCode >= 300)
                 {
                     Plugin.Log?.LogWarning($"Orpheus TTS HTTP {uwr.responseCode}: {uwr.error} {uwr.downloadHandler?.text}");
-                    _inFlight = false;
                     yield break;
                 }
                 audioBytes = uwr.downloadHandler?.data;
@@ -138,14 +134,12 @@ namespace LethalAICrewmate
             if (audioBytes == null || audioBytes.Length < 64)
             {
                 Plugin.Log?.LogWarning("Orpheus TTS: empty body");
-                _inFlight = false;
                 yield break;
             }
 
             if (audioBytes[0] == (byte)'{')
             {
                 Plugin.Log?.LogWarning("Orpheus TTS returned JSON: " + Encoding.UTF8.GetString(audioBytes));
-                _inFlight = false;
                 yield break;
             }
 
@@ -160,14 +154,13 @@ namespace LethalAICrewmate
                 var clip = AudioClip.Create("BuddyOrpheus", frames, channels, sampleRate, false);
                 clip.SetData(samples, 0);
                 Plugin.Log?.LogInfo($"Buddy TTS decoded clip length={clip.length:F2}s samples={clip.samples} rate={clip.frequency} channels={clip.channels}.");
-                PlayClip(clip, worldPos);
+                BuddyNetworkAudio.PlayHostClipAndReplicate(clip, worldPos);
             }
             else
             {
                 Plugin.Log?.LogWarning("TTS: PCM parse failed after normalize");
             }
 
-            _inFlight = false;
         }
 
         /// <summary>
@@ -228,51 +221,6 @@ namespace LethalAICrewmate
             buf[o + 1] = (byte)((v >> 8) & 0xff);
             buf[o + 2] = (byte)((v >> 16) & 0xff);
             buf[o + 3] = (byte)((v >> 24) & 0xff);
-        }
-
-        private static void PlayClip(AudioClip clip, Vector3 worldPos)
-        {
-            EnsureAudioSource();
-
-            // Unparent and play as nearly-2D so ship audio mixers don't mute him
-            _audioGo.transform.SetParent(null, true);
-            var primary = CrewmateRegistry.GetPrimary();
-            if (primary?.Enemy != null)
-                worldPos = primary.Enemy.transform.position + Vector3.up * 1.7f;
-            _audioGo.transform.position = worldPos;
-
-            _source.Stop();
-            if (_source.clip != null)
-            {
-                var old = _source.clip;
-                _source.clip = null;
-                UnityEngine.Object.Destroy(old);
-            }
-
-            _source.clip = clip;
-            _source.spatialBlend = 0f; // full 2D — always hear Buddy
-            _source.volume = Mathf.Clamp01(Plugin.TtsVolume?.Value ?? 1f);
-            _source.mute = false;
-            _source.bypassListenerEffects = true;
-            _source.bypassEffects = true;
-            _source.bypassReverbZones = true;
-            _source.dopplerLevel = 0f;
-            _source.priority = 0;
-            _source.Play();
-
-            Plugin.Log?.LogInfo($"Playing Buddy TTS samples={clip.samples} freq={clip.frequency} ch={clip.channels} vol={_source.volume}");
-        }
-
-        private static void EnsureAudioSource()
-        {
-            if (_audioGo != null && _source != null) return;
-            _audioGo = new GameObject("LethalAICrewmate_TTS");
-            UnityEngine.Object.DontDestroyOnLoad(_audioGo);
-            _source = _audioGo.AddComponent<AudioSource>();
-            _source.playOnAwake = false;
-            _source.loop = false;
-            _source.spatialize = false;
-            _source.priority = 0;
         }
 
         internal static bool TryParseWav(byte[] data, out int sampleRate, out int channels, out float[] samples)

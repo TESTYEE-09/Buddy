@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Reflection;
 using GameNetcodeStuff;
-using HarmonyLib;
 using UnityEngine;
 using UnityEngine.AI;
 
@@ -13,7 +11,7 @@ namespace LethalAICrewmate
     /// progress gets a path rebuild first; repeated stalls while following fall back to the same
     /// safe beside-player teleport used by the normal area-transition logic.
     /// </summary>
-    internal static class BuddyMovementWatchdog143
+    internal static class BuddyMovementWatchdog
     {
         private const float SampleInterval = 0.75f;
         private const float MinProgress = 0.35f;
@@ -216,13 +214,4 @@ namespace LethalAICrewmate
         }
     }
 
-    [HarmonyPatch(typeof(PluginHost), "Update")]
-    internal static class Patch_PluginHost_BuddyMovementWatchdog143
-    {
-        [HarmonyPostfix]
-        private static void Postfix()
-        {
-            BuddyMovementWatchdog143.Tick();
-        }
-    }
 }

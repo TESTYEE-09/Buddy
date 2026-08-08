@@ -62,7 +62,7 @@ Client path:
 
 Clients do not need a Groq key. Remote microphone audio is captured only while the player holds the Buddy push-to-talk key, is size/rate limited, and is accepted only from connected matching clients. The stock nearby PTT range is 60m.
 
-v1.4.4 keeps Austin + `friendly`, normalizes generated PCM once through a soft limiter, widens the near-full-volume 3D bubble, and keeps the stock speech/chat hearing range at 70m.
+v1.4.5 keeps Austin + `friendly`, normalizes generated PCM once through a soft limiter, widens the near-full-volume 3D bubble, and keeps the stock speech/chat hearing range at 70m.
 
 ## Groq setup
 

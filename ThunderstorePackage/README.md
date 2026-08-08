@@ -43,7 +43,7 @@ Client:
 
 `client mic -> host relay -> host Whisper -> Buddy reply -> synced Buddy voice`
 
-v1.4.4 uses Austin with a light `friendly` direction, one normalized/soft-limited PCM stage, a wider near-full-volume positional bubble and longer hearing range.
+v1.4.5 uses Austin with a light `friendly` direction, one normalized/soft-limited PCM stage, a wider near-full-volume positional bubble and longer hearing range.
 
 ## Defaults
 

@@ -133,13 +133,6 @@ namespace LethalAICrewmate
         }
     }
 
-    [HarmonyPatch(typeof(NetMessenger), nameof(NetMessenger.Tick))]
-    internal static class Patch_NetMessenger_SpawnIntentTick
-    {
-        [HarmonyPostfix]
-        private static void Postfix() => SpawnIntentSafety.Tick();
-    }
-
     [HarmonyPatch(typeof(CrewmateSpawner), nameof(CrewmateSpawner.SpawnCrewmateIfNeeded))]
     internal static class Patch_CrewmateSpawner_PreannounceBuddy
     {

@@ -1,6 +1,6 @@
 {
   "name": "LethalAICrewmate",
-  "version_number": "1.4.4",
+  "version_number": "1.4.5",
   "website_url": "https://github.com/TESTYEE-09/LethalAICrewmate",
   "description": "Multiplayer-safe AI crewmate Buddy with synced movement, all-player push-to-talk, louder/farther speech, natural conversation and scrap commands.",
   "dependencies": [

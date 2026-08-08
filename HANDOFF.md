@@ -1,10 +1,10 @@
-# HANDOFF — LethalAICrewmate v1.4.0
+# HANDOFF — LethalAICrewmate v1.4.5
 
 ## Current status
 
 LethalAICrewmate is a BepInEx 5 mod for **Lethal Company v81** adding a friendly AI crewmate named Buddy.
 
-Release target: **v1.4.0**.
+Release target: **v1.4.5**.
 
 Automated release requirements:
 

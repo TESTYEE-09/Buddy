@@ -353,7 +353,7 @@ namespace LethalAICrewmate
 
                 Plugin.Log?.LogInfo($"Buddy teleported beside owner (outside={setOutside}) at {dest}");
                 if (CrewmateRegistry.TryGet(enemy, out var data) && data != null)
-                    BuddyPoseSync143.SendImmediate(data);
+                    BuddyPoseSync.SendImmediate(data);
             }
             catch (Exception ex)
             {
@@ -753,7 +753,7 @@ namespace LethalAICrewmate
             }
             enemy.isOutside = outside;
             data.ManualDestination = destination;
-            BuddyPoseSync143.SendImmediate(data);
+            BuddyPoseSync.SendImmediate(data);
             Plugin.Log?.LogWarning($"Buddy safe teleport recovery reason={reason} outside={outside} position={destination}.");
         }
 

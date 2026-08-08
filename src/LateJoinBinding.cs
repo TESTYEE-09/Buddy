@@ -1,5 +1,4 @@
 using System;
-using HarmonyLib;
 using Unity.Netcode;
 using UnityEngine;
 
@@ -10,13 +9,11 @@ namespace LethalAICrewmate
     /// therefore learn Buddy's ID just after Masked.Start already ran. Retry binding at low frequency
     /// so either message ordering converges to the same friendly client state.
     /// </summary>
-    [HarmonyPatch(typeof(NetMessenger), nameof(NetMessenger.Tick))]
-    internal static class Patch_NetMessenger_RetryLateJoinBinding
+    internal static class LateJoinBinding
     {
         private static float _nextBindAt;
 
-        [HarmonyPostfix]
-        private static void Postfix()
+        internal static void Tick()
         {
             try
             {

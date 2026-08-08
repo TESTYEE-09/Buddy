@@ -12,9 +12,9 @@ namespace LethalAICrewmate
     /// remote peers, so the host publishes a lightweight position/yaw/outside snapshot at 8 Hz.
     /// Clients only consume snapshots from the server and never author Buddy movement.
     /// </summary>
-    internal static class BuddyPoseSync143
+    internal static class BuddyPoseSync
     {
-        private const string MsgPose = "LethalAICrewmate_Pose143";
+        private const string MsgPose = "LethalAICrewmate_Pose";
         private const float SendInterval = 0.125f;
         private const float SnapDistance = 7f;
         private const float PoseExpirySeconds = 3f;
@@ -129,7 +129,7 @@ namespace LethalAICrewmate
             try { nm.CustomMessagingManager.UnregisterNamedMessageHandler(MsgPose); } catch { }
             nm.CustomMessagingManager.RegisterNamedMessageHandler(MsgPose, OnPose);
             _registered = true;
-            Plugin.Log?.LogInfo("Registered v1.4.3 Buddy pose-sync handler.");
+            Plugin.Log?.LogInfo("Registered Buddy pose-sync handler.");
         }
 
         private static void SendAllPoses(NetworkManager nm)
@@ -317,13 +317,4 @@ namespace LethalAICrewmate
         }
     }
 
-    [HarmonyLib.HarmonyPatch(typeof(PluginHost), "Update")]
-    internal static class Patch_PluginHost_BuddyPose143
-    {
-        [HarmonyLib.HarmonyPostfix]
-        private static void Postfix()
-        {
-            BuddyPoseSync143.Tick();
-        }
-    }
 }

@@ -1,5 +1,4 @@
 using System;
-using HarmonyLib;
 using Unity.Netcode;
 
 namespace LethalAICrewmate
@@ -9,14 +8,12 @@ namespace LethalAICrewmate
     /// without taking that path. Clear static Buddy state when the active NetworkManager stops
     /// listening so the next lobby starts clean.
     /// </summary>
-    [HarmonyPatch(typeof(NetMessenger), nameof(NetMessenger.Tick))]
-    internal static class Patch_NetMessenger_DisconnectCleanup
+    internal static class SessionCleanup
     {
         private static NetworkManager _lastManager;
         private static bool _wasListening;
 
-        [HarmonyPostfix]
-        private static void Postfix()
+        internal static void Tick()
         {
             try
             {

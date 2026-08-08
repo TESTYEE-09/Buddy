@@ -1,5 +1,4 @@
 using System;
-using HarmonyLib;
 using UnityEngine;
 
 namespace LethalAICrewmate
@@ -8,13 +7,11 @@ namespace LethalAICrewmate
     /// BepInEx config files are user-editable. Normalize values once after startup so malformed or
     /// extreme settings do not leak into UI, network payloads, audio, or update loops.
     /// </summary>
-    [HarmonyPatch(typeof(PluginHost), "Update")]
-    internal static class Patch_PluginHost_NormalizeConfig
+    internal static class ConfigSafety
     {
         private static bool _done;
 
-        [HarmonyPrefix, HarmonyPriority(Priority.First)]
-        private static void Prefix()
+        internal static void NormalizeOnce()
         {
             if (_done || Plugin.Instance == null) return;
             _done = true;

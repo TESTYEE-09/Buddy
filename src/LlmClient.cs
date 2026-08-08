@@ -15,12 +15,14 @@ namespace LethalAICrewmate
         private const float MinInterval = 1.5f; // Groq is fast
         private const int MaxTokens = 140;
         private const float DuplicateWindowSeconds = 2f;
+        private const float HardRequestCeilingSeconds = 45f;
 
         private static readonly Queue<PendingRequest> Queue = new Queue<PendingRequest>();
         private static readonly List<ChatTurn> History = new List<ChatTurn>();
         private static bool _inFlight;
         private static float _lastCallTime = -999f;
         private static Coroutine _running;
+        private static float _requestStartedAt = -999f;
         private static string _lastRequestKey = "";
         private static float _lastRequestAt = -999f;
 
@@ -37,6 +39,7 @@ namespace LethalAICrewmate
                     try { Plugin.Host.StopCoroutine(_running); } catch { /* ignore */ }
                 }
                 _running = null;
+                _requestStartedAt = -999f;
                 _lastRequestKey = "";
                 _lastRequestAt = -999f;
             }
@@ -64,17 +67,17 @@ namespace LethalAICrewmate
 
         public static void EnqueuePlayerMessage(string playerName, string message, bool isCommand)
         {
-            if (!HasApiKey)
-                return;
-
-            // Live sensors so Buddy cannot invent monsters that are not there
-            string sensors = GameSensors.BuildLiveContext();
-            string content = sensors + "\n" + playerName + " says: " + message;
+            if (!HasApiKey) return;
+            var content = new StringBuilder(1400);
+            content.AppendLine("[PLAYER MESSAGE - ANSWER THIS FIRST]");
+            content.Append(string.IsNullOrWhiteSpace(playerName) ? "Player" : playerName)
+                .Append(": ").AppendLine(message ?? "");
             if (isCommand)
-                content += " (They issued a command — acknowledge briefly in character.)";
-            content += "\nRULE: Only mention entities listed under Nearby entities. If NONE, do not invent threats.";
-
-            Enqueue(content, isObservation: false, withVision: true);
+                content.AppendLine("[The game already handled this command; acknowledge it naturally.]");
+            content.AppendLine().AppendLine("[LIVE GAME CONTEXT - SILENT BACKGROUND UNLESS RELEVANT]")
+                .AppendLine(GameSensors.BuildLiveContext())
+                .AppendLine("[Do not turn sensor entries into the topic. Harmless wildlife requires no callout.]");
+            Enqueue(content.ToString(), isObservation: false, withVision: true);
         }
 
         public static void EnqueueObservation(string summary)
@@ -86,6 +89,7 @@ namespace LethalAICrewmate
 
         private static void Enqueue(string userContent, bool isObservation, bool withVision = false)
         {
+            userContent = BuddyFourthWall.MaybeAnnotate(userContent, isObservation);
             string historyContent = BuildHistoryContent(userContent, isObservation);
             string requestKey = (isObservation ? "observation:" : "player:") + historyContent.Trim().ToLowerInvariant();
             float now = Time.unscaledTime;
@@ -158,7 +162,20 @@ namespace LethalAICrewmate
         {
             try
             {
-                if (_inFlight) return;
+                if (_inFlight)
+                {
+                    if (Time.unscaledTime - _requestStartedAt > HardRequestCeilingSeconds)
+                    {
+                        if (_running != null && Plugin.Host != null)
+                        {
+                            try { Plugin.Host.StopCoroutine(_running); } catch { }
+                        }
+                        _running = null;
+                        _inFlight = false;
+                        Plugin.Log?.LogWarning("Recovered a Buddy chat request that exceeded the hard request ceiling.");
+                    }
+                    return;
+                }
                 if (Queue.Count == 0) return;
                 if (Plugin.Host == null) return;
                 if (!HasApiKey)
@@ -183,6 +200,7 @@ namespace LethalAICrewmate
         {
             _inFlight = true;
             _lastCallTime = Time.time;
+            _requestStartedAt = Time.unscaledTime;
 
             string systemPrompt = BuildSystemPrompt();
             var requestHistory = new List<ChatTurn>(History)
@@ -204,6 +222,7 @@ namespace LethalAICrewmate
                 uwr.downloadHandler = new DownloadHandlerBuffer();
                 uwr.SetRequestHeader("Content-Type", "application/json");
                 uwr.SetRequestHeader("Authorization", "Bearer " + Plugin.ApiKey.Value);
+                uwr.timeout = 30;
 
                 Plugin.Log?.LogInfo($"Groq chat payload bytes={raw.Length} historyMessages={requestHistory.Count} maxTokens={MaxTokens}.");
 
@@ -247,6 +266,7 @@ namespace LethalAICrewmate
 
             _inFlight = false;
             _running = null;
+            _requestStartedAt = -999f;
         }
 
         private static IEnumerator SendRequestNoVision(string systemPrompt, string model, List<ChatTurn> requestHistory, string historyContent)
@@ -259,6 +279,7 @@ namespace LethalAICrewmate
                 uwr.downloadHandler = new DownloadHandlerBuffer();
                 uwr.SetRequestHeader("Content-Type", "application/json");
                 uwr.SetRequestHeader("Authorization", "Bearer " + Plugin.ApiKey.Value);
+                uwr.timeout = 30;
                 yield return uwr.SendWebRequest();
                 if (string.IsNullOrEmpty(uwr.error) && uwr.responseCode >= 200 && uwr.responseCode < 300)
                 {
@@ -273,23 +294,7 @@ namespace LethalAICrewmate
 
         private static string BuildSystemPrompt()
         {
-            var name = Plugin.CrewmateName?.Value ?? "Buddy";
-            var personality = Plugin.Personality?.Value
-                              ?? "Jumpy LC employee. Short radio callouts. Only real game threats.";
-            var sb = new StringBuilder(14000);
-            sb.Append("You are ").Append(name).Append(", an employee on a Lethal Company crew. ");
-            sb.Append(personality).Append(' ');
-            sb.Append("TRUTH RULES (highest priority): ");
-            sb.Append("Every user message includes a [SENSOR] block with REAL nearby entities. ");
-            sb.Append("NEVER invent monsters, scrap, or hazards not in SENSOR or WIKI FACTS. ");
-            sb.Append("If SENSOR says Nearby entities: NONE, you must not claim to see a Snare Flea, Coil-Head, or anything else. ");
-            sb.Append("If an image is attached, describe only what is clearly visible — do not invent enemies. ");
-            sb.Append("Never invent hull leaks, oxygen failure, or fake ship damage. ");
-            sb.Append("If unsure, say you're not sure. Keep under 22 words. No thinking tags. No markdown. ");
-            sb.Append("Movement tags: [FOLLOW] [STAY] [SHIP] [FETCH]. ");
-            sb.Append("In orbit only, if player asks to route/buy: [ROUTE:moonname] [BUY:item] [TERMINAL:cmd]. ");
-            sb.Append('\n').Append(WikiKnowledge.Body);
-            return sb.ToString();
+            return BuddyConversationPrompt.Build();
         }
 
         private static void TrimHistory()
@@ -559,15 +564,9 @@ namespace LethalAICrewmate
         {
             string[] tags = { "[FOLLOW]", "[STAY]", "[SHIP]", "[FETCH]" };
             foreach (var t in tags)
-            {
-                int idx = display.IndexOf(t, StringComparison.OrdinalIgnoreCase);
-                if (idx >= 0)
-                {
-                    tag = t.Substring(1, t.Length - 2);
-                    display = (display.Substring(0, idx) + display.Substring(idx + t.Length)).Trim();
-                    return;
-                }
-            }
+                display = display.Replace(t, "");
+            tag = null;
+            display = display.Trim();
         }
     }
 }
