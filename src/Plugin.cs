@@ -12,7 +12,7 @@ namespace LethalAICrewmate
     {
         public const string ModGuid = "com.lethalaicrewmate.buddy";
         public const string ModName = "LethalAICrewmate";
-        public const string ModVersion = "1.4.0";
+        public const string ModVersion = "1.4.1";
 
         internal static Plugin Instance;
         internal static ManualLogSource Log;
@@ -56,8 +56,8 @@ namespace LethalAICrewmate
                 "Orpheus voice: autumn, diana, hannah (F) / austin, daniel, troy (M).");
             TtsEnabled = Config.Bind("Groq", "TtsEnabled", true,
                 "Generate Buddy speech on the host and replicate it to compatible multiplayer clients.");
-            TtsDirection = Config.Bind("Groq", "TtsDirection", "nervous",
-                "Optional Orpheus vocal direction (no brackets), e.g. nervous, cheerful, whisper. Empty = natural.");
+            TtsDirection = Config.Bind("Groq", "TtsDirection", "",
+                "Optional Orpheus vocal direction (no brackets), e.g. cheerful, quiet, nervous. Empty = natural and recommended.");
             TtsVolume = Config.Bind("Groq", "TtsVolume", 0.85f,
                 "Buddy voice volume 0–1.");
 
@@ -87,8 +87,8 @@ namespace LethalAICrewmate
             CrewmateName = Config.Bind("Crewmate", "Name", "Buddy",
                 "Display name and chat command prefix for the AI crewmate.");
             Personality = Config.Bind("Crewmate", "Personality",
-                "Jumpy LC employee. Short radio callouts. Only real game threats — never invent sci-fi ship damage.",
-                "System-prompt personality fragment for LLM replies.");
+                "Friendly, useful crewmate with dry low-key humor. Calm most of the time, a little nervous only when something is actually dangerous.",
+                "Optional personality flavor for Buddy. Core conversation/relevance rules always remain active.");
             Enabled = Config.Bind("Crewmate", "Enabled", true,
                 "Master toggle for spawning the AI crewmate.");
             ChatHearRange = Config.Bind("Crewmate", "ChatHearRange", 25f,
