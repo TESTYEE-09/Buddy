@@ -38,6 +38,8 @@ static class Program
               spawnItem == "flashlights" && spawnQuantity == 2, "parse polite bounded spawn");
         Check(ShipCommandParsing.TryParsePoliteSpawn("please spawn a flashlight for me", out spawnItem, out spawnQuantity) &&
               spawnItem == "flashlight" && spawnQuantity == 1, "parse natural article in polite spawn");
+        Check(ShipCommandParsing.TryParsePoliteSpawn("Can I please have a flashlight? I'm begging you.", out spawnItem, out spawnQuantity) &&
+              spawnItem == "flashlight" && spawnQuantity == 1, "parse natural pleaded item request");
         Check(!ShipCommandParsing.TryParsePoliteSpawn("spawn 2 flashlights", out _, out _), "reject spawn without pleading");
         Check(ShipCommandParsing.TryParsePoliteSpawn("i beg you spawn 99 shovels", out _, out spawnQuantity) && spawnQuantity == 3,
               "cap polite spawn quantity");

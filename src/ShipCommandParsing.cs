@@ -15,6 +15,26 @@ namespace LethalAICrewmate
                            lower.Contains("i'm begging");
             if (!pleaded) return false;
 
+            // People naturally say "can I please have a flashlight? I'm begging you"
+            // rather than the implementation-facing phrase "please spawn a flashlight".
+            // Both are explicit, pleaded requests and receive the same bounded spawn treatment.
+            string request = Regex.Replace(lower,
+                @"[,.!?\s]*(?:i'?m|we'?re)\s+begging(?:\s+you)?[.!?\s]*$", "",
+                RegexOptions.IgnoreCase).Trim();
+            var naturalRequest = Regex.Match(request,
+                @"^(?:can|could|may)\s+(?:i|we)\s+(?:please\s+)?(?:have|get)\s+(?:me\s+|us\s+)?(?:(\d{1,2})\s+)?(?:an?\s+|the\s+|some\s+)?(.+?)(?:\s+(?:for)\s+(?:me|us))?[.!?]*$|^(?:please\s+)?give\s+(?:me\s+|us\s+)?(?:(\d{1,2})\s+)?(?:an?\s+|the\s+|some\s+)?(.+?)[.!?]*$",
+                RegexOptions.IgnoreCase);
+            if (naturalRequest.Success)
+            {
+                string quantityText = naturalRequest.Groups[1].Success ? naturalRequest.Groups[1].Value : naturalRequest.Groups[3].Value;
+                string requestedItem = naturalRequest.Groups[2].Success ? naturalRequest.Groups[2].Value : naturalRequest.Groups[4].Value;
+                quantity = 1;
+                if (!string.IsNullOrEmpty(quantityText)) int.TryParse(quantityText, out quantity);
+                quantity = Math.Max(1, Math.Min(3, quantity));
+                item = requestedItem.Trim();
+                return item.Length > 0;
+            }
+
             var match = Regex.Match(lower,
                 @"\bspawn\s+(?:me\s+|us\s+)?(?:(\d{1,2})\s+)?(?:an?\s+|the\s+|some\s+)?(.+?)(?:\s+(?:in\s+front\s+of|for)\s+(?:me|us))?(?:\s+please)?[.!?]*$",
                 RegexOptions.IgnoreCase);

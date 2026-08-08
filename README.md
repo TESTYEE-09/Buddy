@@ -58,6 +58,8 @@ The stock OpenAI configuration uses `gpt-5.6-luna` for conversation and keeps sc
 
 ## Personality
 
+Buddy is a dry, practical coworker: he says the useful Lethal Company answer first, then only adds low-key, situational humour when it fits. He avoids forced catchphrases, hyperactive internet slang, and mascot-style jokes.
+
 Buddy is conversation-first: he responds to what players actually say instead of dumping sensor/entity facts. v1.5.0 uses a substantially richer behavior prompt covering grounded multiplayer awareness, tool honesty, danger calibration, vision limits and natural dry humor. Harmless wildlife such as Manticoils and Roaming Locusts is treated as background unless the player asks about it.
 
 Buddy can very rarely make a subtle fourth-wall joke when the moment fits. The rare beat is rate-limited in game code so it stays surprising instead of becoming his gimmick.
@@ -100,11 +102,11 @@ TtsVolume = 1
 RealtimeVoiceModel = gpt-realtime-2.1-mini
 ```
 
-The main-menu Save button persists the selected provider key in Windows Credential Manager for that Windows user. `LETHAL_AI_OPENAI_API_KEY` is still supported and takes precedence when set before launching Steam. Text chat uses `gpt-5.6-luna` through Responses with low reasoning, low verbosity and Fast service tier. Push-to-talk uses a persistent `gpt-realtime-2.1-mini` WebSocket with native PCM audio input/output, Ash voice, input transcription and host-side function calling. The separate `gpt-realtime-whisper` and `gpt-4o-mini-tts` settings remain available for non-native/fallback speech paths. The older Groq provider remains selectable with `[AI] Provider = Groq` and `LETHAL_AI_GROQ_API_KEY`.
+The main-menu Save button persists the selected provider key in Windows Credential Manager for that Windows user. `LETHAL_AI_OPENAI_API_KEY` is still supported and takes precedence when set before launching Steam. Text chat uses `gpt-5.6-luna` through Responses with low reasoning, low verbosity and Fast service tier. Push-to-talk uses a persistent `gpt-realtime-2.1-mini` WebSocket with 24 kHz PCM input/output, Ash voice, `gpt-realtime-whisper` transcription, far-field noise reduction, low reasoning and host-side function calling. PTT defines the turn boundary, so automatic VAD is disabled in the mod. The separate `gpt-realtime-whisper` and `gpt-4o-mini-tts` settings remain available for non-native/fallback speech paths. The older Groq provider remains selectable with `[AI] Provider = Groq` and `LETHAL_AI_GROQ_API_KEY`.
 
 Screenshot capture is disabled in v1.5.3. Stock Buddy is text-only and does not capture the host screen.
 
-v2 also supports a bounded joke/admin command: `Buddy, please spawn 2 flashlights in front of me`. The requester must explicitly say please or beg; only validated grabbable item prefabs are allowed, quantities are capped at 3, and the lobby is capped at 12 spawned objects per round. Enemies, hazards, arbitrary prefabs and unknown names are rejected.
+v2 also supports a bounded joke/admin command: `Buddy, please spawn 2 flashlights in front of me`. Natural pleaded phrasing also works, for example: `Buddy, can I please have a flashlight? I'm begging you.` The requester must explicitly say please or beg; only validated grabbable item prefabs are allowed, quantities are capped at 3, and the lobby is capped at 12 spawned objects per round. Enemies, hazards, arbitrary prefabs and unknown names are rejected.
 
 ```ini
 [Vision]

@@ -12,6 +12,7 @@ namespace LethalAICrewmate
     {
         private const int NetworkSampleRate = 16000;
         private const int MaxNetworkSeconds = 15;
+        private const float RealtimeVoiceGain = 1.12f;
 
         private static GameObject _audioGo;
         private static AudioSource _source;
@@ -104,7 +105,13 @@ namespace LethalAICrewmate
             if (sampleRate < 8000 || sampleRate > 48000) return;
             int sampleCount = pcm16.Length / 2;
             float[] samples = new float[sampleCount];
-            for (int i = 0; i < sampleCount; i++) samples[i] = BitConverter.ToInt16(pcm16, i * 2) / 32768f;
+            for (int i = 0; i < sampleCount; i++)
+            {
+                float sample = BitConverter.ToInt16(pcm16, i * 2) / 32768f;
+                // Native Realtime output bypasses the normal TTS clip normalizer. Add a small
+                // transparent boost with a soft ceiling so Ash is easier to hear, not harsher.
+                samples[i] = Mathf.Clamp(sample * RealtimeVoiceGain, -0.98f, 0.98f);
+            }
             AudioClip clip = AudioClip.Create("BuddyRealtimeChunk", sampleCount, 1, sampleRate, false);
             clip.SetData(samples, 0);
             PlaybackQueue.Enqueue(new QueuedClip { Clip = clip, Position = worldPos });

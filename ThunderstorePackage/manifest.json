@@ -1,6 +1,6 @@
 {
   "name": "LethalAICrewmate",
-  "version_number": "2.2.0",
+  "version_number": "2.2.3",
   "website_url": "https://github.com/TESTYEE-09/LethalAICrewmate",
   "description": "Multiplayer AI crewmate Buddy with ship controls, terminal purchases, live status knowledge, synced speech, vision and movement.",
   "dependencies": [

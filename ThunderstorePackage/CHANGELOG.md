@@ -1,5 +1,23 @@
 # Changelog
 
+## 2.2.3
+
+- Natural pleaded requests now work: "Can I please have a flashlight? I'm begging you" is treated as the same bounded, validated item-spawn request as "please spawn a flashlight".
+- Prevents tool-turn preambles from playing before Buddy receives the real command result, so he no longer promises an item and then contradicts himself.
+- Raises native Ash Realtime voice output slightly with a soft ceiling.
+- Reworks Buddy's personality into dry, practical coworker humour and removes forced chaotic/internet-style jokes.
+
+## 2.2.2
+
+- Fixes a native Realtime cancellation race: pressing push-to-talk between completed responses no longer disconnects Buddy with "Cancellation failed: no active response found".
+- Keeps Ash voice and makes spoken responses tighter: normally 3-12 words, led by danger, scrap, route, or the next useful crew action.
+
+## 2.2.1
+
+- Fixes OpenAI immediately rejecting native Realtime voice sessions by supplying the required 24 kHz output PCM rate.
+- Uses Ash voice with `gpt-realtime-whisper`, far-field noise reduction, unlimited output tokens and low reasoning.
+- Keeps turn detection explicit for Buddy's hold-to-talk controls and shows the actual API error in-game instead of the generic disconnected message.
+
 ## 2.2.0
 
 - Rebuilds OpenAI push-to-talk as genuine `gpt-realtime-2.1-mini` speech-to-speech instead of a text-only Realtime request followed by separate TTS.

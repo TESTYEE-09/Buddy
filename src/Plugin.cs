@@ -12,7 +12,7 @@ namespace LethalAICrewmate
     {
         public const string ModGuid = "com.lethalaicrewmate.buddy";
         public const string ModName = "LethalAICrewmate";
-        public const string ModVersion = "2.2.0";
+        public const string ModVersion = "2.2.3";
 
         internal static Plugin Instance;
         internal static ManualLogSource Log;
@@ -77,7 +77,7 @@ namespace LethalAICrewmate
                 "Buddy voice volume 0–1. Speech is normalized once with a soft limiter before playback and replication.");
 
             RealtimeVoiceModel = Config.Bind("OpenAI", "RealtimeVoiceModel", "gpt-realtime-2.1-mini",
-                "Native speech-to-speech model for OpenAI push-to-talk. Uses the Ash voice; text chat remains on the selected AI model.");
+                "Native speech-to-speech model for OpenAI push-to-talk. Uses Ash, far-field noise reduction and low reasoning; text chat remains on the selected AI model.");
 
             // Very old private builds stored a provider key under [OpenRouter]. Only migrate a
             // Groq-shaped key; never silently send an OpenRouter key to the Groq endpoint.

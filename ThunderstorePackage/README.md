@@ -43,7 +43,7 @@ Buddy can report live time, credits, quota/deadline, moon/weather, ship scrap an
 
 ## Personality
 
-Buddy is conversation-first rather than a sensor/wiki narrator. v1.5.0 gives him a much richer grounded multiplayer personality, stronger truth and tool-use rules, calibrated danger behavior, better vision honesty and natural dry wit. He ignores harmless background wildlife unless it is actually relevant.
+Buddy is conversation-first rather than a sensor/wiki narrator. He is a dry, practical coworker who says the useful Lethal Company answer first, then uses low-key situational humour only when it fits. He avoids forced catchphrases, hyperactive internet slang and mascot-style jokes; he also ignores harmless background wildlife unless it is actually relevant.
 
 ## Voice
 
@@ -57,14 +57,14 @@ Client:
 
 Buddy selects the same active microphone as Lethal Company's voice chat, amplifies quiet speech, and reports failed transcriptions to the speaking client. Replies are synchronized to matching players. Screen capture is disabled. Keys saved in the menu persist in the host's Windows Credential Manager. Public-lobby hosts can set `[Security] AllowRemoteVoice = false`.
 
-v2 includes a bounded polite item-spawn joke: say `Buddy, please spawn a flashlight in front of me`. Only validated grabbable items work, with a maximum of 3 per request and 12 per round; enemies, hazards and arbitrary prefabs are rejected.
+v2 includes a bounded polite item-spawn joke: say `Buddy, please spawn a flashlight in front of me` or `Buddy, can I please have a flashlight? I'm begging you.` Only validated grabbable items work, with a maximum of 3 per request and 12 per round; enemies, hazards and arbitrary prefabs are rejected.
 
 Groq requires the organization owner to accept the Orpheus model terms once in its playground before speech audio can be generated. Buddy shows an in-game notice if this approval is missing; text replies continue normally.
 
 ## Defaults
 
 - Buddy brain: `gpt-5.6-luna` through Responses with low reasoning, low verbosity and Fast service tier
-- Native PTT voice: `gpt-realtime-2.1-mini` with Ash, persistent WebSocket audio and host-side tool calls
+- Native PTT voice: `gpt-realtime-2.1-mini` with Ash, 24 kHz PCM, far-field noise reduction, low reasoning, persistent WebSocket audio and host-side tool calls
 - Screenshot capture: disabled; stock Buddy is text-only
 - STT: `gpt-realtime-whisper`
 - TTS: `gpt-4o-mini-tts`

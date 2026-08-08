@@ -19,6 +19,11 @@ namespace LethalAICrewmate
         private static readonly Queue<VoiceTurn> Pending = new Queue<VoiceTurn>();
         private static readonly object Gate = new object();
         private static bool _workerRunning;
+        // A response only exists after response.create has been sent and before response.done.
+        // Keep this separate from the websocket state: pressing PTT between turns must not send
+        // response.cancel, because the Realtime API correctly rejects that with "no active response".
+        private static bool _responseActive;
+        private static bool _responseCancelRequested;
         private static ClientWebSocket _socket;
         private static CancellationTokenSource _sessionCancel;
         private static readonly SemaphoreSlim SendLock = new SemaphoreSlim(1, 1);
@@ -73,7 +78,12 @@ namespace LethalAICrewmate
 
         internal static void ResetSession()
         {
-            lock (Gate) Pending.Clear();
+            lock (Gate)
+            {
+                Pending.Clear();
+                _responseActive = false;
+                _responseCancelRequested = false;
+            }
             try { _sessionCancel?.Cancel(); } catch { }
             try { _socket?.Abort(); } catch { }
             _socket = null;
@@ -82,8 +92,14 @@ namespace LethalAICrewmate
         internal static void BeginPushToTalk()
         {
             MainThread.Enqueue(BuddyNetworkAudio.StopPlayback);
-            lock (Gate) Pending.Clear();
-            if (_socket != null && _socket.State == WebSocketState.Open)
+            bool cancelActiveResponse;
+            lock (Gate)
+            {
+                Pending.Clear();
+                cancelActiveResponse = _responseActive;
+                if (cancelActiveResponse) _responseCancelRequested = true;
+            }
+            if (cancelActiveResponse && _socket != null && _socket.State == WebSocketState.Open)
                 _ = TrySendCancelAsync();
         }
 
@@ -94,7 +110,12 @@ namespace LethalAICrewmate
                 await SendAsync("{\"type\":\"response.cancel\"}", _sessionCancel.Token).ConfigureAwait(false);
                 await SendAsync("{\"type\":\"input_audio_buffer.clear\"}", _sessionCancel.Token).ConfigureAwait(false);
             }
-            catch { }
+            catch (Exception ex)
+            {
+                // The response can finish in the few milliseconds between the state check and
+                // response.cancel. That is expected and must never tear down the voice session.
+                Plugin.Log?.LogDebug("Realtime cancellation skipped: " + ex.Message);
+            }
         }
 
         private static async Task RunWorkerAsync()
@@ -114,7 +135,10 @@ namespace LethalAICrewmate
                     {
                         Plugin.Log?.LogWarning("Realtime voice turn failed: " + ex.GetType().Name + ": " + ex.Message);
                         CloseSocket();
-                        QueueHint("Buddy's realtime voice disconnected. Try speaking again.");
+                        string reason = ex.Message ?? "Unknown Realtime error";
+                        reason = reason.Replace('\r', ' ').Replace('\n', ' ').Trim();
+                        if (reason.Length > 140) reason = reason.Substring(0, 140) + "...";
+                        QueueHint("Realtime error: " + reason);
                     }
                 }
             }
@@ -149,12 +173,15 @@ namespace LethalAICrewmate
                     .ConfigureAwait(false);
             }
             await SendAsync("{\"type\":\"input_audio_buffer.commit\"}", _sessionCancel.Token).ConfigureAwait(false);
-            await SendAsync("{\"type\":\"response.create\"}", _sessionCancel.Token).ConfigureAwait(false);
+            await CreateResponseAsync().ConfigureAwait(false);
 
             using (var audio = new MemoryStream())
             {
                 const int playbackChunkBytes = OutputRate * 2; // roughly one second of PCM16
                 bool queuedAnyAudio = false;
+                // A Realtime model may emit a friendly preamble before deciding to call a tool.
+                // Do not play it yet: only confirmed, final output reaches the crew.
+                var completedAudioChunks = new List<byte[]>();
                 string assistantTranscript = "";
                 string pendingCallId = null;
                 string pendingCommand = null;
@@ -179,10 +206,9 @@ namespace LethalAICrewmate
                             audio.Write(bytes, 0, bytes.Length);
                             if (audio.Length >= playbackChunkBytes)
                             {
-                                QueueAudioChunk(audio.ToArray());
+                                completedAudioChunks.Add(audio.ToArray());
                                 audio.SetLength(0);
                                 audio.Position = 0;
-                                queuedAnyAudio = true;
                             }
                         }
                     }
@@ -198,30 +224,43 @@ namespace LethalAICrewmate
                     }
                     else if (type == "response.done")
                     {
+                        bool wasCancelled = FinishResponse();
+                        if (wasCancelled) return;
                         if (!string.IsNullOrEmpty(pendingCallId))
                         {
                             audio.SetLength(0);
                             audio.Position = 0;
+                            completedAudioChunks.Clear();
                             assistantTranscript = "";
                             string result = await ExecuteCommandOnMainThread(turn.PlayerId, pendingCommand).ConfigureAwait(false);
                             string output = "{\"result\":\"" + LlmClient.Escape(result) + "\"}";
                             string toolEvent = "{\"type\":\"conversation.item.create\",\"item\":{\"type\":\"function_call_output\",\"call_id\":\"" +
                                                LlmClient.Escape(pendingCallId) + "\",\"output\":\"" + LlmClient.Escape(output) + "\"}}";
                             await SendAsync(toolEvent, _sessionCancel.Token).ConfigureAwait(false);
-                            await SendAsync("{\"type\":\"response.create\"}", _sessionCancel.Token).ConfigureAwait(false);
+                            await CreateResponseAsync().ConfigureAwait(false);
                             pendingCallId = null;
                             pendingCommand = null;
                             continue;
                         }
-                        if (audio.Length > 0 || !string.IsNullOrWhiteSpace(assistantTranscript)) break;
+                        if (audio.Length > 0 || completedAudioChunks.Count > 0 || !string.IsNullOrWhiteSpace(assistantTranscript)) break;
                     }
                     else if (type == "error")
                     {
-                        throw new InvalidOperationException(ReadNestedErrorMessage(message) ?? message);
+                        string apiError = ReadNestedErrorMessage(message) ?? message;
+                        // Cancellation is deliberately best-effort. If a just-finished response
+                        // wins the race, the service emits this error event; ignore it and let the
+                        // outstanding turn finish normally instead of disconnecting Buddy.
+                        if (IsNoActiveResponseCancellation(apiError) && IsCancellationRequested()) continue;
+                        throw new InvalidOperationException(apiError);
                     }
                 }
 
                 byte[] pcm = audio.ToArray();
+                foreach (byte[] chunk in completedAudioChunks)
+                {
+                    QueueAudioChunk(chunk);
+                    queuedAnyAudio = true;
+                }
                 if (pcm.Length > 1)
                 {
                     QueueAudioChunk(pcm);
@@ -248,6 +287,41 @@ namespace LethalAICrewmate
             Plugin.Log?.LogInfo("OpenAI native realtime voice session connected: " + model);
         }
 
+        private static async Task CreateResponseAsync()
+        {
+            lock (Gate)
+            {
+                _responseActive = true;
+                _responseCancelRequested = false;
+            }
+            try { await SendAsync("{\"type\":\"response.create\"}", _sessionCancel.Token).ConfigureAwait(false); }
+            catch
+            {
+                FinishResponse();
+                throw;
+            }
+        }
+
+        private static bool FinishResponse()
+        {
+            lock (Gate)
+            {
+                bool wasCancelled = _responseCancelRequested;
+                _responseActive = false;
+                _responseCancelRequested = false;
+                return wasCancelled;
+            }
+        }
+
+        private static bool IsCancellationRequested()
+        {
+            lock (Gate) return _responseCancelRequested;
+        }
+
+        private static bool IsNoActiveResponseCancellation(string message) =>
+            !string.IsNullOrEmpty(message) &&
+            message.IndexOf("Cancellation failed: no active response", StringComparison.OrdinalIgnoreCase) >= 0;
+
         private static string BuildSessionUpdate(string instructions)
         {
             return "{\"type\":\"session.update\",\"session\":{" +
@@ -255,8 +329,10 @@ namespace LethalAICrewmate
                    "\"output_modalities\":[\"audio\"]," +
                    "\"instructions\":\"" + LlmClient.Escape(instructions) + "\"," +
                    "\"audio\":{\"input\":{\"format\":{\"type\":\"audio/pcm\",\"rate\":24000}," +
+                   "\"noise_reduction\":{\"type\":\"far_field\"}," +
                    "\"transcription\":{\"model\":\"gpt-realtime-whisper\"},\"turn_detection\":null}," +
-                   "\"output\":{\"format\":{\"type\":\"audio/pcm\"},\"voice\":\"ash\"}}," +
+                   "\"output\":{\"format\":{\"type\":\"audio/pcm\",\"rate\":24000},\"voice\":\"ash\"}}," +
+                   "\"reasoning\":{\"effort\":\"low\"},\"max_output_tokens\":\"inf\"," +
                    "\"tool_choice\":\"auto\",\"tools\":[{\"type\":\"function\",\"name\":\"execute_game_command\"," +
                    "\"description\":\"Execute an explicit Lethal Company movement, scouting, scrap, ship, terminal, purchase, facility, status, or polite spawn command. Do not call for ordinary conversation.\"," +
                    "\"parameters\":{\"type\":\"object\",\"properties\":{\"command\":{\"type\":\"string\",\"description\":\"The speaker's exact command including target, quantity, code and politeness.\"}},\"required\":[\"command\"]}}]}}";
@@ -355,6 +431,11 @@ namespace LethalAICrewmate
 
         private static void CloseSocket()
         {
+            lock (Gate)
+            {
+                _responseActive = false;
+                _responseCancelRequested = false;
+            }
             try { _sessionCancel?.Cancel(); } catch { }
             try { _socket?.Abort(); _socket?.Dispose(); } catch { }
             _socket = null;
