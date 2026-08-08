@@ -3,7 +3,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Text;
 using GameNetcodeStuff;
-using HarmonyLib;
 using Unity.Collections;
 using Unity.Netcode;
 using UnityEngine;
@@ -17,10 +16,10 @@ namespace LethalAICrewmate
     /// to the host. The host validates the sender/range, performs Whisper with the host-only Groq
     /// key, then routes the transcript through the same ChatObserver command/conversation path.
     /// </summary>
-    internal static class BuddyClientVoice143
+    internal static class BuddyClientVoice
     {
-        private const string MsgVoiceStart = "LethalAICrewmate_VoiceStart143";
-        private const string MsgVoiceChunk = "LethalAICrewmate_VoiceChunk143";
+        private const string MsgVoiceStart = "LethalAICrewmate_VoiceStart";
+        private const string MsgVoiceChunk = "LethalAICrewmate_VoiceChunk";
         private const string GroqSttEndpoint = "https://api.groq.com/openai/v1/audio/transcriptions";
         private const int SampleRate = 16000;
         private const int MaxVoiceBytes = 400 * 1024;
@@ -138,7 +137,7 @@ namespace LethalAICrewmate
             nm.CustomMessagingManager.RegisterNamedMessageHandler(MsgVoiceStart, OnVoiceStart);
             nm.CustomMessagingManager.RegisterNamedMessageHandler(MsgVoiceChunk, OnVoiceChunk);
             _registered = true;
-            Plugin.Log?.LogInfo("Registered v1.4.3 client voice-relay handlers.");
+            Plugin.Log?.LogInfo("Registered Buddy client voice-relay handlers.");
         }
 
         private static void TickClientCapture()
@@ -754,13 +753,4 @@ namespace LethalAICrewmate
         }
     }
 
-    [HarmonyPatch(typeof(PluginHost), "Update")]
-    internal static class Patch_PluginHost_BuddyClientVoice143
-    {
-        [HarmonyPostfix]
-        private static void Postfix()
-        {
-            BuddyClientVoice143.Tick();
-        }
-    }
 }

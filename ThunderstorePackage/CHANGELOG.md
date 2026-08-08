@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.5
+
+- Consolidates version-layered polish patches into direct, named runtime services and removes more than 700 lines of obsolete or duplicated code.
+- Moves prompt construction, conversation ordering, movement-tag filtering, request timeout recovery, audio tuning and compatibility migration into their owning code paths.
+- Removes reflection-based watchdog and conversation patches, dead wiki payloads, stale audio playback state and version-suffixed core types.
+- Gives TTS request state and multiplayer audio playback a single owner, reducing stuck-request and double-playback failure modes.
+- Bumps the multiplayer protocol to 5 so mixed cleanup-era clients fail closed instead of exchanging incompatible voice or pose packets.
+
 ## 1.4.4
 
 - Applies Buddy's authoritative pose after vanilla client updates and disables remote NavMesh competition, preventing clients from leaving Buddy behind at the ship.

@@ -12,7 +12,7 @@ namespace LethalAICrewmate
     {
         public const string ModGuid = "com.lethalaicrewmate.buddy";
         public const string ModName = "LethalAICrewmate";
-        public const string ModVersion = "1.4.4";
+        public const string ModVersion = "1.4.5";
 
         internal static Plugin Instance;
         internal static ManualLogSource Log;
@@ -59,7 +59,7 @@ namespace LethalAICrewmate
             TtsDirection = Config.Bind("Groq", "TtsDirection", "friendly",
                 "Optional Orpheus vocal direction (no brackets). Stock Buddy uses friendly for a lighter conversational delivery; empty = fully natural.");
             TtsVolume = Config.Bind("Groq", "TtsVolume", 1f,
-                "Buddy voice volume 0–1. v1.4.3 applies bounded host-side gain before playback/network replication for stronger speech.");
+                "Buddy voice volume 0–1. Speech is normalized once with a soft limiter before playback and replication.");
 
             // Very old private builds stored a provider key under [OpenRouter]. Only migrate a
             // Groq-shaped key; never silently send an OpenRouter key to the Groq endpoint.
@@ -92,7 +92,7 @@ namespace LethalAICrewmate
             Enabled = Config.Bind("Crewmate", "Enabled", true,
                 "Master toggle for spawning the AI crewmate.");
             ChatHearRange = Config.Bind("Crewmate", "ChatHearRange", 70f,
-                "Max distance to hear/see Buddy chat and positional voice (0 = everyone hears). Stock v1.4.3 range is 70m.");
+                "Max distance to hear/see Buddy chat and positional voice (0 = everyone hears). Stock range is 70m.");
             ChatTriggerRange = Config.Bind("Crewmate", "ChatTriggerRange", 60f,
                 "Distance within which nearby unaddressed questions and multiplayer push-to-talk can trigger Buddy. Addressing Buddy by text name still works normally.");
             ObservationIntervalSeconds = Config.Bind("Crewmate", "ObservationIntervalSeconds", 0f,
@@ -136,6 +136,9 @@ namespace LethalAICrewmate
                     Log.LogWarning($"Config self-heal: {ex.Message}");
                 }
 
+            BuddyAudioTuning.MigrateLegacyConfig();
+            ConfigSafety.NormalizeOnce();
+
                 Log.LogInfo($"{ModName} v{ModVersion} loaded (chat={Model.Value}, stt={SttModel.Value}, tts={TtsModel.Value}).");
             }
             catch (Exception ex)
@@ -158,6 +161,9 @@ namespace LethalAICrewmate
             {
                 // Every peer needs its named-message handlers registered, not only the host.
                 NetMessenger.Tick();
+                SpawnIntentSafety.Tick();
+                LateJoinBinding.Tick();
+                SessionCleanup.Tick();
 
                 // Reliable spawn path: poll while landed (land events are easy to miss).
                 if (Time.unscaledTime >= _nextSpawnPoll)
@@ -169,6 +175,9 @@ namespace LethalAICrewmate
                 CrewmateAI.HostUpdate();
                 LlmClient.Tick();
                 VoiceCommand.Tick();
+                BuddyClientVoice.Tick();
+                BuddyPoseSync.Tick();
+                BuddyMovementWatchdog.Tick();
             }
             catch (Exception ex)
             {
@@ -182,7 +191,7 @@ namespace LethalAICrewmate
             {
                 // Apply remote authority after vanilla NetworkTransform/AI update work so the
                 // client cannot be pulled back to a stale Masked position later in the frame.
-                BuddyPoseSync143.LateTick();
+                BuddyPoseSync.LateTick();
                 BuddyNetworkAudio.Tick();
             }
             catch (Exception ex)

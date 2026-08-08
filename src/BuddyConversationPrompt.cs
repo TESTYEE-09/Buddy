@@ -1,7 +1,5 @@
 using System;
-using System.Reflection;
 using System.Text;
-using HarmonyLib;
 
 namespace LethalAICrewmate
 {
@@ -49,6 +47,7 @@ namespace LethalAICrewmate
             sb.Append("- Casual English; no markdown, lists, thinking, repeated canned lines, or hidden control tags. Game code handles commands.\n");
             sb.Append("- Only explicit [Observation] permits one unsolicited relevant remark; never use harmless wildlife for it.\n\n");
 
+            sb.Append(BuddyFourthWall.PromptRules);
             sb.Append(WikiReference);
             return sb.ToString();
         }
@@ -118,68 +117,4 @@ Use this knowledge to answer relevant questions accurately. Never dump this list
 ";
     }
 
-    /// <summary>
-    /// Put the player's actual words before the sensor dump so chat intent wins attention.
-    /// Falls back to the original method if the private queue signature ever changes.
-    /// </summary>
-    [HarmonyPatch(typeof(LlmClient), nameof(LlmClient.EnqueuePlayerMessage))]
-    internal static class Patch_LlmClient_ConversationPriority
-    {
-        private static readonly MethodInfo EnqueueMethod = AccessTools.Method(
-            typeof(LlmClient),
-            "Enqueue",
-            new[] { typeof(string), typeof(bool), typeof(bool) });
-
-        [HarmonyPrefix]
-        private static bool Prefix(string playerName, string message, bool isCommand)
-        {
-            try
-            {
-                if (!LlmClient.HasApiKey)
-                    return false;
-                if (EnqueueMethod == null)
-                    return true;
-
-                var sb = new StringBuilder(1400);
-                sb.AppendLine("[PLAYER MESSAGE — ANSWER THIS FIRST]");
-                sb.Append(string.IsNullOrWhiteSpace(playerName) ? "Player" : playerName)
-                  .Append(": ").AppendLine(message ?? "");
-                if (isCommand)
-                    sb.AppendLine("[The player issued a game command. The game handles the action; acknowledge it naturally.]");
-
-                sb.AppendLine();
-                sb.AppendLine("[LIVE GAME CONTEXT — SILENT BACKGROUND UNLESS RELEVANT]");
-                sb.AppendLine(GameSensors.BuildLiveContext());
-                sb.AppendLine("[CONTEXT RULE: Do not turn sensor entries into the topic. Harmless/background entities require no callout.]");
-
-                EnqueueMethod.Invoke(null, new object[] { sb.ToString(), false, true });
-                return false;
-            }
-            catch (Exception ex)
-            {
-                Plugin.Log?.LogWarning($"Conversation-priority enqueue fallback: {ex.Message}");
-                return true;
-            }
-        }
-    }
-
-    /// <summary>Replace the old warning-heavy system prompt without touching the stable request/parser code.</summary>
-    [HarmonyPatch(typeof(LlmClient), "BuildSystemPrompt")]
-    internal static class Patch_LlmClient_BuildSystemPrompt_ConversationFirst
-    {
-        [HarmonyPrefix]
-        private static bool Prefix(ref string __result)
-        {
-            try
-            {
-                __result = BuddyConversationPrompt.Build();
-                return false;
-            }
-            catch (Exception ex)
-            {
-                Plugin.Log?.LogWarning($"Conversation prompt fallback: {ex.Message}");
-                return true;
-            }
-        }
-    }
 }

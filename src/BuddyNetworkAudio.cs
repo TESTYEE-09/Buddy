@@ -1,5 +1,4 @@
 using System;
-using HarmonyLib;
 using UnityEngine;
 
 namespace LethalAICrewmate
@@ -30,6 +29,7 @@ namespace LethalAICrewmate
         {
             if (clip == null) return;
 
+            BuddyAudioTuning.NormalizeHostClip(clip);
             PlayClip(clip, worldPos);
 
             try
@@ -160,6 +160,7 @@ namespace LethalAICrewmate
                 _source.maxDistance = Mathf.Max(6f, range);
             }
 
+            BuddyAudioTuning.ConfigureSource(_source);
             _source.Play();
             Plugin.Log?.LogInfo($"Buddy audio playback started peer={(CrewmateSpawner.IsHost() ? "host" : "client")} length={clip.length:F2}s volume={_source.volume:F2} range={range:F0}m playing={_source.isPlaying}.");
         }
@@ -173,18 +174,4 @@ namespace LethalAICrewmate
         }
     }
 
-    /// <summary>
-    /// Replace the old host-only/2D BuddyTts playback path with the multiplayer-aware player.
-    /// BuddyTts still owns Groq request/decoding; this patch only takes over final playback.
-    /// </summary>
-    [HarmonyPatch(typeof(BuddyTts), "PlayClip")]
-    internal static class Patch_BuddyTts_PlayClip_Multiplayer
-    {
-        [HarmonyPrefix]
-        private static bool Prefix(AudioClip clip, Vector3 worldPos)
-        {
-            BuddyNetworkAudio.PlayHostClipAndReplicate(clip, worldPos);
-            return false;
-        }
-    }
 }
