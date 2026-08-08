@@ -5,16 +5,22 @@
 - Added exact multiplayer version/protocol handshakes.
 - Buddy now waits to spawn until every connected remote player has the same compatible mod build.
 - If an unmodded or mismatched player joins mid-round, Buddy despawns until the lobby is compatible again.
-- Late joiners recover Buddy identity and held-item state.
+- Added a spawn-intent guard so a client cannot briefly treat the freshly spawned Buddy body as a hostile vanilla Masked before the Buddy network ID arrives.
+- Late joiners recover Buddy identity and held-item state, including a low-frequency rebinding retry for network-message ordering races.
 - Held-item visual sync retries while client network objects finish spawning.
-- Buddy TTS is generated once on the host and replicated to compatible clients as chunked 16 kHz mono audio.
+- Buddy TTS is generated once on the host, downsampled to 16 kHz mono and replicated to compatible clients using bounded fragmented-reliable chunks.
 - Groq API key remains host-only and is never sent to clients.
 - Main-menu Groq panel now has Save, Test and Clear controls.
+- Added a Groq-wide request timeout guard so API calls cannot hang indefinitely.
 - New installs use production `llama-3.3-70b-versatile` for core chat; Qwen 3.6 remains an optional vision model.
 - Vision is off by default for reliability and API cost.
+- Made LLM output speech-only: movement, purchases and routing are controlled by deterministic player-command parsing rather than model-produced control tags.
+- Prevented duplicate purchases/routes when an LLM echoes a terminal tag after an explicit player command.
+- Fixed chat dedupe so two different players can send the same message at nearly the same time.
 - Removed the old shared/default Groq key from active source/config defaults.
 - Removed tracked release ZIP/DLL binaries from the source tree; CI now produces release artifacts.
-- Added release/version/package/secret checks and warnings-as-errors builds.
+- Updated the stale prototype spec/handoff to match the current Groq + multiplayer architecture.
+- Added release/version/package/secret checks, warnings-as-errors builds and SHA-256 release checksums.
 
 ## 1.3.0
 
