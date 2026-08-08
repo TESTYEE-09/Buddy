@@ -9,13 +9,12 @@ namespace LethalAICrewmate
 {
     /// <summary>
     /// Host push-to-talk → Groq Whisper STT → Buddy chat/commands.
-    /// Hold Voice.PushToTalkKey (default V), release to send.
+    /// Hold Voice.PushToTalkKey (default B), release to send.
     /// </summary>
     public static class VoiceCommand
     {
         private const string GroqSttEndpoint = "https://api.groq.com/openai/v1/audio/transcriptions";
         private const int SampleRate = 16000;
-        private const float MinRms = 0.008f; // below this = silence / wrong mic
 
         private static bool _recording;
         private static string _micDevice;
@@ -24,8 +23,6 @@ namespace LethalAICrewmate
         private static bool _busy;
         private static float _hintCooldown;
         private static float _lastPttTime;
-        private static string _cachedMic;
-        private static bool _micLogged;
 
         public static void Tick()
         {
@@ -89,60 +86,6 @@ namespace LethalAICrewmate
             return m.Trim();
         }
 
-        /// <summary>Pick a real capture device — skip Oculus/VB-Cable virtual mics that capture silence.</summary>
-        private static string PickMicDevice()
-        {
-            if (!string.IsNullOrEmpty(_cachedMic))
-                return _cachedMic == "__default__" ? null : _cachedMic;
-
-            string[] devices = Microphone.devices;
-            if (devices == null || devices.Length == 0)
-            {
-                _cachedMic = "__default__";
-                return null;
-            }
-
-            string best = null;
-            foreach (var d in devices)
-            {
-                if (string.IsNullOrEmpty(d)) continue;
-                string lower = d.ToLowerInvariant();
-                // Skip known garbage virtual devices (cause Whisper "Thank you" on silence)
-                if (lower.Contains("oculus") || lower.Contains("virtual") || lower.Contains("cable") ||
-                    lower.Contains("stereo mix") || lower.Contains("what u hear") ||
-                    lower.Contains("mapper") || lower.Contains("steam streaming"))
-                {
-                    Plugin.Log?.LogInfo($"Skipping virtual mic: '{d}'");
-                    continue;
-                }
-                // Prefer names that look like real headsets / mics
-                if (best == null) best = d;
-                if (lower.Contains("mic") || lower.Contains("headset") || lower.Contains("realtek") ||
-                    lower.Contains("logitech") || lower.Contains("hyperx") || lower.Contains("steelseries") ||
-                    lower.Contains("usb") || lower.Contains("array"))
-                {
-                    best = d;
-                    break;
-                }
-            }
-
-            if (best == null)
-            {
-                // Unity null = system default (usually better than first virtual entry)
-                Plugin.Log?.LogWarning("No non-virtual mic found; using system default (null).");
-                _cachedMic = "__default__";
-                return null;
-            }
-
-            _cachedMic = best;
-            if (!_micLogged)
-            {
-                _micLogged = true;
-                Plugin.Log?.LogInfo($"Buddy voice mic: '{best}' (of {devices.Length} devices)");
-            }
-            return best;
-        }
-
         private static void BeginRecord(float maxSec)
         {
             try
@@ -155,9 +98,7 @@ namespace LethalAICrewmate
                 }
                 catch { /* ignore */ }
 
-                // Unity's null device follows the Windows default recording device. Guessing from
-                // device names frequently selected a disconnected webcam/headset microphone.
-                _micDevice = null;
+                _micDevice = MicrophoneCapture.ResolveConfiguredDevice();
                 int len = Mathf.Clamp(Mathf.CeilToInt(maxSec) + 1, 2, 13);
                 _clip = Microphone.Start(_micDevice, false, len, SampleRate);
                 if (_clip == null)
@@ -225,14 +166,17 @@ namespace LethalAICrewmate
             yield return null;
 
             byte[] wav = null;
-            float rms = 0f;
+            float inputRms = 0f;
+            float outputRms = 0f;
+            float gain = 1f;
             try
             {
-                wav = ClipToWav(clip, samplePos, out rms);
+                wav = MicrophoneCapture.EncodeAdaptiveMonoWav(
+                    clip, samplePos, out inputRms, out outputRms, out gain);
             }
             catch (Exception ex)
             {
-                Plugin.Log?.LogError($"ClipToWav: {ex}");
+                Plugin.Log?.LogError($"Microphone encode: {ex}");
                 _busy = false;
                 yield break;
             }
@@ -244,10 +188,10 @@ namespace LethalAICrewmate
                 yield break;
             }
 
-            if (rms < MinRms)
+            if (!VoiceSignalMath.HasUsableSignal(inputRms))
             {
-                Plugin.Log?.LogWarning($"Mic too quiet (rms={rms:F4}). Wrong device or muted. STT skipped.");
-                MaybeHint("Mic too quiet — check Windows input device.");
+                Plugin.Log?.LogWarning($"Mic contains no usable signal (input rms={inputRms:F5}). STT skipped.");
+                MaybeHint("Buddy heard silence. Set Voice.InputDevice if Windows chose the wrong mic.");
                 _busy = false;
                 yield break;
             }
@@ -267,7 +211,7 @@ namespace LethalAICrewmate
                 uwr.SetRequestHeader("Content-Type", "multipart/form-data; boundary=" + boundary);
                 uwr.timeout = 20;
 
-                Plugin.Log?.LogInfo($"Groq STT → model={model} bytes={wav.Length} rms={rms:F4}");
+                Plugin.Log?.LogInfo($"Groq STT → model={model} bytes={wav.Length} inputRms={inputRms:F5} outputRms={outputRms:F4} gain={gain:F1}");
                 yield return uwr.SendWebRequest();
 
                 try
@@ -418,79 +362,6 @@ namespace LethalAICrewmate
             Buffer.BlockCopy(mid, 0, all, o, mid.Length); o += mid.Length;
             Buffer.BlockCopy(end, 0, all, o, end.Length);
             return all;
-        }
-
-        private static byte[] ClipToWav(AudioClip clip, int samplePos, out float rms)
-        {
-            rms = 0f;
-            int channels = Mathf.Max(1, clip.channels);
-            int samples = Mathf.Clamp(samplePos, 0, clip.samples);
-            if (samples <= 0) samples = clip.samples;
-
-            float[] data = new float[samples * channels];
-            if (!clip.GetData(data, 0))
-            {
-                Plugin.Log?.LogWarning("GetData failed on mic clip");
-                return null;
-            }
-
-            // Use actual clip frequency in header if it differs
-            int rate = clip.frequency > 0 ? clip.frequency : SampleRate;
-
-            short[] pcm = new short[samples];
-            double sumSq = 0;
-            for (int i = 0; i < samples; i++)
-            {
-                float sum = 0f;
-                for (int c = 0; c < channels; c++)
-                    sum += data[i * channels + c];
-                float s = sum / channels;
-                // Soft gain — many headset mics are quiet
-                s = Mathf.Clamp(s * 2.2f, -1f, 1f);
-                pcm[i] = (short)(s * short.MaxValue);
-                sumSq += s * s;
-            }
-            rms = (float)Math.Sqrt(sumSq / Math.Max(1, samples));
-
-            int byteRate = rate * 2;
-            int dataLen = pcm.Length * 2;
-            byte[] wav = new byte[44 + dataLen];
-
-            void wstr(int o, string s)
-            {
-                var b = Encoding.ASCII.GetBytes(s);
-                Buffer.BlockCopy(b, 0, wav, o, b.Length);
-            }
-            void wi32(int o, int v)
-            {
-                wav[o] = (byte)(v & 0xff);
-                wav[o + 1] = (byte)((v >> 8) & 0xff);
-                wav[o + 2] = (byte)((v >> 16) & 0xff);
-                wav[o + 3] = (byte)((v >> 24) & 0xff);
-            }
-            void wi16(int o, short v)
-            {
-                wav[o] = (byte)(v & 0xff);
-                wav[o + 1] = (byte)((v >> 8) & 0xff);
-            }
-
-            wstr(0, "RIFF");
-            wi32(4, 36 + dataLen);
-            wstr(8, "WAVE");
-            wstr(12, "fmt ");
-            wi32(16, 16);
-            wi16(20, 1);
-            wi16(22, 1);
-            wi32(24, rate);
-            wi32(28, byteRate);
-            wi16(32, 2);
-            wi16(34, 16);
-            wstr(36, "data");
-            wi32(40, dataLen);
-            for (int i = 0; i < pcm.Length; i++)
-                wi16(44 + i * 2, pcm[i]);
-
-            return wav;
         }
 
         private static void MaybeHint(string msg)

@@ -11,7 +11,7 @@ Buddy is an AI crewmate for **Lethal Company v81**. He joins the crew as a frien
 5. The host pastes a Groq API key into the **Lethal AI Crewmate — Groq** box on the main menu, presses **Save**, then **Test**.
 6. Host a lobby and land on a moon. Buddy spawns once every connected player passes the mod compatibility handshake.
 
-Only the host needs a Groq key. The key stays in the host's local BepInEx config and is never sent to other players.
+Only the host needs a Groq key. Prefer the host environment variable or the session-only menu field; the key is never sent to other players.
 
 ## Multiplayer safety and sync
 
@@ -50,7 +50,7 @@ Buddy can very rarely make a subtle fourth-wall joke when the moment fits. The r
 
 ## Voice
 
-**Every modded player** can hold **V** by default to talk to Buddy.
+**Every modded player** can hold **B** by default to talk to Buddy.
 
 Host path:
 
@@ -62,7 +62,7 @@ Client path:
 
 Clients do not need a Groq key. Remote microphone audio is captured only while the player holds the Buddy push-to-talk key, is size/rate limited, and is accepted only from connected matching clients. The stock nearby PTT range is 60m.
 
-v1.4.6 keeps Austin + `friendly`, normalizes generated PCM once through a soft limiter, widens the near-full-volume 3D bubble, and keeps the stock speech/chat hearing range at 70m.
+v1.4.7 adaptively amplifies quiet microphones before Whisper, keeps literal silence blocked, and makes Buddy replies global so every matching player receives both text and speech. If Windows selects the wrong microphone, set `[Voice] InputDevice` to its full name or a unique part of the name.
 
 ## Groq setup
 
@@ -71,7 +71,7 @@ New installs default to:
 ```ini
 [Groq]
 ApiKey =
-Model = llama-3.3-70b-versatile
+Model = qwen/qwen3.6-27b
 SttModel = whisper-large-v3-turbo
 TtsModel = canopylabs/orpheus-v1-english
 TtsVoice = austin
@@ -82,11 +82,12 @@ TtsVolume = 1
 
 For a persistent key without writing it to the BepInEx config, set the host-machine environment variable `LETHAL_AI_GROQ_API_KEY` before launching Steam. Keys entered through the main-menu panel are session-only by default.
 
-Optional vision is off by default for reliability and cost. To enable it, choose a vision-capable Groq model such as `qwen/qwen3.6-27b` and set:
+Vision is enabled by default but captures the host screen only for clear visual questions such as “what am I looking at?” Normal conversation sends no screenshot. The default vision model is `qwen/qwen3.6-27b`.
 
 ```ini
 [Vision]
 Enabled = true
+Model = qwen/qwen3.6-27b
 ```
 
 The main-menu **Test** button validates the host key against Groq before a lobby starts.
@@ -99,7 +100,7 @@ Orpheus TTS also requires the Groq organization owner to accept that model's ter
 [Crewmate]
 Name = Buddy
 Enabled = true
-ChatHearRange = 70
+ChatHearRange = 0
 ChatTriggerRange = 60
 ObservationIntervalSeconds = 0
 
@@ -107,6 +108,7 @@ ObservationIntervalSeconds = 0
 Enabled = true
 PushToTalkKey = B
 MaxRecordSeconds = 8
+InputDevice =
 ```
 
 ```ini
@@ -117,9 +119,9 @@ AllowRemoteVoice = true
 
 `AllowRemoteVoice = true` lets matching friends send tightly bounded PTT audio to the host; turn it off in public lobbies. `PersistApiKey = true` writes the key in plaintext to the BepInEx config; leave it off when using the environment variable.
 
-`ChatHearRange = 0` makes Buddy chat/voice global instead of proximity-based. `ChatTriggerRange = 0` makes nearby unaddressed questions/client Buddy PTT range-unlimited.
+`ChatHearRange = 0` makes Buddy chat/voice global. `ChatTriggerRange = 0` makes nearby unaddressed questions range-unlimited; explicit client Buddy PTT already works at any distance.
 
-Untouched v1.4.2 stock 50m/45m distance settings automatically migrate to v1.4.3's 70m/60m defaults. Custom distance values are otherwise retained.
+The old 70m reply default automatically migrates to global delivery. Other custom distance values are retained.
 
 ## Privacy and API usage
 

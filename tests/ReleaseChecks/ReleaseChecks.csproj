@@ -7,5 +7,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="..\..\src\TransportValidation.cs" Link="TransportValidation.cs" />
+    <Compile Include="..\..\src\VoiceSignalMath.cs" Link="VoiceSignalMath.cs" />
+    <Compile Include="..\..\src\VisionIntent.cs" Link="VisionIntent.cs" />
   </ItemGroup>
 </Project>

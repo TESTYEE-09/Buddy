@@ -78,7 +78,7 @@ Explicit terminal actions (`route`, `buy`, `moons`, etc.) are parsed determinist
 Host config section:
 
 - `Groq.ApiKey`: empty by default; saved locally.
-- `Groq.Model`: `llama-3.3-70b-versatile` production default.
+- `Groq.Model`: `qwen/qwen3.6-27b` multimodal production default.
 - `Groq.SttModel`: `whisper-large-v3-turbo`.
 - `Groq.TtsModel`: `canopylabs/orpheus-v1-english`.
 - `Groq.TtsVoice`: `troy` by default.

@@ -23,7 +23,7 @@ namespace LethalAICrewmate
                 string name = CleanSingleLine(Plugin.CrewmateName?.Value, 24, "Buddy");
                 changed |= SetIfDifferent(Plugin.CrewmateName, name);
 
-                string model = CleanSingleLine(Plugin.Model?.Value, 128, "llama-3.3-70b-versatile");
+                string model = CleanSingleLine(Plugin.Model?.Value, 128, "qwen/qwen3.6-27b");
                 changed |= SetIfDifferent(Plugin.Model, model);
 
                 string stt = CleanSingleLine(Plugin.SttModel?.Value, 128, "whisper-large-v3-turbo");
@@ -56,7 +56,7 @@ namespace LethalAICrewmate
                 }
 
                 changed |= ClampFloat(Plugin.TtsVolume, 0f, 1f, 1f);
-                changed |= ClampFloat(Plugin.ChatHearRange, 0f, 120f, 70f);
+                changed |= ClampFloat(Plugin.ChatHearRange, 0f, 120f, 0f);
                 changed |= ClampFloat(Plugin.ChatTriggerRange, 0f, 120f, 60f);
                 changed |= ClampFloat(Plugin.VoiceMaxSeconds, 1f, 12f, 8f);
 

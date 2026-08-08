@@ -58,7 +58,6 @@ namespace LethalAICrewmate
         private static bool _clientRecording;
         private static bool _clientSending;
         private static string _clientMicDevice;
-        private static string _cachedClientMic;
         private static AudioClip _clientClip;
         private static float _clientStartedAt;
         private static float _lastClientPttAt;
@@ -185,9 +184,7 @@ namespace LethalAICrewmate
             try
             {
                 try { Microphone.End(_clientMicDevice); } catch { }
-                // Use the player's Windows default recording device; name heuristics can select a
-                // physically present but inactive microphone and produce valid-looking silence.
-                _clientMicDevice = null;
+                _clientMicDevice = MicrophoneCapture.ResolveConfiguredDevice();
                 int length = Mathf.Clamp(Mathf.CeilToInt(maxSec) + 1, 2, 13);
                 _clientClip = Microphone.Start(_clientMicDevice, false, length, SampleRate);
                 if (_clientClip == null)
@@ -225,17 +222,21 @@ namespace LethalAICrewmate
                     return;
                 }
 
-                byte[] wav = ClipToWav(_clientClip, samplePos, out float rms);
+                byte[] wav = MicrophoneCapture.EncodeAdaptiveMonoWav(
+                    _clientClip, samplePos, out float inputRms, out float outputRms, out float gain);
                 if (wav == null || wav.Length < 1000 || wav.Length > MaxVoiceBytes)
                 {
                     ClientHint("Voice clip could not be sent.");
                     return;
                 }
-                if (rms < MinRms)
+                if (!VoiceSignalMath.HasUsableSignal(inputRms))
                 {
-                    ClientHint("Mic too quiet — check your input device.");
+                    Plugin.Log?.LogWarning($"Client Buddy mic contains no usable signal (input rms={inputRms:F5}).");
+                    ClientHint("Buddy heard silence. Set Voice.InputDevice if Windows chose the wrong mic.");
                     return;
                 }
+
+                Plugin.Log?.LogInfo($"Client Buddy mic accepted inputRms={inputRms:F5} outputRms={outputRms:F4} gain={gain:F1}.");
 
                 if (Plugin.Host == null)
                     return;
@@ -533,88 +534,6 @@ namespace LethalAICrewmate
             return model.Trim();
         }
 
-        private static string PickClientMicDevice()
-        {
-            if (!string.IsNullOrEmpty(_cachedClientMic))
-                return _cachedClientMic == "__default__" ? null : _cachedClientMic;
-
-            string[] devices = Microphone.devices;
-            if (devices == null || devices.Length == 0)
-            {
-                _cachedClientMic = "__default__";
-                return null;
-            }
-
-            string best = null;
-            foreach (string device in devices)
-            {
-                if (string.IsNullOrEmpty(device)) continue;
-                string lower = device.ToLowerInvariant();
-                if (lower.Contains("oculus") || lower.Contains("virtual") || lower.Contains("cable") ||
-                    lower.Contains("stereo mix") || lower.Contains("what u hear") ||
-                    lower.Contains("mapper") || lower.Contains("steam streaming"))
-                    continue;
-
-                if (best == null) best = device;
-                if (lower.Contains("mic") || lower.Contains("headset") || lower.Contains("realtek") ||
-                    lower.Contains("logitech") || lower.Contains("hyperx") || lower.Contains("steelseries") ||
-                    lower.Contains("usb") || lower.Contains("array"))
-                {
-                    best = device;
-                    break;
-                }
-            }
-
-            _cachedClientMic = best ?? "__default__";
-            Plugin.Log?.LogInfo($"Client Buddy voice mic: '{best ?? "system default"}'.");
-            return best;
-        }
-
-        private static byte[] ClipToWav(AudioClip clip, int samplePos, out float rms)
-        {
-            rms = 0f;
-            if (clip == null) return null;
-
-            int channels = Mathf.Max(1, clip.channels);
-            int samples = Mathf.Clamp(samplePos, 0, clip.samples);
-            if (samples <= 0) samples = clip.samples;
-            float[] data = new float[samples * channels];
-            if (!clip.GetData(data, 0)) return null;
-
-            int rate = clip.frequency > 0 ? clip.frequency : SampleRate;
-            short[] pcm = new short[samples];
-            double sumSq = 0d;
-            for (int i = 0; i < samples; i++)
-            {
-                float sum = 0f;
-                for (int c = 0; c < channels; c++)
-                    sum += data[i * channels + c];
-                float sample = Mathf.Clamp((sum / channels) * 2.2f, -1f, 1f);
-                pcm[i] = (short)(sample * short.MaxValue);
-                sumSq += sample * sample;
-            }
-            rms = (float)Math.Sqrt(sumSq / Math.Max(1, samples));
-
-            int dataLen = pcm.Length * 2;
-            byte[] wav = new byte[44 + dataLen];
-            WriteAscii(wav, 0, "RIFF");
-            WriteInt32(wav, 4, 36 + dataLen);
-            WriteAscii(wav, 8, "WAVE");
-            WriteAscii(wav, 12, "fmt ");
-            WriteInt32(wav, 16, 16);
-            WriteInt16(wav, 20, 1);
-            WriteInt16(wav, 22, 1);
-            WriteInt32(wav, 24, rate);
-            WriteInt32(wav, 28, rate * 2);
-            WriteInt16(wav, 32, 2);
-            WriteInt16(wav, 34, 16);
-            WriteAscii(wav, 36, "data");
-            WriteInt32(wav, 40, dataLen);
-            for (int i = 0; i < pcm.Length; i++)
-                WriteInt16(wav, 44 + i * 2, pcm[i]);
-            return wav;
-        }
-
         private static byte[] BuildMultipart(string boundary, byte[] wav, string model)
         {
             var sb = new StringBuilder();
@@ -710,25 +629,6 @@ namespace LethalAICrewmate
             }
         }
 
-        private static void WriteAscii(byte[] buffer, int offset, string value)
-        {
-            byte[] bytes = Encoding.ASCII.GetBytes(value);
-            Buffer.BlockCopy(bytes, 0, buffer, offset, bytes.Length);
-        }
-
-        private static void WriteInt32(byte[] buffer, int offset, int value)
-        {
-            buffer[offset] = (byte)(value & 0xff);
-            buffer[offset + 1] = (byte)((value >> 8) & 0xff);
-            buffer[offset + 2] = (byte)((value >> 16) & 0xff);
-            buffer[offset + 3] = (byte)((value >> 24) & 0xff);
-        }
-
-        private static void WriteInt16(byte[] buffer, int offset, short value)
-        {
-            buffer[offset] = (byte)(value & 0xff);
-            buffer[offset + 1] = (byte)((value >> 8) & 0xff);
-        }
     }
 
 }

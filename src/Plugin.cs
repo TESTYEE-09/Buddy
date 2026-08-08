@@ -12,7 +12,7 @@ namespace LethalAICrewmate
     {
         public const string ModGuid = "com.lethalaicrewmate.buddy";
         public const string ModName = "LethalAICrewmate";
-        public const string ModVersion = "1.4.6";
+        public const string ModVersion = "1.4.7";
 
         internal static Plugin Instance;
         internal static ManualLogSource Log;
@@ -36,7 +36,10 @@ namespace LethalAICrewmate
         internal static ConfigEntry<bool> AllowRemoteVoice;
         internal static ConfigEntry<KeyCode> VoiceKey;
         internal static ConfigEntry<float> VoiceMaxSeconds;
+        internal static ConfigEntry<string> VoiceInputDevice;
         internal static ConfigEntry<bool> VisionEnabled;
+        internal static ConfigEntry<string> VisionModel;
+        internal static ConfigEntry<int> ConfigRevision;
 
         private Harmony _harmony;
         internal static PluginHost Host;
@@ -50,8 +53,8 @@ namespace LethalAICrewmate
                 "Legacy plaintext Groq API key fallback. Prefer the LETHAL_AI_GROQ_API_KEY environment variable or a session-only key entered in the main menu.");
             PersistApiKey = Config.Bind("Security", "PersistApiKey", false,
                 "Write a key entered in the menu to the plaintext BepInEx config. Disabled by default; use LETHAL_AI_GROQ_API_KEY for persistent secure setup.");
-            Model = Config.Bind("Groq", "Model", "llama-3.3-70b-versatile",
-                "Groq chat model. Production default: llama-3.3-70b-versatile. For optional vision use qwen/qwen3.6-27b (preview).");
+            Model = Config.Bind("Groq", "Model", "qwen/qwen3.6-27b",
+                "Groq chat model. qwen/qwen3.6-27b supports both normal chat and vision.");
             SttModel = Config.Bind("Groq", "SttModel", "whisper-large-v3-turbo",
                 "Groq speech-to-text model. Recommended: whisper-large-v3-turbo.");
             TtsModel = Config.Bind("Groq", "TtsModel", "canopylabs/orpheus-v1-english",
@@ -95,8 +98,8 @@ namespace LethalAICrewmate
                 "Optional personality flavor for Buddy. Core conversation/relevance rules always remain active.");
             Enabled = Config.Bind("Crewmate", "Enabled", true,
                 "Master toggle for spawning the AI crewmate.");
-            ChatHearRange = Config.Bind("Crewmate", "ChatHearRange", 70f,
-                "Max distance to hear/see Buddy chat and positional voice (0 = everyone hears). Stock range is 70m.");
+            ChatHearRange = Config.Bind("Crewmate", "ChatHearRange", 0f,
+                "Max distance to hear/see Buddy chat and voice. 0 makes replies global so every player receives them.");
             ChatTriggerRange = Config.Bind("Crewmate", "ChatTriggerRange", 60f,
                 "Distance within which nearby unaddressed questions and multiplayer push-to-talk can trigger Buddy. Addressing Buddy by text name still works normally.");
             ObservationIntervalSeconds = Config.Bind("Crewmate", "ObservationIntervalSeconds", 0f,
@@ -110,8 +113,14 @@ namespace LethalAICrewmate
                 "Hold this key to record mic audio for Buddy. B avoids the game's common V push-to-talk binding; on clients the clip is relayed to the host.");
             VoiceMaxSeconds = Config.Bind("Voice", "MaxRecordSeconds", 8f,
                 "Max push-to-talk length in seconds (capped at 12 by runtime).");
-            VisionEnabled = Config.Bind("Vision", "Enabled", false,
-                "Attach a host-view screenshot to chat. Requires a vision-capable Groq model such as qwen/qwen3.6-27b. Off by default for production reliability/cost.");
+            VoiceInputDevice = Config.Bind("Voice", "InputDevice", "",
+                "Optional microphone name (or part of its name). Empty uses the Windows default. Set this if Buddy records the wrong device.");
+            VisionEnabled = Config.Bind("Vision", "Enabled", true,
+                "Automatically attach a host-view screenshot only when a player asks what they are looking at or can see.");
+            VisionModel = Config.Bind("Vision", "Model", "qwen/qwen3.6-27b",
+                "Groq multimodal model used for screenshot questions.");
+            ConfigRevision = Config.Bind("Internal", "ConfigRevision", 0,
+                "Internal migration marker. Do not edit.");
 
             try
             {
@@ -130,7 +139,21 @@ namespace LethalAICrewmate
                     if (string.IsNullOrWhiteSpace(Model.Value) ||
                         Model.Value.IndexOf("whisper", StringComparison.OrdinalIgnoreCase) >= 0 ||
                         Model.Value.IndexOf("orpheus", StringComparison.OrdinalIgnoreCase) >= 0)
-                        Model.Value = "llama-3.3-70b-versatile";
+                        Model.Value = "qwen/qwen3.6-27b";
+                    if (string.Equals(Model.Value?.Trim(), "llama-3.3-70b-versatile", StringComparison.OrdinalIgnoreCase))
+                        Model.Value = "qwen/qwen3.6-27b";
+                    if (string.IsNullOrWhiteSpace(VisionModel.Value))
+                        VisionModel.Value = "qwen/qwen3.6-27b";
+                    // Apply 1.4.7 defaults once. After this marker is written, users can turn
+                    // vision off or restore positional replies without those choices being reset.
+                    if (ConfigRevision.Value < 1)
+                    {
+                        if (!VisionEnabled.Value)
+                            VisionEnabled.Value = true;
+                        if (Mathf.Approximately(ChatHearRange.Value, 70f))
+                            ChatHearRange.Value = 0f;
+                        ConfigRevision.Value = 1;
+                    }
                     if (SttModel.Value == null || SttModel.Value.IndexOf("whisper", StringComparison.OrdinalIgnoreCase) < 0)
                         SttModel.Value = "whisper-large-v3-turbo";
                     if (TtsModel.Value == null || TtsModel.Value.IndexOf("orpheus", StringComparison.OrdinalIgnoreCase) < 0)

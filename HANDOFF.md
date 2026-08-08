@@ -33,10 +33,10 @@ The host configures the key from the main menu with **Save / Test / Clear**.
 
 Defaults:
 
-- Chat: `llama-3.3-70b-versatile`
+- Chat/vision: `qwen/qwen3.6-27b`
 - STT: `whisper-large-v3-turbo`
 - TTS: `canopylabs/orpheus-v1-english`
-- Vision: off by default
+- Vision: automatic for explicit visual questions via `qwen/qwen3.6-27b`
 
 Only the host performs Groq requests. The main-menu Test button validates the key before play.
 

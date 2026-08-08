@@ -4,11 +4,11 @@ using UnityEngine;
 namespace LethalAICrewmate
 {
     /// <summary>
-    /// Capture a low-res JPEG of the host view for Qwen vision (optional).
+    /// Capture a readable JPEG of the host view for Qwen vision.
     /// </summary>
     public static class VisionCapture
     {
-        public static bool TryCaptureJpegBase64(out string base64Jpeg, int maxWidth = 512, int quality = 40)
+        public static bool TryCaptureJpegBase64(out string base64Jpeg, int maxWidth = 1280, int quality = 72)
         {
             base64Jpeg = null;
             try
@@ -28,12 +28,14 @@ namespace LethalAICrewmate
                     UnityEngine.Object.Destroy(shot);
                 }
 
-                byte[] jpg = resized.EncodeToJPG(Mathf.Clamp(quality, 20, 80));
+                int capturedWidth = resized.width;
+                int capturedHeight = resized.height;
+                byte[] jpg = resized.EncodeToJPG(Mathf.Clamp(quality, 20, 90));
                 UnityEngine.Object.Destroy(resized);
 
                 if (jpg == null || jpg.Length < 100) return false;
                 base64Jpeg = Convert.ToBase64String(jpg);
-                Plugin.Log?.LogInfo($"Vision capture {jpg.Length} bytes jpeg");
+                Plugin.Log?.LogInfo($"Vision capture {capturedWidth}x{capturedHeight}, {jpg.Length} bytes jpeg");
                 return true;
             }
             catch (Exception ex)

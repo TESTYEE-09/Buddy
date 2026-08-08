@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.7
+
+- Shows an explicit in-game error when any friend is missing or mismatched, including the exact remedy: install the same ZIP on every player and restart the lobby.
+- Adaptively amplifies quiet microphone input before Whisper while still rejecting true silence, and adds a `Voice.InputDevice` override for Windows device-selection problems.
+- Makes Buddy text and generated speech global by default so matching friends cannot lose replies to a proximity check.
+- Recognizes visual questions such as “what am I looking at?”, captures a 1280px quality-72 host screenshot only for those questions, and routes it through Groq's multimodal `qwen/qwen3.6-27b` model.
+- Migrates the retiring `llama-3.3-70b-versatile` default to `qwen/qwen3.6-27b` and bumps the multiplayer protocol to require the exact fixed build on every peer.
+
 ## 1.4.6
 
 - Makes new main-menu Groq keys session-only by default and supports the `LETHAL_AI_GROQ_API_KEY` environment variable as the preferred persistent source.

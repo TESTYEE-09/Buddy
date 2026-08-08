@@ -77,7 +77,7 @@ namespace LethalAICrewmate
             content.AppendLine().AppendLine("[LIVE GAME CONTEXT - SILENT BACKGROUND UNLESS RELEVANT]")
                 .AppendLine(GameSensors.BuildLiveContext())
                 .AppendLine("[Do not turn sensor entries into the topic. Harmless wildlife requires no callout.]");
-            Enqueue(content.ToString(), isObservation: false, withVision: true);
+            Enqueue(content.ToString(), isObservation: false, withVision: VisionIntent.IsVisualQuestion(message));
         }
 
         public static void EnqueueObservation(string summary)
@@ -212,8 +212,10 @@ namespace LethalAICrewmate
             if (pending.WantVision)
                 VisionCapture.TryCaptureJpegBase64(out imageB64);
 
-            string body = BuildRequestJson(systemPrompt, requestHistory, imageB64);
-            string model = Plugin.Model?.Value ?? "qwen/qwen3.6-27b";
+            string model = imageB64 != null
+                ? (Plugin.VisionModel?.Value ?? "qwen/qwen3.6-27b")
+                : (Plugin.Model?.Value ?? "qwen/qwen3.6-27b");
+            string body = BuildRequestJson(systemPrompt, requestHistory, imageB64, model);
 
             using (var uwr = new UnityWebRequest(GroqChatEndpoint, "POST"))
             {
@@ -260,7 +262,8 @@ namespace LethalAICrewmate
                 if (needRetryNoVision)
                 {
                     Plugin.Log?.LogInfo("Retrying chat without vision…");
-                    yield return SendRequestNoVision(systemPrompt, model, requestHistory, pending.HistoryContent);
+                    string fallbackModel = Plugin.Model?.Value ?? "qwen/qwen3.6-27b";
+                    yield return SendRequestNoVision(systemPrompt, fallbackModel, requestHistory, pending.HistoryContent);
                 }
             }
 
@@ -271,7 +274,7 @@ namespace LethalAICrewmate
 
         private static IEnumerator SendRequestNoVision(string systemPrompt, string model, List<ChatTurn> requestHistory, string historyContent)
         {
-            string body = BuildRequestJson(systemPrompt, requestHistory, null);
+            string body = BuildRequestJson(systemPrompt, requestHistory, null, model);
             using (var uwr = new UnityWebRequest(GroqChatEndpoint, "POST"))
             {
                 byte[] raw = Encoding.UTF8.GetBytes(body);
@@ -303,9 +306,9 @@ namespace LethalAICrewmate
                 History.RemoveAt(0);
         }
 
-        private static string BuildRequestJson(string systemPrompt, List<ChatTurn> history, string imageJpegBase64)
+        private static string BuildRequestJson(string systemPrompt, List<ChatTurn> history, string imageJpegBase64, string model)
         {
-            string model = Plugin.Model?.Value ?? "qwen/qwen3.6-27b";
+            if (string.IsNullOrWhiteSpace(model)) model = "qwen/qwen3.6-27b";
             var sb = new StringBuilder(Math.Max(8192, (imageJpegBase64?.Length ?? 0) + 4096));
             sb.Append("{\"model\":\"").Append(Escape(model)).Append("\",");
             sb.Append("\"max_tokens\":").Append(MaxTokens).Append(',');
