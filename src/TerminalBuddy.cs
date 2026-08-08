@@ -59,12 +59,14 @@ namespace LethalAICrewmate
                     return BuildShipStatus(lower);
 
                 if (ShipCommandParsing.TryParseFacilityAction(lower, out string facilityCode, out bool enableFacility))
-                    return SetFacilityObject(facilityCode, enableFacility);
+                    return SetFacilityObject(facilityCode, enableFacility, InferFacilityKind(lower));
 
                 if ((lower.Contains("turret") || lower.Contains("landmine") || lower.Contains("mine")) &&
                     (lower.Contains("disable") || lower.Contains("deactivate") || lower.Contains("turn off") ||
                      lower.Contains("enable") || lower.Contains("activate") || lower.Contains("turn on")))
-                    return "Which terminal code? For example: buddy disable turret B3.";
+                    return SetFacilityObject(null,
+                        lower.Contains("enable") || lower.Contains("activate") || lower.Contains("turn on"),
+                        lower.Contains("turret") ? "turret" : "landmine");
 
                 if (lower.Contains("ship door") || lower.Contains("hangar door") || lower == "open doors" || lower == "close doors")
                 {
@@ -303,38 +305,77 @@ namespace LethalAICrewmate
             return parts.Count == 0 ? "No ship status available." : string.Join(". ", parts) + ".";
         }
 
-        public static string SetFacilityObject(string code, bool enable)
+        public static string SetFacilityObject(string code, bool enable, string expectedKind = null)
         {
-            if (string.IsNullOrWhiteSpace(code)) return "Which terminal code?";
             var term = UnityEngine.Object.FindObjectOfType<Terminal>();
             if (term == null) return "No terminal.";
 
             TerminalAccessibleObject match = null;
-            foreach (var candidate in UnityEngine.Object.FindObjectsOfType<TerminalAccessibleObject>())
+            var candidates = UnityEngine.Object.FindObjectsOfType<TerminalAccessibleObject>();
+            foreach (var candidate in candidates)
             {
-                if (candidate != null && string.Equals(candidate.objectCode, code, StringComparison.OrdinalIgnoreCase))
+                if (candidate != null && !string.IsNullOrWhiteSpace(code) &&
+                    string.Equals(candidate.objectCode, code, StringComparison.OrdinalIgnoreCase))
                 {
                     match = candidate;
                     break;
                 }
             }
-            if (match == null) return $"No terminal object has code {code.ToUpperInvariant()}.";
+            if (match == null && !string.IsNullOrWhiteSpace(code))
+                return $"No terminal object has code {code.ToUpperInvariant()}.";
+
+            if (match == null && !string.IsNullOrWhiteSpace(expectedKind))
+            {
+                var kindMatches = new List<TerminalAccessibleObject>();
+                foreach (var candidate in candidates)
+                    if (candidate != null && string.Equals(DescribeFacilityObject(candidate), expectedKind, StringComparison.OrdinalIgnoreCase))
+                        kindMatches.Add(candidate);
+
+                if (kindMatches.Count == 1)
+                    match = kindMatches[0];
+                else if (kindMatches.Count == 0)
+                    return $"No terminal-controlled {expectedKind} is currently available.";
+                else
+                {
+                    var codes = new List<string>();
+                    foreach (var candidate in kindMatches)
+                        if (!string.IsNullOrWhiteSpace(candidate.objectCode)) codes.Add(candidate.objectCode.ToUpperInvariant());
+                    return $"Which {expectedKind}? Available codes: {string.Join(", ", codes)}.";
+                }
+            }
+
+            if (match == null) return "Which terminal code?";
             if (match.inCooldown) return $"Code {match.objectCode.ToUpperInvariant()} is cooling down.";
 
             string kind = DescribeFacilityObject(match);
+            if (!string.IsNullOrWhiteSpace(expectedKind) &&
+                !string.Equals(kind, expectedKind, StringComparison.OrdinalIgnoreCase))
+                return $"Code {match.objectCode.ToUpperInvariant()} controls a {kind}, not a {expectedKind}.";
+
             bool current = match.isBigDoor ? match.isDoorOpen : match.isPoweredOn;
             if (current == enable)
                 return $"{kind} {match.objectCode.ToUpperInvariant()} is already {(enable ? "on/open" : "off/closed")}.";
 
             term.CallFunctionInAccessibleTerminalObject(match.objectCode);
             Plugin.Log?.LogInfo($"Buddy terminal code {match.objectCode}: {kind} -> {(enable ? "enabled/open" : "disabled/closed")}");
-            return $"{(enable ? "Enabled/opened" : "Disabled/closed")} {kind} {match.objectCode.ToUpperInvariant()}.";
+            return $"Terminal command sent: {(enable ? "enable/open" : "disable/close")} {kind} {match.objectCode.ToUpperInvariant()}.";
+        }
+
+        private static string InferFacilityKind(string command)
+        {
+            string lower = command?.ToLowerInvariant() ?? "";
+            if (lower.Contains("turret")) return "turret";
+            if (lower.Contains("landmine") || lower.Contains("mine")) return "landmine";
+            if (lower.Contains("door")) return "door";
+            return null;
         }
 
         private static string DescribeFacilityObject(TerminalAccessibleObject accessible)
         {
             if (accessible == null) return "terminal object";
             if (accessible.isBigDoor) return "door";
+            if (accessible.GetComponentInParent<Turret>() != null) return "turret";
+            if (accessible.GetComponentInParent<Landmine>() != null) return "landmine";
             string name = ((accessible.mapRadarObject != null ? accessible.mapRadarObject.name : accessible.gameObject.name) ?? "").ToLowerInvariant();
             if (name.Contains("turret")) return "turret";
             if (name.Contains("mine")) return "landmine";

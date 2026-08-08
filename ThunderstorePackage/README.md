@@ -32,6 +32,7 @@ Buddy is a friendly AI crewmate for **Lethal Company v81**. He follows the crew,
 - `buddy buy 3 flashlights`
 - `buddy open door C7`
 - `buddy disable turret B3`
+- `buddy disable the turret` (automatic when exactly one is available)
 - `buddy open ship doors`
 - `buddy turn ship lights off`
 - `buddy status`
