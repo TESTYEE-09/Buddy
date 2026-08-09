@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.7.2
+
+- Rewrites the system prompt around a real coworker: default 2-8 word replies, a hard ban on canned filler and helper-speak, no offers/menus/"what next?" closers, no therapist mode, and short fun out-of-game banter that stays pointed at the game. Relationship warmth no longer scales how much Buddy volunteers.
+- Clarifies the OpenAI API setup: API billing is separate from ChatGPT, the current prepaid minimum is $5 USD, automatic recharge can be disabled, and only the host needs a key.
+- Adds direct links and plain-language troubleshooting for billing, API-key creation, secure in-game saving and key testing.
+
 ## 3.7.0
 
 - Replaces the split provider and deterministic phrase-command architecture with one `gpt-realtime-2.1-mini` session for typed chat, voice understanding, reasoning, native speech and function calling.

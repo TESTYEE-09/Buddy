@@ -108,7 +108,7 @@ namespace LethalAICrewmate
             string who = string.IsNullOrWhiteSpace(displayName) ? "This crewmate" : displayName.Trim();
             if (who.Length > 32) who = who.Substring(0, 32);
             return "RELATIONSHIP: You treat " + who + " as " + Descriptor(bond) +
-                   ". Let that colour warmth, patience and how much you volunteer. " +
+                   ". Let that colour warmth and patience only - never how much you say, how often you volunteer, or how eager you sound. " +
                    "Never state, score, rank or explain the relationship, and never let it change safety, truth or who you obey.";
         }
 

@@ -13,10 +13,18 @@ He also remembers. Across fulfilled quotas, survived shifts and deaths he person
 1. Install **BepInExPack 5.4.2100** and **LethalSettings 1.4.1**. Thunderstore/r2modman installs both dependencies automatically.
 2. Install **Buddy** on **every player in the lobby**. Same version, no exceptions — Buddy will not spawn otherwise.
 3. Launch the game. On the main menu, open **Settings > Mod Settings > Buddy**.
-4. The host pastes an OpenAI API key, presses **Save key**, then **Test**.
+4. Create an OpenAI API key, add at least **$5 USD** of prepaid API credit, then paste the key into Buddy's settings and press **Save key** and **Test**.
 5. Host a lobby. In orbit Buddy is intentionally voice-only; after the ship has fully landed and stopped, his physical body spawns outside.
 
 **Only the host needs an API key.** It is stored in that Windows user's Credential Manager and is never sent to other players.
+
+### OpenAI billing and key setup
+
+Buddy uses the **OpenAI API**, which is billed separately from a ChatGPT subscription. Open the [OpenAI billing page](https://platform.openai.com/settings/organization/billing/overview), add a payment method and purchase API credit. The current minimum purchase is **$5 USD**; OpenAI may show a default amount of $10. Turn off automatic recharge if you do not want automatic top-ups. Credits can take a few minutes to appear and currently expire after one year.
+
+Next, create a key at [platform.openai.com/api-keys](https://platform.openai.com/api-keys). Keep it private. In game, open **Settings > Mod Settings > Buddy**, paste it into **API key**, press **Save key**, then **Test key**. Only the host enters a key; friends do not need yours.
+
+If the test fails, check that the key is an OpenAI Platform API key—not a ChatGPT login—and that the account has available API credit.
 
 The panel also has separate opt-in switches for saving responses and saving the system prompt/live sensor context. Turning response saving off immediately removes the existing response journal.
 

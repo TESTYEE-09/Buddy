@@ -181,7 +181,7 @@ namespace LethalAICrewmate
             if (!IsInSpace() && StartOfRound.Instance != null && StartOfRound.Instance.shipHasLanded)
             {
                 // allow buy only in orbit for safety
-                return "Buy from store while in orbit.";
+                return "Can't buy now: purchases only work while the ship is in orbit.";
             }
 
             var term = UnityEngine.Object.FindObjectOfType<Terminal>();

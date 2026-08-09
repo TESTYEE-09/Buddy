@@ -8,10 +8,34 @@ Across quotas, survived shifts and deaths he actually witnesses, the friendly co
 
 ## Setup
 
-1. Install the same Buddy version on every player. Thunderstore installs BepInExPack and LethalSettings automatically.
-2. Open **Settings > Mod Settings > Buddy** on the main menu.
-3. Paste an OpenAI API key, press **Save key**, then **Test**.
-4. Host a lobby. In orbit Buddy is a voice terminal with no body. His body spawns outside only after the ship has landed and stopped.
+### 1. Install Buddy
+
+Install the same Buddy version on every player. Thunderstore installs BepInExPack and LethalSettings automatically.
+
+### 2. Add OpenAI API credit
+
+Buddy uses the **OpenAI API**, which is billed separately from a ChatGPT subscription.
+
+1. Open the [OpenAI Platform billing page](https://platform.openai.com/settings/organization/billing/overview).
+2. Add a payment method and purchase API credit. **The current minimum purchase is $5 USD**; OpenAI may show a default amount of $10.
+3. Turn off automatic recharge if you do not want automatic top-ups.
+
+OpenAI API credits are usage credit, not a subscription. They can take a few minutes to appear, expire after one year, and are non-refundable under OpenAI's current prepaid-billing rules.
+
+### 3. Create and save the key
+
+1. Create an API key at [platform.openai.com/api-keys](https://platform.openai.com/api-keys).
+2. Keep the key private. Never paste it into Discord, a modpack, a public issue or a multiplayer chat.
+3. In Lethal Company, open **Settings > Mod Settings > Buddy**.
+4. Paste the key into **API key**, press **Save key**, then press **Test key**.
+
+The key is stored in Windows Credential Manager. Only the host needs a key; friends do not enter yours.
+
+### 4. Start the lobby
+
+Host a lobby with the same Buddy version installed for everyone. In orbit Buddy is a voice terminal with no body. His body spawns outside only after the ship has landed and stopped.
+
+If the test fails, confirm that the key belongs to the OpenAI Platform (not a ChatGPT login), that the account has API credit, and that the credit purchase has finished processing.
 
 Only the host needs an API key. Buddy stores it in that Windows user's Credential Manager, never in the mod config or multiplayer messages.
 
