@@ -5,11 +5,11 @@ namespace LethalAICrewmate
     /// <summary>Real, locally-observed interactions that can move a single player's bond.</summary>
     internal enum BuddyRelationEvent
     {
-        /// <summary>The player addressed Buddy and a deterministic command actually succeeded.</summary>
+        /// <summary>The player addressed Buddy and an in-game tool actually succeeded.</summary>
         CommandHonoured,
         /// <summary>The player asked politely (please/thanks) and the request was accepted.</summary>
         PoliteRequest,
-        /// <summary>A deterministic command from this player was rejected or malformed.</summary>
+        /// <summary>An in-game tool request from this player was rejected or malformed.</summary>
         CommandRejected,
         /// <summary>The player stayed close to Buddy while confirmed hostiles were nearby.</summary>
         SharedDanger,

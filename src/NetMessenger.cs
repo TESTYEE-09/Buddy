@@ -623,7 +623,7 @@ namespace LethalAICrewmate
         }
 
         /// <summary>
-        /// Replicate already-generated speech as 16-bit mono PCM. The Groq key never leaves the host.
+        /// Replicate already-generated speech as 16-bit mono PCM. The OpenAI key never leaves the host.
         /// Audio is chunked into small fragmented-reliable messages and capped to 512 KiB.
         /// </summary>
         public static void BroadcastTtsPcm(byte[] pcm16, int sampleRate, Vector3 position)

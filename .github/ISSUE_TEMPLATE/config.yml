@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security issue
+    url: https://github.com/TESTYEE-09/Buddy/security/advisories/new
+    about: Do not report vulnerabilities or exposed credentials in a public issue.

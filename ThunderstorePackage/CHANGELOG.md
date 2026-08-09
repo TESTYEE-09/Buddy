@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.7.0
+
+- Replaces the split provider and deterministic phrase-command architecture with one `gpt-realtime-2.1-mini` session for typed chat, voice understanding, reasoning, native speech and function calling.
+- Lets Buddy understand natural requests and call bounded host-side game tools for movement, status, moons, purchases, facility controls, ship controls and the deliberately capped item request. Tool results are returned to the model before it speaks, so it cannot honestly report success before the game accepts an action.
+- Removes the separate transcription model, Groq pipeline, model/provider selectors and exact-command parsers. Voice audio goes directly to Realtime and is not separately transcribed into response logs.
+- Keeps the Realtime connection alive during play for substantially longer conversational continuity, with compact in-memory context as a supplement rather than a replacement.
+- Limits model tools to typed in-game actions. Buddy receives no file, shell, process, credential or arbitrary-network capability; the OpenAI key remains host-only in Windows Credential Manager or the host environment.
+- Rewrites the system prompt around direct, brief, grounded conversation; low unsolicited chatter; natural tool use; rare situational swearing; and real tool-result truthfulness.
+- Updates the main-menu settings, README, Thunderstore description, security model and release checks for the single-model architecture.
+
 ## 3.6.1
 
 - Replaces the cut-off custom overlay with a native LethalSettings page in the main and pause menus, including provider, secure API key, microphone, volume, story and response-journal controls. The editable personality box is removed.

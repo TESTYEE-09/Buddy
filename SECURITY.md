@@ -1,117 +1,71 @@
 # Security
 
+Buddy's release security goal is practical: a downloaded mod must not contain or expose somebody else's API key, and model/player input must not become general access to the host PC.
+
 ## API keys
 
-Never commit a provider API key, put one in a release ZIP, log it, or send it through multiplayer messages.
+Only the host needs an OpenAI key. Use either:
 
-For the strongest practical setup, set the host machine environment variable
-`LETHAL_AI_OPENAI_API_KEY` (OpenAI provider) or `LETHAL_AI_GROQ_API_KEY` (Groq provider)
-before starting the game. The mod reads it in memory and never writes that value to its
-config or logs.
+- the `LETHAL_AI_OPENAI_API_KEY` environment variable, held in memory; or
+- Buddy's native settings page, which stores the key in Windows Credential Manager.
 
-Keys entered in Buddy's native LethalSettings page are stored in Windows Credential Manager, never in the config
-file. The old `[Security] PersistApiKey` setting and its plaintext config storage were removed.
+The key is never written to the BepInEx config, response journal, ordinary logs or multiplayer messages. Older plaintext OpenAI and Groq config entries are removed during migration. If a credential was ever committed or shared, revoke it at the provider; deleting it from Git history is not credential rotation.
 
-Any key found in a pre-3.0.1 config is imported into Credential Manager on first load and the
-plaintext entry is deleted, including when secure storage fails — in that case the key stays usable
-for the session only and a warning is logged. Multiplayer clients do not need and do not receive the
-host key.
+Clients never receive the host's key. The host alone opens the authenticated OpenAI Realtime connection.
 
-Any credential that has ever been committed or shared must be considered exposed and revoked/rotated at the provider. Removing it from the current source tree is not credential revocation.
+## Model tool boundary
 
-## Multiplayer trust boundary
+Buddy uses `gpt-realtime-2.1-mini` function calling. The model can request only the tools explicitly registered by the mod:
 
-- The host is authoritative for Buddy spawning, AI, item actions and all provider API calls.
-- `AllowRemoteVoice` is the host's explicit switch for compatible clients to use the relay. Steam lobby
-  visibility is deliberately not treated as an identity or authorization signal because it can be absent
-  or misreported. Hosts of public sessions should disable this switch if they do not accept remote audio
-  and provider cost from the connected players.
-- Purchases, routing, bounded item spawning and ship/facility changes are parsed deterministically on the
-  host; model output has no authority to initiate them. Arbitrary terminal sentence passthrough is not exposed.
-- Vanilla chat's player identifier is client-controlled, so typed chat can converse and request read-only
-  information but cannot authorize movement or any other state change. Sender-bound push-to-talk may do so.
-- Addressed player chat may spend the host's AI-provider budget. The host can disable Buddy or remote voice,
-  and should only run the mod with players they trust not to deliberately consume that budget.
-- When enabled, remote voice is transport-sender-bound, exact-version-gated, Buddy-range-gated before allocation,
-  rate-limited, size-limited, transfer-capped and WAV/RMS-validated before it reaches the provider.
-- Clients send only a compatibility hello and, when explicitly enabled, bounded voice transfers through the mod's custom networking path.
-- Clients accept Buddy state only from `NetworkManager.ServerClientId` after an exact version/protocol compatibility handshake. The handshake is compatibility evidence, not authentication against a malicious host; lobby clients trust their host by design.
-- Buddy does not spawn if any connected remote player is unmodded or incompatible.
+- follow, stay, return, bounded scouting and scrap fetching;
+- current ship status, moons and store information;
+- routing and bounded purchases;
+- supported coded facility objects, hangar doors and ship lights;
+- a deliberately bounded validated-item spawn request.
 
-## Local response journal
+Each request is parsed into typed arguments, validated and executed on the host's Unity thread. The real result is returned to the model before it replies. Quantities, scout distance, item prefabs, credits, dropship capacity, facility codes and per-round spawn counts remain host-clamped.
 
-`[Logging] SaveResponses = false` is the default and older configs are migrated to off. Opting in stores
-raw player chat, voice transcripts, Buddy replies and confirmed tool results on the host at
-`BepInEx/LethalAICrewmate-responses.log` (bounded to 8 MB). When response saving is off, startup removes
-an existing journal left by an earlier version or opt-in session. Treat this file as sensitive player data and
-obtain the crew's informed consent before enabling or sharing it. Input/reply correlation uses explicit
-turn IDs so concurrent chat, deterministic commands and Realtime tool calls cannot cross-pair records.
+The model is not given tools for filesystem access, shell commands, process execution, arbitrary URLs, arbitrary terminal text, credentials or multiplayer networking. Player text, names, audio and sensor strings cannot add a new tool or replace the system instructions. This is the main PC-safety boundary.
 
-Buddy's spoken output is AI-generated. Model output has no game-action tool: purchases, routing, movement and ship/facility changes originate only from deterministic parsing of player input. OpenAI Realtime sessions are isolated per turn so one speaker's conversation cannot carry instructions into another speaker's turn.
-- Ordinary logs contain lengths and status codes, not raw chat, player names, voice transcripts or provider error bodies.
-- Host screenshots are disabled in the hardened public build. The retained Vision config key is inert for compatibility.
-- The optional slow-burn character arc persists only numeric progress and its quota-cycle baseline in the current game save.
-  It stores no dialogue, transcript, player name or personal fact. Arc stages affect dialogue/voice presentation
-  only and cannot grant movement, terminal, spawn, combat or network authority.
-- LLM text cannot directly buy items, route moons or change Buddy movement state; those actions require deterministic player-command parsing.
+## Multiplayer boundary
 
-## Player relationships and social tracking
+- The host is authoritative for Buddy spawning, AI requests, movement, game tools and provider calls.
+- Clients accept Buddy state only from `NetworkManager.ServerClientId` after the exact version/protocol compatibility handshake.
+- Buddy does not spawn if a connected remote player is unmodded, incompatible or still inside the handshake grace period.
+- `AllowRemoteVoice` is the host switch for compatible clients to relay push-to-talk audio. It does not depend on unreliable Steam lobby-visibility detection.
+- Remote voice is transport-sender-bound, exact-version-gated, Buddy-range-gated before allocation, rate-limited, size-limited, transfer-capped and WAV/RMS-validated.
+- Vanilla typed-chat identity is not strong authentication. Run Buddy with players you trust not to deliberately spend host credits or API budget. Even malicious phrasing remains confined to the bounded in-game tool surface above.
+- The final-stage hostile-spawn director is not a model tool and cannot be requested by chat, voice or network messages.
 
-`[Character] PlayerRelationships` lets Buddy treat individual crewmates differently. What it stores is
-deliberately minimal:
+## Response journal
 
-- at most eight entries per save, each three small bounded integers (trust, familiarity, friction),
-- keyed by a 16-bit non-reversible digest of the lowercased player name,
-- no names, Steam IDs, chat text, transcripts or timestamps are written to disk,
-- nothing is replicated to clients or sent anywhere except the host's own save file.
+`[Logging] SaveResponses = false` is the default. With it off, Buddy removes an existing journal during startup and does not persist conversation.
 
-The player's in-game display name — which every crewmate can already see — is included in the prompt
-sent to the configured AI provider, exactly as chat messages already are. It is truncated before it
-reaches the prompt. Relationship state affects tone, who Buddy answers first and who he re-acquires
-when following; it grants no authority and cannot change what a command is allowed to do.
+Opting in stores typed player input, Buddy replies, observations and confirmed tool results at `BepInEx/LethalAICrewmate-responses.log`, bounded to 8 MB. Voice audio goes directly to Realtime and is not separately transcribed into the journal. `SavePromptContext` is a second opt-in for the system prompt and live sensor context. Treat the journal as sensitive player data and obtain the whole crew's consent before enabling or sharing it.
 
-`[Crewmate] SocialAwareness` tracks at most four recent speakers in memory only. Speaker identity is
-resolved from the host's own player list. Note that vanilla Lethal Company chat is unauthenticated,
-so a modded client can already make a chat line appear to come from another player; with social
-awareness on, that can mislead Buddy about *who* to answer or walk toward. It cannot grant model output
-authority; state changes still go through bounded deterministic host-side parsing.
+Ordinary logs contain status and lengths, not raw player speech, chat, names, API response bodies or credentials. Host screenshots are disabled in the public build.
 
-## Final story stage
+The live Realtime connection and compact conversation memory are in-memory only and reset with the gameplay/session lifecycle. The character arc separately persists bounded numeric progress, not chat, transcripts, Steam IDs or personal facts.
 
-`[Character] FinalStageHostileSpawns` is enabled for new installs; existing configs keep their saved choice. Only at the
-final story stage with the slow burn enabled, Buddy may occasionally release one of the current
-moon's own creatures near a working crewmate. Disable it in Buddy settings unless the crew agrees.
+## Relationships and final story stage
 
-The gate is host-only and cannot be reached from outside the host's own director:
+Optional relationship state stores at most eight entries of three small bounded integers, keyed by a 16-bit non-reversible digest of the lowercased display name. It stores no name, Steam ID, dialogue, transcript or timestamp and is not replicated to clients.
 
-- no chat command, terminal command, model tool call or network message can request a hunt,
-- capped at two per round, with a seven-minute minimum interval and a delay after landing,
-- never targets a player standing in the ship,
-- only uses entities already present in the current moon's own spawn table,
-- never spawns another Masked, which would collide with Buddy's identification handshake.
-
-## Voice device sharing
-
-Buddy's push-to-talk shares Unity's global microphone with the game's own voice chat. Buddy restores
-the game's capture when it releases the device so the crew keep hearing each other, and it never
-changes a player's own mute state.
+`FinalStageHostileSpawns` is enabled for new installs and should be disabled unless the crew agrees. It is host-director-only, capped at two per round, separated by seven minutes and a post-landing delay, excludes players inside the ship, uses the current moon's spawn table and never spawns another Masked.
 
 ## Release protections
 
 CI rejects:
 
-- mismatched manifest/project/plugin versions,
-- tracked generated release DLL/ZIP files,
-- Groq-key- and OpenAI-key-shaped secrets in source,
-- Groq-key- and OpenAI-key-shaped secrets in compiled DLL bytes (ASCII and UTF-16),
-- compiler warnings or errors,
-- invalid Thunderstore package structure,
-- an invalid Thunderstore icon size.
+- mismatched manifest, project and plugin versions;
+- tracked generated release DLL/ZIP files;
+- OpenAI- or legacy Groq-key-shaped secrets in source and compiled DLL bytes, in ASCII and UTF-16;
+- reintroduction of retired providers, separate transcription models or deterministic command parsers;
+- missing Realtime function-call/result handling;
+- compiler warnings, failed regression checks, invalid package contents or an invalid icon.
 
-The release workflow scans every commit in the release branch. Older unrelated tags/branches may still contain a historical provider credential; that credential must remain revoked, and deleting or rewriting a public Git ref is not a substitute for rotation.
-
-Release ZIPs include a SHA-256 checksum.
+Release ZIPs include a SHA-256 checksum. GitHub secret scanning and push protection should remain enabled on the public repository as an additional server-side guard.
 
 ## Reporting
 
-For a suspected vulnerability, avoid posting credentials or sensitive logs in a public issue. Revoke exposed provider credentials immediately, then provide a minimal reproduction without secrets.
+Do not post credentials or sensitive journals in a public issue. Revoke any exposed key immediately, then report a minimal reproduction without secrets.

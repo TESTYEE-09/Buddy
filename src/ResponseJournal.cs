@@ -7,7 +7,7 @@ using BepInEx;
 namespace LethalAICrewmate
 {
     /// <summary>
-    /// Appends every Buddy reply (chat, voice, deterministic commands and danger callouts)
+    /// Appends every Buddy reply (chat, voice, Realtime tool results and danger callouts)
     /// to a human-readable journal next to the BepInEx log, so the player can review exactly
     /// what Buddy said, to whom, and which deterministic tool result produced it.
     /// Host only: replies are generated on the host and journaled there.
@@ -147,7 +147,7 @@ namespace LethalAICrewmate
                 var sb = new StringBuilder(systemPrompt.Length + 256);
                 sb.Append("=== SYSTEM PROMPT @ ").Append(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"))
                   .Append(" | Buddy v").Append(Plugin.ModVersion)
-                  .Append(" | provider ").Append(GroqSecrets.ProviderName)
+                  .Append(" | provider ").Append(OpenAiSecrets.ProviderName)
                   .AppendLine(" ===");
                 sb.AppendLine(systemPrompt.TrimEnd());
                 sb.AppendLine("=== END SYSTEM PROMPT ===");

@@ -1,0 +1,64 @@
+name: Bug report
+description: Report a reproducible Buddy problem.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include API keys, raw response journals, voice transcripts, or personal information.
+        For a security issue, use the process in SECURITY.md instead of filing a public issue.
+  - type: input
+    id: version
+    attributes:
+      label: Buddy version
+      description: Include the exact version shown in Mod Settings.
+      placeholder: "3.6.1"
+    validations:
+      required: true
+  - type: input
+    id: game_version
+    attributes:
+      label: Lethal Company version
+    validations:
+      required: true
+  - type: dropdown
+    id: role
+    attributes:
+      label: Where did this happen?
+      options:
+        - Host
+        - Client
+        - Both
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Include the lobby size and whether every player had the same Buddy version.
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Redacted log excerpt (optional)
+      description: Remove API keys, player names, raw chat, transcripts, and file paths before pasting.
+      render: text

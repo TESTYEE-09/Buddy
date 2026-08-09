@@ -11,6 +11,8 @@ namespace LethalAICrewmate
     {
         private const float PickupRange = 2f;
         private const float ShipDropRange = 4f;
+        private const float MinScoutDistance = 4f;
+        private const float MaxScoutDistance = 18f;
         private const float AgentSpeed = 5.0f;
         private const float AiTickInterval = 0.12f;
 
@@ -586,7 +588,7 @@ namespace LethalAICrewmate
             direction.y = 0f;
             if (direction.sqrMagnitude < 0.01f) direction = data.Enemy.transform.forward;
             direction.Normalize();
-            float distance = Mathf.Clamp(requestedDistance, MovementCommandParsing.MinScoutDistance, MovementCommandParsing.MaxScoutDistance);
+            float distance = Mathf.Clamp(requestedDistance, MinScoutDistance, MaxScoutDistance);
 
             if (!TryResolveScoutDestination(data.Enemy, requester.transform.position, direction, distance, out Vector3 destination))
             {
@@ -618,7 +620,7 @@ namespace LethalAICrewmate
 
             if (!NavMesh.SamplePosition(enemy.transform.position, out var start, 5f, NavMesh.AllAreas))
                 return false;
-            for (float candidateDistance = distance; candidateDistance >= MovementCommandParsing.MinScoutDistance; candidateDistance -= 2f)
+            for (float candidateDistance = distance; candidateDistance >= MinScoutDistance; candidateDistance -= 2f)
             {
                 Vector3 candidate = origin + direction * candidateDistance;
                 if (!NavMesh.SamplePosition(candidate, out var end, 4f, NavMesh.AllAreas)) continue;
@@ -1240,72 +1242,83 @@ namespace LethalAICrewmate
             }
         }
 
-        public static void ApplyCommand(CrewmateData data, string command)
+        private static void ApplyMovementState(CrewmateData data, BuddyMovementActionKind action)
         {
-            if (data == null || string.IsNullOrEmpty(command)) return;
-            switch (command.ToUpperInvariant())
+            if (data == null) return;
+            switch (action)
             {
-                case "FOLLOW":
+                case BuddyMovementActionKind.Follow:
                     CrewmateRegistry.SetState(data, CrewmateState.FollowOwner);
                     break;
-                case "STAY":
+                case BuddyMovementActionKind.Stay:
                     CrewmateRegistry.SetState(data, CrewmateState.Stay);
                     break;
-                case "SHIP":
+                case BuddyMovementActionKind.ReturnToShip:
                     CrewmateRegistry.SetState(data, CrewmateState.ReturnToShip);
                     break;
-                case "FETCH":
+                case BuddyMovementActionKind.FetchScrap:
                     CrewmateRegistry.SetState(data, CrewmateState.FetchScrap);
                     break;
             }
         }
 
-        public static bool ApplyCommandFromChat(string message, int requestingPlayerId, out string failure)
+        public static string ExecuteToolAction(string action, int requestingPlayerId, float scoutDistance, bool bringToPlayer)
         {
-            failure = null;
-            if (string.IsNullOrEmpty(message)) return false;
+            string failure = null;
+            if (!CrewmateSpawner.IsHost()) return "Tool failed: Buddy actions run on the host.";
+            if (string.IsNullOrWhiteSpace(action)) return "Tool failed: no movement action was supplied.";
             var data = CrewmateRegistry.GetPrimary();
             if (data == null)
             {
-                Plugin.Log?.LogWarning("Command ignored: no crewmate registered.");
+                Plugin.Log?.LogWarning("Movement tool ignored: no crewmate registered.");
                 failure = !string.IsNullOrWhiteSpace(NetMessenger.HostCompatibilityWarning)
                     ? NetMessenger.HostCompatibilityWarning
                     : "I can't move right now—my body isn't available.";
-                return false;
+                return failure;
             }
 
-            MovementCommand command = MovementCommandParsing.Parse(message);
-            var requester = ResolveCommandPlayer(requestingPlayerId);
-            switch (command.Kind)
+            BuddyMovementAction movement;
+            switch (action.Trim().ToLowerInvariant())
             {
-                case MovementCommandKind.Follow:
+                case "follow": movement = new BuddyMovementAction(BuddyMovementActionKind.Follow); break;
+                case "stay": movement = new BuddyMovementAction(BuddyMovementActionKind.Stay); break;
+                case "return_to_ship": movement = new BuddyMovementAction(BuddyMovementActionKind.ReturnToShip); break;
+                case "fetch_scrap": movement = new BuddyMovementAction(BuddyMovementActionKind.FetchScrap, deliverToRequester: bringToPlayer); break;
+                case "scout_ahead": movement = new BuddyMovementAction(BuddyMovementActionKind.ScoutAhead, scoutDistance); break;
+                default: return "Tool failed: unknown movement action '" + action + "'.";
+            }
+            var requester = ResolveRequestingPlayer(requestingPlayerId);
+            switch (movement.Kind)
+            {
+                case BuddyMovementActionKind.Follow:
                     if (requester != null && !requester.isPlayerDead)
                     {
                         data.Owner = requester;
                         Plugin.Log?.LogInfo($"Buddy follow owner -> '{requester.playerUsername}' (playerId={requestingPlayerId}).");
                     }
-                    ApplyCommand(data, "FOLLOW");
-                    return true;
-                case MovementCommandKind.Stay:
-                    ApplyCommand(data, "STAY");
-                    return true;
-                case MovementCommandKind.ReturnToShip:
-                    ApplyCommand(data, "SHIP");
-                    return true;
-                case MovementCommandKind.FetchScrap:
+                    ApplyMovementState(data, movement.Kind);
+                    return "Following " + (requester?.playerUsername ?? "the requesting player") + ".";
+                case BuddyMovementActionKind.Stay:
+                    ApplyMovementState(data, movement.Kind);
+                    return "Holding position.";
+                case BuddyMovementActionKind.ReturnToShip:
+                    ApplyMovementState(data, movement.Kind);
+                    return "Returning to the ship.";
+                case BuddyMovementActionKind.FetchScrap:
                     data.Owner = requester ?? data.Owner;
-                    data.DeliverFetchToOwner = command.DeliverToRequester;
-                    ApplyCommand(data, "FETCH");
-                    return true;
-                case MovementCommandKind.ScoutAhead:
-                    return TryBeginScout(data, requester, command.ScoutDistance, out failure);
+                    data.DeliverFetchToOwner = movement.DeliverToRequester;
+                    ApplyMovementState(data, movement.Kind);
+                    return movement.DeliverToRequester ? "Fetching scrap for the requesting player." : "Fetching scrap for the ship.";
+                case BuddyMovementActionKind.ScoutAhead:
+                    return TryBeginScout(data, requester, movement.ScoutDistance, out failure)
+                        ? "Scouting ahead " + Mathf.Clamp(movement.ScoutDistance, MinScoutDistance, MaxScoutDistance).ToString("F0") + " metres."
+                        : string.IsNullOrWhiteSpace(failure) ? "Tool failed: Buddy could not scout ahead." : failure;
                 default:
-                    Plugin.Log?.LogInfo($"No movement command in: '{message}'");
-                    return false;
+                    return "Tool failed: unsupported movement action.";
             }
         }
 
-        private static PlayerControllerB ResolveCommandPlayer(int playerId)
+        private static PlayerControllerB ResolveRequestingPlayer(int playerId)
         {
             try
             {

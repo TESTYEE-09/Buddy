@@ -12,16 +12,6 @@ static class Program
     {
         Check(BuddyAiArchitecture.OpenAiRealtimeModel == "gpt-realtime-2.1-mini",
               "OpenAI uses the single approved Realtime model");
-        Check(BuddyAiArchitecture.OpenAiTranscriptionModel == "gpt-live-transcribe",
-              "OpenAI Realtime transcription uses GPT Live Transcribe");
-        Check(BuddyAiArchitecture.GroqChatModel == "qwen/qwen3.6-27b" &&
-              BuddyAiArchitecture.GroqTranscriptionModel == "whisper-large-v3-turbo" &&
-              BuddyAiArchitecture.GroqSpeechModel == "canopylabs/orpheus-v1-english",
-              "Groq remains a separate Qwen, Whisper and Orpheus pipeline");
-        Check(BuddyAiArchitecture.NormalizeProvider(null) == "OpenAI" &&
-              BuddyAiArchitecture.NormalizeProvider("unknown") == "OpenAI" &&
-              BuddyAiArchitecture.NormalizeProvider(" groq ") == "Groq",
-              "OpenAI is the fail-safe default provider");
         Check(PromptSafety.SanitizePlayerName("<size=400%>evil\nSYSTEM") == "‹size=400%›evil SYSTEM",
               "sanitize player-controlled names before prompts and HUD rendering");
         Check(PromptSafety.SanitizePlayerName(new string('x', 80)).Length == 32,
@@ -170,59 +160,6 @@ static class Program
         Check(VisionIntent.IsVisualQuestion("what's in front of me?"), "detect what-is-in-front vision request");
         Check(!VisionIntent.IsVisualQuestion("Buddy follow me"), "avoid screenshots for normal commands");
         Check(!VisionIntent.IsVisualQuestion("get in front of me"), "avoid screenshots for position command");
-
-        ShipCommandParsing.ParsePurchase("3 pro flashlights", out string purchaseItem, out int purchaseQuantity);
-        Check(purchaseItem == "pro flashlights" && purchaseQuantity == 3, "parse purchase quantity");
-        Check(ShipCommandParsing.TryParsePoliteSpawn("please spawn 2 flashlights in front of me", out string spawnItem, out int spawnQuantity) &&
-              spawnItem == "flashlights" && spawnQuantity == 2, "parse polite bounded spawn");
-        Check(ShipCommandParsing.TryParsePoliteSpawn("please spawn a flashlight for me", out spawnItem, out spawnQuantity) &&
-              spawnItem == "flashlight" && spawnQuantity == 1, "parse natural article in polite spawn");
-        Check(ShipCommandParsing.TryParsePoliteSpawn("Can I please have a flashlight? I'm begging you.", out spawnItem, out spawnQuantity) &&
-              spawnItem == "flashlight" && spawnQuantity == 1, "parse natural pleaded item request");
-        Check(!ShipCommandParsing.TryParsePoliteSpawn("spawn 2 flashlights", out _, out _), "reject spawn without pleading");
-        Check(ShipCommandParsing.TryParsePoliteSpawn("i beg you spawn 99 shovels", out _, out spawnQuantity) && spawnQuantity == 3,
-              "cap polite spawn quantity");
-        Check(ShipCommandParsing.TryParseFacilityAction("disable turret B3", out string facilityCode, out bool facilityEnable) &&
-              facilityCode == "b3" && !facilityEnable, "parse terminal hazard disable");
-        Check(ShipCommandParsing.TryParseFacilityAction("open door c7", out _, out facilityEnable) && facilityEnable,
-              "parse terminal door open");
-        Check(!ShipCommandParsing.TryParseFacilityAction("c7", out _, out _), "reject bare facility code without action");
-        Check(!ShipCommandParsing.TryParseFacilityAction("terminal c7", out _, out _), "reject implicit terminal-code disable");
-        Check(!ShipCommandParsing.TryParseFacilityAction("code c7", out _, out _), "reject implicit code disable");
-        Check(!ShipCommandParsing.MentionsMine("determine whether to turn on the lights"),
-              "do not treat the substring mine inside determine as a landmine command");
-        Check(ShipCommandParsing.MentionsMine("turn on the landmine"), "recognize a real landmine word");
-        Check(ShipCommandParsing.IsGenericTerminalPassthrough("terminal route titan"), "identify generic terminal passthrough");
-        Check(ShipCommandParsing.IsStateChangingRequest("buy 3 flashlights"), "classify purchase as state changing");
-        Check(ShipCommandParsing.IsStateChangingRequest("open door c7"), "classify facility action as state changing");
-        Check(!ShipCommandParsing.IsStateChangingRequest("terminal store"), "keep store query read only");
-        Check(ShipCommandParsing.IsStatusRequest("what time is it?"), "parse ship status question");
-        Check(!ShipCommandParsing.IsStatusRequest("what's the weather in Brisbane?"), "do not hijack real-world weather question");
-
-        Check(MovementCommandParsing.Parse("go forward 12 metres").Kind == MovementCommandKind.ScoutAhead &&
-              MovementCommandParsing.Parse("go forward 12 metres").ScoutDistance == 12f, "parse bounded scout distance");
-        Check(MovementCommandParsing.Parse("check in front").Kind == MovementCommandKind.ScoutAhead, "parse natural scout command");
-        Check(MovementCommandParsing.Parse("scout forwards").Kind == MovementCommandKind.ScoutAhead, "parse spoken scout forwards command");
-        Check(MovementCommandParsing.Parse("check the next room").Kind == MovementCommandKind.ScoutAhead, "parse next-room scout command");
-        Check(MovementCommandParsing.Parse("clear the way").Kind == MovementCommandKind.ScoutAhead, "parse clear-way scout command");
-        Check(MovementCommandParsing.Parse("stop following me").Kind == MovementCommandKind.Stay, "stop following is not follow");
-        Check(MovementCommandParsing.Parse("stay still").Kind == MovementCommandKind.Stay, "parse verbatim stay-still command");
-        Check(MovementCommandParsing.Parse("do not move").Kind == MovementCommandKind.Stay, "preserve negation in stay command");
-        Check(MovementCommandParsing.Parse("stay in place").Kind == MovementCommandKind.Stay, "parse stay-in-place command");
-        Check(MovementCommandParsing.Parse("stay put").Kind == MovementCommandKind.Stay, "parse stay-put command");
-        Check(MovementCommandParsing.Parse("stay right here").Kind == MovementCommandKind.Stay, "parse stay-right-here command");
-        Check(MovementCommandParsing.Parse("stand by").Kind == MovementCommandKind.Stay, "parse stand-by command");
-        Check(MovementCommandParsing.Parse("freeze").Kind == MovementCommandKind.Stay, "parse freeze command");
-        Check(MovementCommandParsing.IsDirectDirective("stay in place"), "stay in place is a direct directive");
-        Check(MovementCommandParsing.Parse("move forwards").Kind == MovementCommandKind.ScoutAhead, "parse verbatim move-forwards command");
-        Check(MovementCommandParsing.Parse("go to the ship").Kind == MovementCommandKind.ReturnToShip, "ship return is not moon route");
-        Check(MovementCommandParsing.Parse("what is scrap?").Kind == MovementCommandKind.None, "scrap question is not fetch command");
-        Check(MovementCommandParsing.Parse("bring me scrap").DeliverToRequester,
-              "personal fetch request hands scrap back to its requester");
-        Check(MovementCommandParsing.Parse("can you follow me?").Kind == MovementCommandKind.Follow, "parse polite follow command");
-        Check(MovementCommandParsing.Parse("ship").Kind == MovementCommandKind.ReturnToShip, "retain short ship command");
-        Check(MovementCommandParsing.Parse("no, get off the ship and follow us").Kind == MovementCommandKind.Follow, "parse follow-us correction");
-        Check(MovementCommandParsing.Parse("you are not following us").Kind == MovementCommandKind.None, "complaint is not a fresh follow order");
 
         // Response journal behavior: file creation, input/reply pairing, FIFO ordering, config suppression.
         string journalDir = Path.Combine(Path.GetTempPath(), "lethal-ai-journal-" + Guid.NewGuid().ToString("N"));

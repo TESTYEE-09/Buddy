@@ -61,14 +61,6 @@ namespace LethalAICrewmate
             try
             {
                 bool changed = false;
-                string voice = Plugin.TtsVoice?.Value?.Trim() ?? "";
-                string direction = Plugin.TtsDirection?.Value?.Trim() ?? "";
-                if (string.Equals(voice, "troy", StringComparison.OrdinalIgnoreCase) && string.IsNullOrEmpty(direction))
-                {
-                    Plugin.TtsVoice.Value = "austin";
-                    Plugin.TtsDirection.Value = "friendly";
-                    changed = true;
-                }
                 if (Plugin.TtsVolume != null && Mathf.Approximately(Plugin.TtsVolume.Value, 0.85f))
                 {
                     Plugin.TtsVolume.Value = 1f;

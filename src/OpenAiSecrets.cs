@@ -9,35 +9,24 @@ namespace LethalAICrewmate
     /// Keeps provider keys host-local. Keys saved from the menu are stored in the current Windows
     /// user's Credential Manager, never replicated to clients or written back to the config file.
     /// </summary>
-    internal static class GroqSecrets
+    internal static class OpenAiSecrets
     {
-        private const string GroqEnvironmentVariable = "LETHAL_AI_GROQ_API_KEY";
         private const string OpenAiEnvironmentVariable = "LETHAL_AI_OPENAI_API_KEY";
         private static string _openAiSessionKey = "";
-        private static string _groqSessionKey = "";
         private static string _openAiStoredKey;
-        private static string _groqStoredKey;
         internal static bool LastSavePersisted { get; private set; }
 
-        internal static bool IsOpenAi => BuddyAiArchitecture.IsOpenAi(Plugin.Provider?.Value);
-        internal static string ProviderName => IsOpenAi ? BuddyAiArchitecture.OpenAiProvider : BuddyAiArchitecture.GroqProvider;
-        internal const string ChatEndpoint = "https://api.groq.com/openai/v1/chat/completions";
-        internal const string SttEndpoint = "https://api.groq.com/openai/v1/audio/transcriptions";
-        internal const string TtsEndpoint = "https://api.groq.com/openai/v1/audio/speech";
-        internal static string ModelsEndpoint => IsOpenAi
-            ? "https://api.openai.com/v1/models"
-            : "https://api.groq.com/openai/v1/models";
+        internal static string ProviderName => "OpenAI";
+        internal static string ModelsEndpoint => "https://api.openai.com/v1/models";
 
         internal static string CurrentKey
         {
             get
             {
-                string environmentKey = Normalize(Environment.GetEnvironmentVariable(
-                    IsOpenAi ? OpenAiEnvironmentVariable : GroqEnvironmentVariable));
+                string environmentKey = Normalize(Environment.GetEnvironmentVariable(OpenAiEnvironmentVariable));
                 if (!string.IsNullOrEmpty(environmentKey)) return environmentKey;
-                string sessionKey = IsOpenAi ? _openAiSessionKey : _groqSessionKey;
-                if (!string.IsNullOrEmpty(sessionKey)) return sessionKey;
-                string storedKey = GetStoredKey(IsOpenAi);
+                if (!string.IsNullOrEmpty(_openAiSessionKey)) return _openAiSessionKey;
+                string storedKey = GetStoredKey();
                 if (!string.IsNullOrEmpty(storedKey)) return storedKey;
                 return "";
             }
@@ -50,32 +39,27 @@ namespace LethalAICrewmate
             key = Normalize(key);
             if (string.IsNullOrEmpty(key)) return false;
 
-            bool openAi = IsOpenAi;
-            if (openAi) _openAiSessionKey = key;
-            else _groqSessionKey = key;
-            LastSavePersisted = SetStoredKey(openAi, key);
+            _openAiSessionKey = key;
+            LastSavePersisted = SetStoredKey(key);
             return true;
         }
 
-        internal static bool ImportLegacyKey(bool openAi, string key)
+        internal static bool ImportLegacyKey(string key)
         {
             key = Normalize(key);
             if (string.IsNullOrEmpty(key)) return false;
-            if (openAi) _openAiSessionKey = key;
-            else _groqSessionKey = key;
-            bool stored = SetStoredKey(openAi, key);
+            _openAiSessionKey = key;
+            bool stored = SetStoredKey(key);
             if (stored)
-                Plugin.Log?.LogInfo((openAi ? "OpenAI" : "Groq") + " plaintext config key migrated to Windows Credential Manager.");
+                Plugin.Log?.LogInfo("OpenAI plaintext config key migrated to Windows Credential Manager.");
             return stored;
         }
 
         internal static void ClearMenuKey()
         {
-            bool openAi = IsOpenAi;
-            if (openAi) _openAiSessionKey = "";
-            else _groqSessionKey = "";
-            ClearStoredKey(openAi);
-            Plugin.ClearLegacyPlaintextKey(openAi);
+            _openAiSessionKey = "";
+            ClearStoredKey();
+            Plugin.ClearLegacyPlaintextKey(true);
             LastSavePersisted = false;
         }
 
@@ -86,22 +70,20 @@ namespace LethalAICrewmate
             return key;
         }
 
-        private static string GetStoredKey(bool openAi)
+        private static string GetStoredKey()
         {
-            string cached = openAi ? _openAiStoredKey : _groqStoredKey;
+            string cached = _openAiStoredKey;
             if (cached != null) return cached;
 
-            string loaded = Normalize(WindowsCredentialStore.Read(CredentialTarget(openAi)));
-            if (openAi) _openAiStoredKey = loaded;
-            else _groqStoredKey = loaded;
+            string loaded = Normalize(WindowsCredentialStore.Read(CredentialTarget));
+            _openAiStoredKey = loaded;
             return loaded;
         }
 
-        private static bool SetStoredKey(bool openAi, string key)
+        private static bool SetStoredKey(string key)
         {
-            bool stored = WindowsCredentialStore.Write(CredentialTarget(openAi), key);
-            if (openAi) _openAiStoredKey = stored ? key : "";
-            else _groqStoredKey = stored ? key : "";
+            bool stored = WindowsCredentialStore.Write(CredentialTarget, key);
+            _openAiStoredKey = stored ? key : "";
 
             if (!stored)
             {
@@ -110,17 +92,13 @@ namespace LethalAICrewmate
             return stored;
         }
 
-        private static void ClearStoredKey(bool openAi)
+        private static void ClearStoredKey()
         {
-            WindowsCredentialStore.Delete(CredentialTarget(openAi));
-            if (openAi) _openAiStoredKey = "";
-            else _groqStoredKey = "";
+            WindowsCredentialStore.Delete(CredentialTarget);
+            _openAiStoredKey = "";
         }
 
-        private static string CredentialTarget(bool openAi)
-        {
-            return "LethalAICrewmate.ApiKey." + (openAi ? "OpenAI" : "Groq");
-        }
+        private const string CredentialTarget = "LethalAICrewmate.ApiKey.OpenAI";
 
         private static class WindowsCredentialStore
         {

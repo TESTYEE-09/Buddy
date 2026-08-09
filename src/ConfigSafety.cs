@@ -23,22 +23,6 @@ namespace LethalAICrewmate
                 string name = CleanSingleLine(Plugin.CrewmateName?.Value, 24, "Buddy");
                 changed |= SetIfDifferent(Plugin.CrewmateName, name);
 
-                string provider = BuddyAiArchitecture.NormalizeProvider(
-                    CleanSingleLine(Plugin.Provider?.Value, 16, BuddyAiArchitecture.OpenAiProvider));
-                changed |= SetIfDifferent(Plugin.Provider, provider);
-
-                string voice = CleanSingleLine(Plugin.TtsVoice?.Value, 16, "austin").ToLowerInvariant();
-                string[] allowedVoices = { "autumn", "diana", "hannah", "austin", "daniel", "troy" };
-                bool validVoice = false;
-                foreach (string allowed in allowedVoices)
-                    if (voice == allowed) { validVoice = true; break; }
-                if (!validVoice) voice = "austin";
-                changed |= SetIfDifferent(Plugin.TtsVoice, voice);
-
-                // Empty is intentionally valid: it disables Orpheus direction tags.
-                string direction = CleanSingleLineAllowEmpty(Plugin.TtsDirection?.Value, 48);
-                changed |= SetIfDifferent(Plugin.TtsDirection, direction);
-
                 changed |= ClampFloat(Plugin.TtsVolume, 0f, 2f, 1.25f);
                 changed |= ClampFloat(Plugin.ChatHearRange, 0f, 120f, 0f);
                 changed |= ClampFloat(Plugin.ChatTriggerRange, 0f, 120f, 60f);
@@ -71,13 +55,6 @@ namespace LethalAICrewmate
         {
             string result = (value ?? "").Replace('\r', ' ').Replace('\n', ' ').Replace('\t', ' ').Trim();
             if (string.IsNullOrEmpty(result)) result = fallback;
-            if (result.Length > maxLength) result = result.Substring(0, maxLength).TrimEnd();
-            return result;
-        }
-
-        private static string CleanSingleLineAllowEmpty(string value, int maxLength)
-        {
-            string result = (value ?? "").Replace('\r', ' ').Replace('\n', ' ').Replace('\t', ' ').Trim();
             if (result.Length > maxLength) result = result.Substring(0, maxLength).TrimEnd();
             return result;
         }

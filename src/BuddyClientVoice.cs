@@ -6,7 +6,6 @@ using GameNetcodeStuff;
 using Unity.Collections;
 using Unity.Netcode;
 using UnityEngine;
-using UnityEngine.Networking;
 
 namespace LethalAICrewmate
 {
@@ -14,7 +13,7 @@ namespace LethalAICrewmate
     /// v1.4.3 multiplayer voice relay.
     /// Remote clients record their own push-to-talk audio locally and upload only that bounded WAV
     /// to the host. The host validates the sender/range, then uses either the host-only OpenAI
-    /// Realtime session end-to-end or the separate Groq Whisper/Qwen/Orpheus pipeline.
+    /// gpt-realtime-2.1-mini session end-to-end.
     /// </summary>
     internal static class BuddyClientVoice
     {
@@ -86,7 +85,7 @@ namespace LethalAICrewmate
                 if (nm.IsServer)
                 {
                     ExpireHostTransfers();
-                    StartNextHostTranscription();
+                    StartNextHostRealtime();
                 }
                 else if (nm.IsClient)
                 {
@@ -444,11 +443,11 @@ namespace LethalAICrewmate
                 IncomingBySender.Remove(id);
         }
 
-        private static void StartNextHostTranscription()
+        private static void StartNextHostRealtime()
         {
             if (_hostBusy || HostQueue.Count == 0 || Plugin.Host == null)
                 return;
-            if (!GroqSecrets.HasKey)
+            if (!OpenAiSecrets.HasKey)
             {
                 HostQueue.Clear();
                 return;
@@ -461,7 +460,7 @@ namespace LethalAICrewmate
 
             LlmClient.NotePlayerInteraction();
             _hostBusy = true;
-            Plugin.Host.StartCoroutine(TranscribeRemote(request));
+            Plugin.Host.StartCoroutine(SendRemoteRealtime(request));
         }
 
         private static bool TryValidateRemoteWav(byte[] wav, out string reason)
@@ -470,123 +469,24 @@ namespace LethalAICrewmate
                 wav, MaxVoiceBytes, 0.35f, 12.5f, MinRms, out reason);
         }
 
-        private static IEnumerator TranscribeRemote(RemoteVoiceRequest request)
+        private static IEnumerator SendRemoteRealtime(RemoteVoiceRequest request)
         {
             try
             {
-                if (OpenAiRealtimeVoiceClient.Enabled)
+                var player = ResolveRemotePlayer(request.SenderId);
+                int playerId = player != null ? (int)player.playerClientId : (int)request.SenderId;
+                string playerName = player?.playerUsername ?? ("Client " + request.SenderId);
+                if (OpenAiRealtimeVoiceClient.EnqueueWav(request.Wav, playerId, playerName))
                 {
-                    var player = ResolveRemotePlayer(request.SenderId);
-                    int playerId = player != null ? (int)player.playerClientId : (int)request.SenderId;
-                    string playerName = player?.playerUsername ?? ("Client " + request.SenderId);
-                    if (OpenAiRealtimeVoiceClient.EnqueueWav(request.Wav, playerId, playerName))
-                    {
-                        Plugin.Log?.LogInfo($"Queued remote native realtime voice turn client={request.SenderId}.");
-                        yield break;
-                    }
-                    SendClientHint(request.SenderId, "Buddy couldn't start the OpenAI Realtime turn. Try again.");
+                    Plugin.Log?.LogInfo($"Queued remote native realtime voice turn client={request.SenderId}.");
                     yield break;
                 }
-
-                string model = ResolveSttModel();
-                string boundary = "----LethalAIRemote" + UnityEngine.Random.Range(100000, 999999);
-                byte[] body = BuildMultipart(boundary, request.Wav, model);
-
-                using (var uwr = new UnityWebRequest(GroqSecrets.SttEndpoint, "POST"))
-                {
-                    uwr.uploadHandler = new UploadHandlerRaw(body);
-                    uwr.downloadHandler = new DownloadHandlerBuffer();
-                    uwr.SetRequestHeader("Authorization", "Bearer " + GroqSecrets.CurrentKey);
-                    uwr.SetRequestHeader("Content-Type", "multipart/form-data; boundary=" + boundary);
-                    uwr.timeout = 20;
-
-                    Plugin.Log?.LogInfo($"Groq remote STT -> client={request.SenderId} model={model} bytes={request.Wav.Length}");
-                    yield return uwr.SendWebRequest();
-
-                    string text = null;
-                    bool responseFailed = false;
-                    try
-                    {
-                        bool ok = string.IsNullOrEmpty(uwr.error) && uwr.responseCode >= 200 && uwr.responseCode < 300;
-                        if (!ok)
-                        {
-                            responseFailed = true;
-                            Plugin.Log?.LogWarning($"Remote Groq STT failed (HTTP {uwr.responseCode}, {uwr.error}).");
-                            SendClientHint(request.SenderId, "Buddy's speech service failed for that clip. Try again.");
-                        }
-                        else
-                        {
-                            text = ParseTranscription(uwr.downloadHandler?.text);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        responseFailed = true;
-                        Plugin.Log?.LogError($"Remote Buddy STT response failed client={request.SenderId}: {ex}");
-                        SendClientHint(request.SenderId, "Buddy's voice relay hit an error. Try once more.");
-                    }
-                    if (responseFailed) yield break;
-                    if (string.IsNullOrWhiteSpace(text) || IsWhisperHallucination(text))
-                    {
-                        Plugin.Log?.LogWarning($"Remote STT client={request.SenderId} returned no usable transcript.");
-                        SendClientHint(request.SenderId, "Buddy couldn't make out that clip. Hold the Buddy push-to-talk key, speak clearly, then release.");
-                        yield break;
-                    }
-
-                    text = text.Trim();
-                    Plugin.Log?.LogInfo($"Remote transcript ready client={request.SenderId} chars={text.Length}.");
-
-                    // PlayerObject can briefly be null while Lethal Company changes levels even
-                    // though the peer remains connected. Keep the valid transcript for a short
-                    // grace period instead of silently throwing it away.
-                    float resolveDeadline = Time.unscaledTime + 3f;
-                    while (!HandleRemoteTranscript(request.SenderId, text) &&
-                           Time.unscaledTime < resolveDeadline &&
-                           IsConnectedRemote(NetworkManager.Singleton, request.SenderId))
-                    {
-                        yield return null;
-                    }
-
-                    if (ResolveRemotePlayer(request.SenderId) == null)
-                    {
-                        Plugin.Log?.LogWarning($"Remote transcript dropped only after player lookup timeout client={request.SenderId}.");
-                        SendClientHint(request.SenderId, "Buddy heard you, but your player was still loading. Try once more.");
-                    }
-                }
+                SendClientHint(request.SenderId, "Buddy couldn't start the OpenAI Realtime turn. Try again.");
             }
             finally
             {
                 _hostBusy = false;
-                Plugin.Log?.LogInfo($"Remote Buddy STT finished client={request?.SenderId}; queued={HostQueue.Count}.");
-            }
-        }
-
-        private static bool HandleRemoteTranscript(ulong senderId, string text)
-        {
-            try
-            {
-                var player = ResolveRemotePlayer(senderId);
-                if (player == null || string.IsNullOrWhiteSpace(text))
-                    return false;
-
-                if (HUDManager.Instance != null)
-                    HUDManager.Instance.AddChatMessage(text, (player.playerUsername ?? "Player") + " (voice)");
-
-                string buddyName = Plugin.CrewmateName?.Value ?? "Buddy";
-                string lower = text.ToLowerInvariant();
-                string message = text;
-                if (!lower.Contains(buddyName.ToLowerInvariant()) && !lower.Contains("buddy"))
-                    message = buddyName + " " + text;
-
-                Plugin.Log?.LogInfo($"Remote transcript delivered client={senderId} chars={text.Length}.");
-                ChatObserver.OnServerChat(message, (int)player.playerClientId, authenticatedCommandSource: true);
-                return true;
-            }
-            catch (Exception ex)
-            {
-                Plugin.Log?.LogError($"Remote transcript delivery failed client={senderId}: {ex}");
-                SendClientHint(senderId, "Buddy heard you but could not process the command. Try again.");
-                return true;
+                Plugin.Log?.LogInfo($"Remote Buddy Realtime turn queued client={request?.SenderId}; queued={HostQueue.Count}.");
             }
         }
 
@@ -644,90 +544,6 @@ namespace LethalAICrewmate
             foreach (ulong id in nm.ConnectedClientsIds)
                 if (id == senderId) return true;
             return false;
-        }
-
-        private static string ResolveSttModel()
-        {
-            return BuddyAiArchitecture.GroqTranscriptionModel;
-        }
-
-        private static byte[] BuildMultipart(string boundary, byte[] wav, string model)
-        {
-            var sb = new StringBuilder();
-            AppendPart(sb, boundary, "model", model);
-            AppendPart(sb, boundary, "response_format", "json");
-            AppendPart(sb, boundary, "language", "en");
-            AppendPart(sb, boundary, "temperature", "0");
-            AppendPart(sb, boundary, "prompt", "Lethal Company Version 80 gameplay. Crew talking verbatim to Buddy. Commands and vocabulary: follow, stay still, do not move, return to ship, fetch scrap, move forwards, scout ahead, status, time, credits, buy items, route moons, open door, disable turret, ship lights, please spawn an item, Backwater Gunkfish, Feiopar, Cadaver Growth, Kidnapper Fox.");
-
-            byte[] head = Encoding.UTF8.GetBytes(sb.ToString());
-            byte[] fileHeader = Encoding.UTF8.GetBytes(
-                "--" + boundary + "\r\n" +
-                "Content-Disposition: form-data; name=\"file\"; filename=\"buddy-client.wav\"\r\n" +
-                "Content-Type: audio/wav\r\n\r\n");
-            byte[] mid = Encoding.UTF8.GetBytes("\r\n");
-            byte[] end = Encoding.UTF8.GetBytes("--" + boundary + "--\r\n");
-
-            byte[] all = new byte[head.Length + fileHeader.Length + wav.Length + mid.Length + end.Length];
-            int offset = 0;
-            Buffer.BlockCopy(head, 0, all, offset, head.Length); offset += head.Length;
-            Buffer.BlockCopy(fileHeader, 0, all, offset, fileHeader.Length); offset += fileHeader.Length;
-            Buffer.BlockCopy(wav, 0, all, offset, wav.Length); offset += wav.Length;
-            Buffer.BlockCopy(mid, 0, all, offset, mid.Length); offset += mid.Length;
-            Buffer.BlockCopy(end, 0, all, offset, end.Length);
-            return all;
-        }
-
-        private static void AppendPart(StringBuilder sb, string boundary, string name, string value)
-        {
-            sb.Append("--").Append(boundary).Append("\r\n");
-            sb.Append("Content-Disposition: form-data; name=\"").Append(name).Append("\"\r\n\r\n");
-            sb.Append(value).Append("\r\n");
-        }
-
-        private static string ParseTranscription(string json)
-        {
-            if (string.IsNullOrEmpty(json)) return null;
-            int key = json.IndexOf("\"text\"", StringComparison.Ordinal);
-            if (key < 0) return null;
-            int colon = json.IndexOf(':', key + 6);
-            if (colon < 0) return null;
-            int i = colon + 1;
-            while (i < json.Length && char.IsWhiteSpace(json[i])) i++;
-            if (i >= json.Length || json[i] != '"') return null;
-            i++;
-
-            var sb = new StringBuilder();
-            while (i < json.Length)
-            {
-                char c = json[i++];
-                if (c == '\\' && i < json.Length)
-                {
-                    char n = json[i++];
-                    if (n == '"') sb.Append('"');
-                    else if (n == 'n' || n == 'r') sb.Append(' ');
-                    else if (n == '\\') sb.Append('\\');
-                    else sb.Append(n);
-                }
-                else if (c == '"') break;
-                else sb.Append(c);
-            }
-            return sb.ToString().Trim();
-        }
-
-        private static bool IsWhisperHallucination(string text)
-        {
-            if (string.IsNullOrWhiteSpace(text)) return true;
-            string t = text.Trim().ToLowerInvariant().TrimEnd('.', '!', '?', ' ');
-            string[] bad =
-            {
-                "thank you", "thanks", "thanks for watching", "thank you for watching",
-                "subscribe", "please subscribe", "bye", "goodbye", "you",
-                "thank you very much", "thanks for listening", "amen", "null", ".", "..."
-            };
-            foreach (string badText in bad)
-                if (t == badText) return true;
-            return t.Length <= 2;
         }
 
         private static void ClientHint(string message)

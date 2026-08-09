@@ -18,9 +18,8 @@ internal static class SecurityRegressionChecks
         if (File.Exists(pluginPath))
         {
             string plugin = File.ReadAllText(pluginPath);
-            Require(plugin.Contains("ClearLegacyPlaintextKey(false);", StringComparison.Ordinal) &&
-                    plugin.Contains("ClearLegacyPlaintextKey(true);", StringComparison.Ordinal),
-                    "legacy provider keys must be deleted from plaintext config after import");
+            Require(plugin.Contains("ClearLegacyPlaintextKey(true);", StringComparison.Ordinal),
+                    "legacy OpenAI keys must be deleted from plaintext config after import");
             Require(plugin.Contains("RemoveObsoleteConfigEntries(removeLegacyGroqKey: true, removeLegacyOpenAiKey: true);", StringComparison.Ordinal),
                     "obsolete plaintext provider key definitions must always be removed");
             Require(plugin.Contains("AlternatePushToTalkKey\", KeyCode.None", StringComparison.Ordinal),
@@ -37,21 +36,21 @@ internal static class SecurityRegressionChecks
         string realtimePath = Path.Combine(root, "src", "OpenAiRealtimeVoiceClient.cs");
         Require(File.Exists(realtimePath), "release checks must locate OpenAiRealtimeVoiceClient.cs");
         string realtime = File.ReadAllText(realtimePath);
-        Require(!realtime.Contains("execute_game_command", StringComparison.Ordinal) &&
-                realtime.Contains("tool_choice", StringComparison.Ordinal) &&
-                realtime.Contains("const string tools", StringComparison.Ordinal),
-                "Realtime model output must have no game-action tool authority");
-        Require(realtime.Contains("CloseSocket();", StringComparison.Ordinal),
-                "Realtime turns must close their session to isolate speakers");
-        Require(realtime.Contains("WaitForInputTranscriptionAsync", StringComparison.Ordinal) &&
-                realtime.Contains("ExecuteAuthenticatedVoiceCommandAsync", StringComparison.Ordinal) &&
+        Require(realtime.Contains("tool_choice\\\":\\\"auto", StringComparison.Ordinal) &&
+                realtime.Contains("ToolDefinitionsJson", StringComparison.Ordinal) &&
+                realtime.Contains("function_call_output", StringComparison.Ordinal) &&
+                realtime.Contains("ExecuteRealtimeToolAsync", StringComparison.Ordinal),
+                "Realtime must expose game tools, execute them on the host, and return results to the model");
+        Require(!realtime.Contains("OpenAiTranscriptionModel", StringComparison.Ordinal) &&
+                !realtime.Contains("input_audio_transcription", StringComparison.Ordinal) &&
                 realtime.Contains("max_output_tokens\\\":1024", StringComparison.Ordinal),
-                "Realtime must execute authenticated voice commands before replying and retain enough audio output budget");
+                "Realtime must use only gpt-realtime-2.1-mini and retain enough audio output budget");
 
         string promptPath = Path.Combine(root, "src", "BuddyConversationPrompt.cs");
         string prompt = File.ReadAllText(promptPath);
         Require(prompt.Contains("Never recommend an exit", StringComparison.Ordinal) &&
                 prompt.Contains("normal Lethal Company knowledge", StringComparison.Ordinal) &&
+                prompt.Contains("Call the tool first", StringComparison.Ordinal) &&
                 prompt.Contains("Say bazinga", StringComparison.Ordinal),
                 "the rewritten prompt must lock direct, useful and natural behavior from the saved-session regressions");
 
@@ -70,9 +69,13 @@ internal static class SecurityRegressionChecks
         string chat = File.ReadAllText(chatPath);
         Require(!chat.Contains("Chat observed: '", StringComparison.Ordinal),
                 "ordinary logs must not contain raw player chat");
-        Require(chat.Contains("authenticatedCommandSource = false", StringComparison.Ordinal) &&
-                chat.Contains("!authenticatedCommandSource", StringComparison.Ordinal),
-                "spoofable vanilla chat must not authorize state-changing commands");
+        Require(!chat.Contains("MovementCommandParsing", StringComparison.Ordinal) &&
+                !chat.Contains("ShipCommandParsing", StringComparison.Ordinal) &&
+                chat.Contains("Natural-language action selection belongs", StringComparison.Ordinal),
+                "chat must route natural language to Realtime tools instead of phrase parsers");
+        Require(!File.Exists(Path.Combine(root, "src", "MovementCommandParsing.cs")) &&
+                !File.Exists(Path.Combine(root, "src", "ShipCommandParsing.cs")),
+                "legacy natural-language command parsers must stay removed");
 
         string setupMenuPath = Path.Combine(root, "src", "BuddySetupMenu.cs");
         Require(!File.Exists(setupMenuPath), "the old custom overlay must stay removed");

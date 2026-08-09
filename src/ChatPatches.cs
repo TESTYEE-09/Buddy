@@ -47,7 +47,7 @@ namespace LethalAICrewmate
         private static int _lastPlayerId = int.MinValue;
         private static float _lastMessageTime;
 
-        public static void OnServerChat(string chatMessage, int playerId, bool authenticatedCommandSource = false)
+        public static void OnServerChat(string chatMessage, int playerId)
         {
             if (!CrewmateSpawner.IsHost()) return;
             if (string.IsNullOrWhiteSpace(chatMessage)) return;
@@ -67,7 +67,7 @@ namespace LethalAICrewmate
             var lower = msg.ToLowerInvariant();
             var nameLower = name.ToLowerInvariant();
 
-            // Ignore system/join messages before any command parsing.
+            // Ignore system/join messages before conversational handling.
             if (lower.Contains("joined the") || lower.Contains("left the") ||
                 lower.Contains("was kicked") || playerId < 0)
                 return;
@@ -82,78 +82,15 @@ namespace LethalAICrewmate
                 lower.Contains(nameLower) ||
                 lower.Contains("buddy");
 
-            string rest = msg;
-            if (lower.StartsWith(nameLower))
-                rest = msg.Substring(name.Length).TrimStart(' ', ',', ':', '-');
-            else if (lower.StartsWith("buddy"))
-                rest = msg.Substring(5).TrimStart(' ', ',', ':', '-');
-
-            string restLower = rest.ToLowerInvariant();
-
             // Conversational bookkeeping. The speaker is resolved from the host's own player list,
             // never from anything the message itself claims.
             string speakerName = GetPlayerName(playerId);
             BuddySocialIntelligence.NoteSpeech(playerId, speakerName, addressed);
             if (addressed) BuddyRelationships.NoteAddressing(speakerName);
-            bool polite = restLower.Contains("please") || restLower.Contains("thank");
 
-            // Explicit terminal/orbit actions are deterministic player commands. The LLM is never
-            // allowed to execute these side effects, and they only run when Buddy is addressed
-            // (or when the message is an explicitly pleaded spawn request, which stays sandboxed
-            // by plea + item validation + quantity caps). Plain chat like "buy 3 flashlights" or
-            // "route titan" must never spend credits or move the ship by itself.
-            if (addressed)
-            {
-                bool unauthenticatedStateChange = !authenticatedCommandSource &&
-                    ShipCommandParsing.IsStateChangingRequest(restLower);
-                string termResult = unauthenticatedStateChange ? null : TerminalBuddy.HandleChatCommand(msg, playerId);
-                if (!string.IsNullOrEmpty(termResult))
-                {
-                    Plugin.Log?.LogInfo($"Terminal cmd: {termResult}");
-                    BuddyRelationships.Note(speakerName,
-                        termResult.StartsWith("Rejected", StringComparison.OrdinalIgnoreCase)
-                            ? BuddyRelationEvent.CommandRejected
-                            : polite ? BuddyRelationEvent.PoliteRequest : BuddyRelationEvent.CommandHonoured);
-                    // Replicate deterministic ship/terminal feedback to every matching player and
-                    // speak it once. Do not ask the LLM to paraphrase or repeat a side effect.
-                    long journalId = ResponseJournal.NoteInput("command", GetPlayerName(playerId), msg);
-                    LlmClient.PublishLocalReply(termResult, journalId);
-                    return;
-                }
-            }
-
-            MovementCommand movement = MovementCommandParsing.Parse(restLower);
-            bool isCommand = false;
-            string deterministicCommand = null;
-            if (movement.Kind != MovementCommandKind.None && (addressed || MovementCommandParsing.IsDirectDirective(restLower)))
-            {
-                if (!authenticatedCommandSource)
-                {
-                    // Vanilla chat carries a client-controlled player id. Keep conversation working,
-                    // but never let it grant movement or other state-changing authority.
-                    movement = default;
-                }
-                else
-                {
-                    isCommand = true;
-                    Plugin.Log?.LogInfo("Movement command parsed from authenticated voice input.");
-                    if (CrewmateAI.ApplyCommandFromChat(rest, playerId, out string failure))
-                    {
-                        deterministicCommand = CommandName(movement.Kind);
-                        BuddyRelationships.Note(speakerName,
-                            polite ? BuddyRelationEvent.PoliteRequest : BuddyRelationEvent.CommandHonoured);
-                    }
-                    else if (!string.IsNullOrWhiteSpace(failure))
-                    {
-                        BuddyRelationships.Note(speakerName, BuddyRelationEvent.CommandRejected);
-                        long journalId = ResponseJournal.NoteInput("command", GetPlayerName(playerId), msg);
-                        LlmClient.PublishLocalReply(failure, journalId);
-                        return;
-                    }
-                }
-            }
-
-            bool shouldReply = addressed || isCommand;
+            // Natural-language action selection belongs to gpt-realtime-2.1-mini. The host exposes
+            // typed in-game tools and returns their real results; no phrase parser runs here.
+            bool shouldReply = addressed;
             if (!shouldReply && msg.TrimEnd().EndsWith("?"))
             {
                 var data = CrewmateRegistry.GetPrimary();
@@ -171,76 +108,15 @@ namespace LethalAICrewmate
             {
                 if (CrewmateRegistry.GetPrimary() == null && !string.IsNullOrWhiteSpace(NetMessenger.HostCompatibilityWarning))
                 {
-                    long compatibilityJournalId = ResponseJournal.NoteInput("command", GetPlayerName(playerId), msg);
+                    long compatibilityJournalId = ResponseJournal.NoteInput("chat", GetPlayerName(playerId), msg);
                     LlmClient.PublishLocalReply(NetMessenger.HostCompatibilityWarning, compatibilityJournalId);
-                    return;
-                }
-                if (!string.IsNullOrEmpty(deterministicCommand))
-                {
-                    long acknowledgementJournalId = ResponseJournal.NoteInput("command", GetPlayerName(playerId), msg);
-                    LlmClient.PublishLocalReply(BuildCommandAcknowledgement(deterministicCommand), acknowledgementJournalId);
                     return;
                 }
                 string playerName = GetPlayerName(playerId);
                 long journalId = ResponseJournal.NoteInput("chat", playerName, msg);
-                if (!LlmClient.EnqueuePlayerMessage(playerName, playerId, msg, isCommand, journalId))
+                if (!LlmClient.EnqueuePlayerMessage(playerName, playerId, msg, journalId))
                     ResponseJournal.Discard(journalId);
             }
-        }
-
-        internal static string ExecuteDeterministicOnly(string command, int playerId)
-        {
-            if (!CrewmateSpawner.IsHost()) return "Rejected: only the host can execute Buddy commands.";
-            if (string.IsNullOrWhiteSpace(command)) return "Rejected: empty command.";
-
-            string message = command.Trim();
-            string buddyName = Plugin.CrewmateName?.Value ?? "Buddy";
-            if (message.IndexOf("buddy", StringComparison.OrdinalIgnoreCase) < 0 &&
-                message.IndexOf(buddyName, StringComparison.OrdinalIgnoreCase) < 0)
-                message = buddyName + " " + message;
-
-            string terminal = TerminalBuddy.HandleChatCommand(message, playerId);
-            if (!string.IsNullOrWhiteSpace(terminal)) return terminal;
-
-            string rest = message;
-            if (rest.StartsWith(buddyName, StringComparison.OrdinalIgnoreCase))
-                rest = rest.Substring(buddyName.Length).TrimStart(' ', ',', ':', '-');
-            else if (rest.StartsWith("buddy", StringComparison.OrdinalIgnoreCase))
-                rest = rest.Substring(5).TrimStart(' ', ',', ':', '-');
-
-            MovementCommand movement = MovementCommandParsing.Parse(rest.ToLowerInvariant());
-            if (movement.Kind != MovementCommandKind.None)
-            {
-                if (CrewmateAI.ApplyCommandFromChat(rest, playerId, out string failure))
-                    return "Confirmed: " + CommandName(movement.Kind) + " command started.";
-                return string.IsNullOrWhiteSpace(failure) ? "Command could not be executed." : failure;
-            }
-            return "No supported deterministic game command matched. Do not claim an action occurred; answer conversationally.";
-        }
-
-        private static string CommandName(MovementCommandKind command)
-        {
-            if (command == MovementCommandKind.Follow) return "follow";
-            if (command == MovementCommandKind.Stay) return "stay";
-            if (command == MovementCommandKind.ReturnToShip) return "ship";
-            if (command == MovementCommandKind.FetchScrap) return "fetch";
-            if (command == MovementCommandKind.ScoutAhead) return "scout";
-            return null;
-        }
-
-        private static string BuildCommandAcknowledgement(string command)
-        {
-            string[][] lines =
-            {
-                new[] { "On you. Personal space revoked.", "Following. Try walking professionally.", "Right behind you, workplace hazard." },
-                new[] { "Parked. Try not to miss me.", "Staying put. Thrilling assignment.", "Holding here like expensive furniture." },
-                new[] { "Back to the ship. Cowardice, but organised.", "Heading home. Excellent survival instinct.", "Shipward bound, dignity optional." },
-                new[] { "Scrap run. Capitalism needs me.", "Looking for scrap and poor decisions.", "I'll fetch loot. Guard my imaginary pension." },
-                new[] { "Taking point. Terrible promotion.", "Checking ahead. Screaming counts as intel.", "Scouting forward. Prepare my tiny memorial." }
-            };
-            int group = command == "follow" ? 0 : command == "stay" ? 1 : command == "ship" ? 2 : command == "fetch" ? 3 : 4;
-            var choices = lines[group];
-            return choices[UnityEngine.Random.Range(0, choices.Length)];
         }
 
         private static PlayerControllerB GetPlayerById(int playerId)

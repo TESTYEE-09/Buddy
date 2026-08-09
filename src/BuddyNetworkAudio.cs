@@ -6,7 +6,7 @@ namespace LethalAICrewmate
 {
     /// <summary>
     /// Plays Buddy speech consistently on every peer and converts the host's generated clip into
-    /// compact 16 kHz mono PCM for multiplayer replication. The Groq key/audio request stays host-only.
+    /// compact 16 kHz mono PCM for multiplayer replication. The OpenAI key and request stay host-only.
     /// </summary>
     public static class BuddyNetworkAudio
     {

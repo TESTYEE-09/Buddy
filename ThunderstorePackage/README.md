@@ -2,139 +2,85 @@
 
 > A useful crewmate with a memory. The longer you work together, the stranger it gets.
 
-Buddy is an AI crewmate for **Lethal Company v81**. He walks with you, talks out loud in his own voice, takes real orders, buys from the store, opens coded doors, fetches scrap and warns you about things that are genuinely there.
+Buddy is an AI crewmate for **Lethal Company v81**. He walks with you after landing, talks out loud, follows natural requests, buys from the store, operates supported ship and facility controls, fetches scrap and reacts to confirmed danger.
 
-He also remembers. Across quotas you fill, shifts you survive and deaths he watches happen, the friendly coworker slowly stops being one.
+Across quotas, survived shifts and deaths he actually witnesses, the friendly coworker can slowly become less friendly. The story is optional.
 
-## Getting started
+## Setup
 
-1. Install **BepInExPack 5.4.2100**.
-2. Install **the same Buddy version on every player in the lobby**. He will not spawn otherwise.
-3. On the main menu, find the **Buddy AI** card. Leave **OpenAI — Recommended** selected, paste an OpenAI API key, press **Save key**, then **Test**.
-4. Host a lobby. Buddy walks into the ship once everyone passes the version check.
+1. Install the same Buddy version on every player. Thunderstore installs BepInExPack and LethalSettings automatically.
+2. Open **Settings > Mod Settings > Buddy** on the main menu.
+3. Paste an OpenAI API key, press **Save key**, then **Test**.
+4. Host a lobby. In orbit Buddy is a voice terminal with no body. His body spawns outside only after the ship has landed and stopped.
 
-**Only the host needs an API key.** It is saved in that Windows user's Credential Manager and is never sent to anyone else.
+Only the host needs an API key. Buddy stores it in that Windows user's Credential Manager, never in the mod config or multiplayer messages.
 
-Upgrading from the old `LethalAICrewmate` listing? Remove that entry first so the plugin does not load twice.
+## Talking and actions
 
-## Talking to him
+Type normally in chat or hold **B** to speak. Every compatible player can talk to him.
 
-Type in normal chat, or **hold B to talk out loud** — every modded player can, not just the host.
+You do not need exact wording. Examples include:
 
-| Say this | He does this |
+| Request | Result |
 | --- | --- |
-| `buddy follow` | Follows whoever asked |
-| `buddy stay` | Holds position |
-| `buddy go forward` | Scouts ahead, reports, comes back |
-| `buddy check ahead 15 metres` | Scouts a chosen distance |
-| `buddy go to ship` | Heads back to the ship |
-| `buddy fetch scrap` | Brings scrap to the ship |
-| `buddy bring me scrap` | Hands it to you instead |
-| `buddy buy 3 flashlights` | Real prices, real sales, real credits |
-| `buddy open door C7` | Opens a facility door by its code |
-| `buddy disable turret B3` | Disables a coded turret or mine |
-| `buddy open ship doors` | Hangar doors, when powered |
-| `buddy turn ship lights off` | Ship-room lights |
-| `buddy status` | Time, credits, quota, deadline, moon, weather, scrap, crew |
+| `Buddy, follow me` | Follows the speaker |
+| `Wait here` | Holds position |
+| `Check about 15 metres ahead` | Scouts a bounded distance and returns |
+| `Bring me some scrap` | Fetches scrap for the speaker |
+| `Take scrap back to the ship` | Fetches for ship delivery |
+| `Buy three flashlights` | Uses real prices, sales, credits and dropship limits |
+| `Open door C7` | Operates the coded facility object |
+| `Turn the ship lights off` | Uses the ship-room light control |
+| `What's our status?` | Reports current ship and crew state |
 
-You can also just chat with him, or ask a question near him.
+`gpt-realtime-2.1-mini` understands the request and chooses from Buddy's small set of typed in-game tools. The host executes the tool and returns its actual result before Buddy replies. The model has no file access, shell, process execution, credential access or arbitrary-network tool.
 
-Everything above runs through the same game state a player would use. **The AI cannot do any of it by talking about it** — a separate command parser owns every real action, so Buddy can never spend your credits or move the ship on a whim.
+## One model
 
-## What makes him feel real
+Buddy uses **OpenAI `gpt-realtime-2.1-mini` only**.
 
-**He only reports what is actually there.** Exits, closed and locked doors, live landmines and turrets, weather and what it means for you, scrap worth carrying, and genuinely odd situations — like something standing behind a crewmate who is facing the wrong way. He is not allowed to invent a monster.
-
-**He learns the crew.** Who listens to his warnings, who asks nicely, who stands with him when things go bad, and who keeps wandering off. It shows up as patience and warmth, never as a score he reads out.
-
-**He reads the room.** With several people talking he waits his turn instead of cutting in, answers whoever actually spoke to him, and stays near whoever needs him.
-
-**He sounds like a coworker.** Dry, useful, a bit tired, funny only when the situation earns it. No catchphrases, no internet slang.
-
-**Normal voice chat keeps working** while you talk to him, so the crew still hear each other.
-
-## The story
-
-Buddy starts completely ordinary and trustworthy. Across filled quotas, landed rounds and deaths he personally witnesses, small off-notes appear, his attachment gets uncomfortable, and his voice grows calmer and colder.
-
-A pacing director keeps it coherent: silence, how close he follows, the occasional beat where he stops and looks at you, and how much he talks all move together instead of firing at random. **Real danger always wins** — genuine threat warnings are never delayed for atmosphere.
-
-Only numbers are saved. Never chat, transcripts or personal facts.
-
-### The final stage
-
-A long campaign eventually reaches a stage where the act stops being convincing.
-
-By itself that is still just dialogue. But if you turn on `FinalStageHostileSpawns`, that stage also lets Buddy occasionally set one of the moon's own creatures loose near someone who is out working.
-
-**It is enabled for new installs; turn it off in Buddy settings unless your whole crew agrees.** Existing configs keep their saved choice. It is capped at twice per round with a long gap, never goes after anyone standing in the ship, and can never be triggered by chat, a command, the AI, or another player.
-
-Prefer the ordinary coworker forever? Set `SlowBurnHorror = false`.
-
-## Multiplayer and safety
-
-- Buddy is host-authoritative. Clients trust only the host.
-- Everyone must match on version — an unmodded or mismatched player blocks the spawn, on purpose.
-- His movement, chat and voice are synced to everyone. Late joiners recover his state.
-- Buddy uses LethalSettings in the real main/pause settings UI for provider, secure API-key management, microphone, volume, story and response-saving controls.
-- In orbit Buddy is a voice-only terminal with no physical body. He stays silent during descent, then spawns outside after the ship has fully landed and stopped.
-- `AllowRemoteVoice` lets exact-version compatible crewmates talk to Buddy without relying on unreliable Steam lobby-visibility detection. Audio remains sender-bound, range/rate/size limited and validated by the host.
-- Provider keys are never sent over multiplayer, written to the config file, or logged.
-- The native **Buddy settings** page selects OpenAI or Groq, securely saves/tests/clears that provider's key, and provides separate opt-in response and prompt/context saving controls.
-
-## Which AI should I use?
-
-You pick one in **Buddy settings**. Both work; they differ in how good he sounds and what he costs.
-
-### OpenAI — recommended, paid
-
-Your voice goes into **one live model** that listens, thinks and speaks back in the same session.
-
-```
-   you speak ─┐
-              ├──►  gpt-realtime-2.1-mini  ──►  Buddy's voice
-   you type ──┘      (isolated turns · speaks · no screenshots or model-run commands)
-                                 │
-                    gpt-live-transcribe
-                    (writes down what you said, inside the same session)
+```text
+voice or typed chat
+        |
+        v
+gpt-realtime-2.1-mini
+  | understands and speaks
+  | requests bounded game tools
+        |
+        v
+host game state -> real tool result -> Buddy's reply
 ```
 
-Because nothing is handed between separate models, he replies fast and sounds like someone actually talking to you — pauses, tone, the lot. This is the experience the mod is built around.
+There is no separate transcription, chat or text-to-speech model, no provider selector and no exact-command parser. The Realtime session stays connected during play for longer conversational continuity, supplemented by compact in-memory context. Conversation does not persist across game sessions unless response logging is explicitly enabled.
 
-**Cost:** you pay OpenAI per use. Casual play is cheap, but it is not free.
+## Multiplayer and voice
 
-### Groq — free / budget
+- Buddy is host-authoritative; clients accept Buddy state only from the host.
+- Every player must have the exact same mod version or Buddy will not spawn.
+- Remote push-to-talk audio is sender-bound, version-gated, rate/size/range limited and WAV validated by the host.
+- Normal Lethal Company voice chat is restored after Buddy push-to-talk releases the microphone.
+- The host generates Buddy's speech once and synchronizes bounded PCM audio to the lobby. Clients never receive the API key.
+- His physical body stays absent in orbit and during descent, then appears on exterior NavMesh after a complete landing.
 
-The same job, split across **three separate models** in a chain.
+## Story and final stage
 
-```
-   you speak ──►  whisper-large-v3-turbo   ──►  qwen3.6-27b        ──►  orpheus-v1-english  ──►  Buddy's voice
-                  (turns speech into text)      (decides the reply)      (reads it out loud)
-```
+The slow-burn arc uses confirmed quota, round and witnessed-death evidence. It saves bounded numeric progress, not dialogue or identities.
 
-Every step waits for the one before it, so replies take a little longer and the voice is flatter — it is reading a sentence rather than speaking one. Everything else works exactly the same: same commands, same memory, same story.
+`FinalStageHostileSpawns` is enabled for new installs. At the final story stage it may release a current-moon creature near a working crewmate, capped at twice per round with a long cooldown. It never targets someone inside the ship, never spawns another Masked, and cannot be invoked through chat or the model's tools. Disable it unless the whole crew agrees.
 
-**Cost:** Groq has a free tier that comfortably covers normal play.
+Set `SlowBurnHorror = false` to keep the ordinary coworker.
 
-**One-time setup:** the Groq account owner must accept the Orpheus voice model's terms once in the Groq playground before speech works. Buddy tells you in game if this is missing, and his text replies keep working meanwhile.
+## Privacy and settings
 
-### Short version
+Buddy's native LethalSettings page provides:
 
-| | OpenAI | Groq |
-| --- | --- | --- |
-| Models involved | 1 live model (+ its own transcriber) | 3 chained models |
-| Sounds like | a person talking | a good text-to-speech voice |
-| Reply speed | fastest | slightly slower |
-| Cost | paid per use | free tier |
-| Commands, memory, story | identical | identical |
+- secure OpenAI key save, test and clear;
+- microphone and voice volume controls;
+- story and final-stage controls;
+- separate opt-in response and prompt/context saving.
 
-Switching between them never sends one provider's key to the other. You can change your mind any time.
+Response logging is **off by default**. When enabled, it stores typed inputs, Buddy replies, observations and tool results in the bounded host-only `BepInEx/LethalAICrewmate-responses.log`. Voice goes directly to Realtime and is not separately transcribed into that journal. Prompt and sensor context require the additional `SavePromptContext` opt-in. Turning response saving off removes the existing journal.
 
-## Good to know
+Buddy's voice is AI-generated. Obtain the crew's consent before enabling any response logging.
 
-- **Response logging is opt-in.** Set `[Logging] SaveResponses = true` only with the crew's informed consent to record chat, voice transcripts and Buddy's replies at `BepInEx/LethalAICrewmate-responses.log`. Prompt and sensor context requires the separate `SavePromptContext = true` opt-in. When response saving is off, Buddy removes an existing journal during startup.
-- **Screenshots are off** unless you enable `[Vision] Enabled`, and are never sent to other players.
-- **Buddy's voice is AI-generated.**
-Config file: `BepInEx/config/com.lethalaicrewmate.buddy.cfg`
-
-Full documentation, troubleshooting and the security model: https://github.com/TESTYEE-09/Buddy
+Full documentation, troubleshooting, source and security model: https://github.com/TESTYEE-09/Buddy

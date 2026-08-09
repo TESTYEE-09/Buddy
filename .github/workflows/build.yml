@@ -59,19 +59,22 @@ jobs:
           }
 
           $architecture = Get-Content 'src/BuddyAiArchitecture.cs' -Raw
-          if ($architecture -notmatch 'OpenAiRealtimeModel\s*=\s*"gpt-realtime-2\.1-mini"' -or
-              $architecture -notmatch 'OpenAiTranscriptionModel\s*=\s*"gpt-live-transcribe"' -or
-              $architecture -notmatch 'GroqChatModel\s*=\s*"qwen/qwen3\.6-27b"' -or
-              $architecture -notmatch 'GroqTranscriptionModel\s*=\s*"whisper-large-v3-turbo"' -or
-              $architecture -notmatch 'GroqSpeechModel\s*=\s*"canopylabs/orpheus-v1-english"') {
+          if ($architecture -notmatch 'OpenAiRealtimeModel\s*=\s*"gpt-realtime-2\.1-mini"') {
             throw 'Buddy AI architecture constants changed without updating the release contract'
           }
           $activeSource = (Get-ChildItem 'src' -Filter '*.cs' | Get-Content -Raw) -join "`n"
-          if ($activeSource -match 'gpt-5\.6-luna|gpt-4o-mini-tts|OpenAiResponsesEndpoint') {
+          if ($activeSource -match 'gpt-live-transcribe|qwen/qwen|whisper-large|orpheus|gpt-5\.6-luna|gpt-4o-mini-tts|OpenAiResponsesEndpoint') {
             throw 'Retired OpenAI architecture found in active source'
           }
+          if ((Test-Path 'src/MovementCommandParsing.cs') -or (Test-Path 'src/ShipCommandParsing.cs')) {
+            throw 'Deterministic natural-language command parsers must not return'
+          }
+          $realtime = Get-Content 'src/OpenAiRealtimeVoiceClient.cs' -Raw
+          if ($realtime -notmatch 'tool_choice' -or $realtime -notmatch 'function_call_output' -or
+              $realtime -notmatch 'response\.function_call_arguments\.done') {
+            throw 'Realtime native tool-call loop is incomplete'
+          }
           if ($plugin -match 'Config\.Bind\("OpenAI",\s*"RealtimeVoiceModel"' -or
-              $plugin -match 'Config\.Bind\("Groq",\s*"(?:Model|SttModel|TtsModel)"' -or
               $plugin -match 'Config\.Bind\("Vision",\s*"Model"') {
             throw 'Release-owned model IDs must not reappear as user configuration'
           }

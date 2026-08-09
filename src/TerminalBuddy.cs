@@ -31,87 +31,7 @@ namespace LethalAICrewmate
             }
         }
 
-        public static string HandleChatCommand(string message, int requestingPlayerId = -1)
-        {
-            if (string.IsNullOrWhiteSpace(message)) return null;
-            if (!CrewmateSpawner.IsHost()) return null;
-
-            var lower = message.ToLowerInvariant();
-
-            // strip buddy/name prefix
-            string name = (Plugin.CrewmateName?.Value ?? "buddy").ToLowerInvariant();
-            if (lower.StartsWith(name))
-                lower = lower.Substring(name.Length).TrimStart(' ', ',', ':', '-');
-            if (lower.StartsWith("buddy"))
-                lower = lower.Substring(5).TrimStart(' ', ',', ':', '-');
-
-            try
-            {
-                // Read-only terminal queries remain available. State-changing requests from
-                // remote players require either a verified private lobby or an explicit opt-in.
-                if (ShipCommandParsing.IsStatusRequest(lower))
-                    return BuildShipStatus(lower);
-                if (lower == "moons" || lower == "list moons" || lower == "terminal moons")
-                    return ListMoons();
-                if (lower == "store" || lower == "terminal store")
-                    return ShowCreditsAndStoreHint();
-
-                if (ShipCommandParsing.TryParsePoliteSpawn(lower, out string spawnItem, out int spawnQuantity))
-                    return SpawnItemInFront(spawnItem, spawnQuantity, requestingPlayerId);
-
-                if (lower.StartsWith("route ") || lower.StartsWith("moon ") ||
-                    (lower.StartsWith("go to ") && !lower.Contains("ship") && !lower.Contains("home") &&
-                     !lower.Contains("forward") && !lower.Contains("ahead")))
-                {
-                    string moon = lower
-                        .Replace("route ", "")
-                        .Replace("moon ", "")
-                        .Replace("go to ", "")
-                        .Trim();
-                    // Accept "route to titan" / "route us to titan" phrasing too.
-                    if (moon.StartsWith("to ", StringComparison.Ordinal) ||
-                        moon.StartsWith("us to ", StringComparison.Ordinal))
-                        moon = moon.Substring(moon.IndexOf("to ", StringComparison.Ordinal) + 3).Trim();
-                    return RouteMoon(moon);
-                }
-
-                if (lower.StartsWith("buy "))
-                    return BuyItem(lower.Substring(4).Trim());
-
-                if (ShipCommandParsing.TryParseFacilityAction(lower, out string facilityCode, out bool enableFacility))
-                    return SetFacilityObject(facilityCode, enableFacility, InferFacilityKind(lower));
-
-                bool mentionsMine = ShipCommandParsing.MentionsMine(lower);
-                if ((lower.Contains("turret") || mentionsMine) &&
-                    (lower.Contains("disable") || lower.Contains("deactivate") || lower.Contains("turn off") ||
-                     lower.Contains("enable") || lower.Contains("activate") || lower.Contains("turn on")))
-                    return SetFacilityObject(null,
-                        lower.Contains("enable") || lower.Contains("activate") || lower.Contains("turn on"),
-                        lower.Contains("turret") ? "turret" : "landmine");
-
-                if (lower.Contains("ship door") || lower.Contains("hangar door") || lower == "open doors" || lower == "close doors")
-                {
-                    if (lower.Contains("open")) return SetHangarDoor(true);
-                    if (lower.Contains("close") || lower.Contains("shut")) return SetHangarDoor(false);
-                }
-
-                if (lower.Contains("lights") &&
-                    (lower.Contains("turn on") || lower.Contains("turn off") || lower.Contains("lights on") || lower.Contains("lights off")))
-                    return SetShipLights(!lower.Contains("off"));
-
-                // Unmatched language is conversation, not an error lecture. Let the model answer
-                // naturally instead of repeating a list of exact command syntax.
-            }
-            catch (Exception ex)
-            {
-                Plugin.Log?.LogWarning($"TerminalBuddy: {ex.Message}");
-                return "Terminal glitched.";
-            }
-
-            return null;
-        }
-
-        private static string SpawnItemInFront(string query, int quantity, int requestingPlayerId)
+        public static string SpawnItemInFront(string query, int quantity, int requestingPlayerId)
         {
             if (!CrewmateSpawner.IsHost()) return "Only the host can spawn objects.";
             var sor = StartOfRound.Instance;
@@ -144,7 +64,7 @@ namespace LethalAICrewmate
                     break;
                 }
             }
-            if (found == null) return $"I can't safely spawn '{query}'. Use the exact item name.";
+            if (found == null) return $"I don't recognize a safe item named '{query}'.";
 
             Vector3 forward = player.transform.forward;
             forward.y = 0f;
@@ -173,13 +93,13 @@ namespace LethalAICrewmate
                 }
                 catch (Exception ex)
                 {
-                    Plugin.Log?.LogWarning($"Polite item spawn failed for '{found.itemName}': {ex.Message}");
+                    Plugin.Log?.LogWarning($"Item spawn failed for '{found.itemName}': {ex.Message}");
                 }
             }
 
             _spawnedThisRound += spawned;
             if (spawned == 0) return $"Couldn't safely spawn {found.itemName}.";
-            return $"Spawned {spawned} {found.itemName} in front of {player.playerUsername}. Politeness remains alarmingly effective.";
+            return $"Spawned {spawned} {found.itemName} in front of {player.playerUsername}.";
         }
 
         private static PlayerControllerB ResolvePlayer(int playerId)
@@ -200,27 +120,6 @@ namespace LethalAICrewmate
             if (clean.Length > 3 && clean.EndsWith("s", StringComparison.Ordinal))
                 clean = clean.Substring(0, clean.Length - 1);
             return clean;
-        }
-
-        public static string ApplyLlmTags(string display, ref string cleanedDisplay)
-        {
-            cleanedDisplay = StripLlmTag(display ?? "", "ROUTE");
-            cleanedDisplay = StripLlmTag(cleanedDisplay, "BUY");
-            cleanedDisplay = StripLlmTag(cleanedDisplay, "TERMINAL").Trim();
-            return null;
-        }
-
-        private static string StripLlmTag(string value, string tag)
-        {
-            string open = "[" + tag + ":";
-            while (true)
-            {
-                int start = value.IndexOf(open, StringComparison.OrdinalIgnoreCase);
-                if (start < 0) return value;
-                int end = value.IndexOf(']', start);
-                if (end < 0) return value.Substring(0, start).TrimEnd();
-                value = value.Remove(start, end - start + 1);
-            }
         }
 
         public static string RouteMoon(string moonQuery)
@@ -276,7 +175,7 @@ namespace LethalAICrewmate
             }
         }
 
-        public static string BuyItem(string itemQuery)
+        public static string BuyItem(string itemQuery, int quantity)
         {
             if (string.IsNullOrWhiteSpace(itemQuery)) return "Buy what?";
             if (!IsInSpace() && StartOfRound.Instance != null && StartOfRound.Instance.shipHasLanded)
@@ -290,7 +189,8 @@ namespace LethalAICrewmate
 
             try
             {
-                ShipCommandParsing.ParsePurchase(itemQuery, out itemQuery, out int quantity);
+                itemQuery = itemQuery.Trim().ToLowerInvariant();
+                quantity = Mathf.Clamp(quantity, 1, 12);
 
                 // buyableItemsList is Item[] on Terminal
                 var list = term.buyableItemsList;
@@ -469,15 +369,6 @@ namespace LethalAICrewmate
             return $"Terminal command sent: {(enable ? "enable/open" : "disable/close")} {kind} {match.objectCode.ToUpperInvariant()}.";
         }
 
-        private static string InferFacilityKind(string command)
-        {
-            string lower = command?.ToLowerInvariant() ?? "";
-            if (lower.Contains("turret")) return "turret";
-            if (lower.Contains("landmine") || lower.Contains("mine")) return "landmine";
-            if (lower.Contains("door")) return "door";
-            return null;
-        }
-
         private static string DescribeFacilityObject(TerminalAccessibleObject accessible)
         {
             if (accessible == null) return "terminal object";
@@ -531,40 +422,23 @@ namespace LethalAICrewmate
         public static string ShowCreditsAndStoreHint()
         {
             var term = UnityEngine.Object.FindObjectOfType<Terminal>();
-            int cr = term != null ? term.groupCredits : 0;
-            return $"Credits: {cr}. Say 'buddy buy shovel' or 'buddy route titan' in orbit.";
-        }
+            if (term == null) return "Store data is unavailable.";
+            var items = term.buyableItemsList;
+            if (items == null || items.Length == 0)
+                return $"Current ship credits: {term.groupCredits}. Store data is unavailable.";
 
-        /// <summary>Best-effort: feed a sentence into Terminal.ParsePlayerSentence / OnSubmit.</summary>
-        private static string RunTerminalSentence(string sentence)
-        {
-            if (string.IsNullOrWhiteSpace(sentence)) return null;
-            var term = UnityEngine.Object.FindObjectOfType<Terminal>();
-            if (term == null) return "No terminal.";
-
-            try
+            var available = new List<string>();
+            for (int i = 0; i < items.Length && available.Count < 12; i++)
             {
-                // Force text and submit like a player typed it
-                if (term.screenText != null)
-                {
-                    // Keep a short prompt then command
-                    string baseText = term.screenText.text ?? "";
-                    // Append command on new line style used by terminal
-                    term.screenText.text = baseText + sentence;
-                    term.currentText = term.screenText.text;
-                    term.textAdded = sentence.Length;
-                }
-
-                // ParsePlayerSentence reads typed words — OnSubmit is the full path
-                term.OnSubmit();
-                Plugin.Log?.LogInfo($"Terminal OnSubmit: '{sentence}'");
-                return $"Terminal: {sentence}";
+                Item item = items[i];
+                if (item == null || string.IsNullOrWhiteSpace(item.itemName)) continue;
+                int salePercent = term.itemSalesPercentages != null && i < term.itemSalesPercentages.Length
+                    ? Mathf.Clamp(term.itemSalesPercentages[i], 0, 100)
+                    : 100;
+                int price = (int)(item.creditsWorth * (salePercent / 100f));
+                available.Add($"{item.itemName} {price}");
             }
-            catch (Exception ex)
-            {
-                Plugin.Log?.LogWarning($"RunTerminalSentence: {ex.Message}");
-                return "Terminal command failed.";
-            }
+            return $"Current ship credits: {term.groupCredits}. Store: {string.Join(", ", available)}.";
         }
     }
 }

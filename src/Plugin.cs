@@ -14,15 +14,12 @@ namespace LethalAICrewmate
     {
         public const string ModGuid = "com.lethalaicrewmate.buddy";
         public const string ModName = "Buddy";
-        public const string ModVersion = "3.6.1";
+        public const string ModVersion = "3.7.0";
 
         internal static Plugin Instance;
         internal static ManualLogSource Log;
 
-        internal static ConfigEntry<string> Provider;
-        internal static ConfigEntry<string> TtsVoice;
         internal static ConfigEntry<bool> TtsEnabled;
-        internal static ConfigEntry<string> TtsDirection;
         internal static ConfigEntry<float> TtsVolume;
         internal static ConfigEntry<string> CrewmateName;
         internal static ConfigEntry<string> Personality;
@@ -143,55 +140,18 @@ namespace LethalAICrewmate
             Instance = this;
             Log = Logger;
 
-            Provider = Config.Bind("AI", "Provider", BuddyAiArchitecture.OpenAiProvider,
-                "Buddy experience: OpenAI (recommended realtime voice agent) or Groq (separate free/low-cost pipeline). The host alone holds the selected key.");
-            string legacyGroqKey = ReadLegacyConfigValue("Groq", "ApiKey")?.Trim() ?? "";
             string legacyOpenAiKey = ReadLegacyConfigValue("OpenAI", "ApiKey")?.Trim() ?? "";
-            if (!string.IsNullOrEmpty(legacyGroqKey))
-            {
-                bool persisted = GroqSecrets.ImportLegacyKey(false, legacyGroqKey);
-                ClearLegacyPlaintextKey(false);
-                if (!persisted)
-                    Log.LogWarning("Legacy Groq key was removed from plaintext config and is available only for this session because Windows Credential Manager storage failed.");
-            }
             if (!string.IsNullOrEmpty(legacyOpenAiKey))
             {
-                bool persisted = GroqSecrets.ImportLegacyKey(true, legacyOpenAiKey);
+                bool persisted = OpenAiSecrets.ImportLegacyKey(legacyOpenAiKey);
                 ClearLegacyPlaintextKey(true);
                 if (!persisted)
                     Log.LogWarning("Legacy OpenAI key was removed from plaintext config and is available only for this session because Windows Credential Manager storage failed.");
             }
-            TtsVoice = Config.Bind("Groq", "TtsVoice", "austin",
-                "Groq Orpheus voice. OpenAI uses the native Ash voice inside its Realtime session.");
-            bool legacySpokenReplies = !bool.TryParse(ReadLegacyConfigValue("Groq", "TtsEnabled"), out bool oldSpoken) || oldSpoken;
-            float legacyVolume = float.TryParse(ReadLegacyConfigValue("Groq", "TtsVolume"), System.Globalization.NumberStyles.Float,
-                System.Globalization.CultureInfo.InvariantCulture, out float oldVolume) ? oldVolume : 1f;
-            TtsEnabled = Config.Bind("Voice", "SpokenReplies", legacySpokenReplies,
+            TtsEnabled = Config.Bind("Voice", "SpokenReplies", true,
                 "Let Buddy speak replies and replicate the host-generated audio to compatible clients.");
-            TtsDirection = Config.Bind("Groq", "TtsDirection", "friendly",
-                "Optional Orpheus vocal direction (no brackets). Stock Buddy uses friendly for a lighter conversational delivery; empty = fully natural.");
-            TtsVolume = Config.Bind("Voice", "Volume", legacyVolume,
+            TtsVolume = Config.Bind("Voice", "Volume", 1.25f,
                 "Buddy voice volume 0–2. Speech is normalized once with a soft limiter before playback and replication.");
-
-            // Very old private builds stored a provider key under [OpenRouter]. Read it without
-            // binding legacy controls into the current config UI.
-            try
-            {
-                string legacy = ReadLegacyConfigValue("OpenRouter", "ApiKey")?.Trim() ?? "";
-                bool.TryParse(ReadLegacyConfigValue("Security", "PersistApiKey"), out bool legacyPersistenceEnabled);
-                if (legacyPersistenceEnabled && string.IsNullOrEmpty(legacyGroqKey) && legacy.StartsWith("gsk_", StringComparison.Ordinal))
-                {
-                    if (GroqSecrets.ImportLegacyKey(false, legacy))
-                        Log.LogInfo("Migrated a legacy Groq key into Windows Credential Manager.");
-                    else
-                        Log.LogWarning("Legacy Groq key is available for this session but could not be saved securely.");
-                }
-                else if (string.IsNullOrEmpty(legacyGroqKey) && !string.IsNullOrEmpty(legacy))
-                {
-                    Log.LogWarning("Legacy API key was not auto-migrated. Use LETHAL_AI_GROQ_API_KEY or enter it for this session from the main menu.");
-                }
-            }
-            catch { /* migration must never block plugin startup */ }
 
             CrewmateName = Config.Bind("Crewmate", "Name", "Buddy",
                 "Display name and chat command prefix for the AI crewmate.");
@@ -222,13 +182,13 @@ namespace LethalAICrewmate
                 "Track who is speaking so Buddy waits his turn, answers the person who actually addressed him, and stays near whoever currently needs him.");
 
             VoiceEnabled = Config.Bind("Voice", "Enabled", true,
-                "Push-to-talk for every modded player. Clients relay bounded mic audio to the host; only the host calls the selected transcription provider.");
+                "Push-to-talk for every modded player. Clients relay bounded mic audio to the host; only the host calls OpenAI Realtime.");
             AllowRemoteVoice = Config.Bind("Security", "AllowRemoteVoice", true,
-                "Allow matching modded players to upload bounded push-to-talk audio to the host for transcription.");
+                "Allow matching modded players to upload bounded push-to-talk audio to the host for the Realtime turn.");
             VoiceKey = Config.Bind("Voice", "PushToTalkKey", KeyCode.B,
                 "Hold this key to record mic audio for Buddy. B avoids the game's common V push-to-talk binding; on clients the clip is relayed to the host.");
             VoiceAlternateKey = Config.Bind("Voice", "AlternatePushToTalkKey", KeyCode.None,
-                "Optional second Buddy push-to-talk key. None disables it; do not use the game's normal voice-chat key unless you intend to send that audio to Buddy's provider.");
+                "Optional second Buddy push-to-talk key. None disables it; do not use the game's normal voice-chat key unless you intend to send that audio to OpenAI Realtime.");
             VoiceMaxSeconds = Config.Bind("Voice", "MaxRecordSeconds", 8f,
                 "Max push-to-talk length in seconds (capped at 12 by runtime).");
             KeepGameVoiceDuringPtt = Config.Bind("Voice", "KeepGameVoiceDuringPushToTalk", true,
@@ -238,7 +198,7 @@ namespace LethalAICrewmate
             VisionEnabled = Config.Bind("Vision", "Enabled", false,
                 "Reserved setting. The hardened public release does not upload host screenshots from player chat.");
             SaveResponses = Config.Bind("Logging", "SaveResponses", false,
-                "Opt-in host-only journal of player chat, voice transcripts, Buddy replies, observations and tool results at BepInEx/LethalAICrewmate-responses.log. Enable only with the crew's informed consent.");
+                "Opt-in host-only journal of typed chat, Buddy replies, observations and tool results at BepInEx/LethalAICrewmate-responses.log. Voice is not separately transcribed into the journal. Enable only with the crew's informed consent.");
             SavePromptContext = Config.Bind("Logging", "SavePromptContext", false,
                 "When response journaling is explicitly enabled, also record the system prompt and live sensor context. This may contain sensitive game and player data.");
             ConfigRevision = Config.Bind("Internal", "ConfigRevision", 0,
@@ -256,7 +216,7 @@ namespace LethalAICrewmate
 
                 // Collapse the historical multi-model OpenAI settings into the current two-path
                 // architecture. Gameplay/security settings and deliberate personality text stay
-                // untouched; only provider model defaults and privacy-safe migrations are reset.
+                // untouched; only retired model defaults and privacy-safe migrations are reset.
                 try
                 {
                     if (ConfigRevision.Value < 12)
@@ -266,15 +226,8 @@ namespace LethalAICrewmate
                             string.Equals(Personality.Value?.Trim(), BuddyConversationPrompt.PreviousDefaultPersonality, StringComparison.Ordinal))
                             Personality.Value = BuddyConversationPrompt.DefaultPersonality;
                         if (ConfigRevision.Value < 11) SaveResponses.Value = false;
-                        Provider.Value = BuddyAiArchitecture.NormalizeProvider(Provider.Value);
-                        if (string.IsNullOrWhiteSpace(TtsVoice.Value) ||
-                            string.Equals(TtsVoice.Value?.Trim(), "ash", StringComparison.OrdinalIgnoreCase) ||
-                            string.Equals(TtsVoice.Value?.Trim(), "alloy", StringComparison.OrdinalIgnoreCase) ||
-                            string.Equals(TtsVoice.Value?.Trim(), "cedar", StringComparison.OrdinalIgnoreCase) ||
-                            string.Equals(TtsVoice.Value?.Trim(), "echo", StringComparison.OrdinalIgnoreCase))
-                            TtsVoice.Value = "austin";
                         ConfigRevision.Value = 12;
-                        Log.LogInfo("Migrated Buddy AI settings to OpenAI Realtime + separate Groq Qwen architecture.");
+                        Log.LogInfo("Migrated Buddy AI settings to OpenAI Realtime.");
                     }
                     if (ConfigRevision.Value < 13)
                     {
@@ -284,6 +237,11 @@ namespace LethalAICrewmate
                         SavePromptContext.Value = false;
                         ConfigRevision.Value = 13;
                         Log.LogInfo("Disabled legacy response and prompt-context journaling; both settings are now opt-in.");
+                    }
+                    if (ConfigRevision.Value < 14)
+                    {
+                        ConfigRevision.Value = 14;
+                        Log.LogInfo("Migrated Buddy to the single gpt-realtime-2.1-mini tool-calling architecture.");
                     }
                     // v1.4.7/v1.5.3 revision-1/2 migrations were removed: the revision chain
                     // above already advances past them on every load, so they were unreachable.
@@ -305,12 +263,9 @@ namespace LethalAICrewmate
                 if (!SaveResponses.Value)
                     ResponseJournal.DeleteExistingJournal();
 
-                string architecture = GroqSecrets.IsOpenAi
-                    ? BuddyAiArchitecture.OpenAiRealtimeModel + " + " + BuddyAiArchitecture.OpenAiTranscriptionModel
-                    : BuddyAiArchitecture.GroqChatModel + " + " + BuddyAiArchitecture.GroqTranscriptionModel + " + " + BuddyAiArchitecture.GroqSpeechModel;
-                Log.LogInfo($"{ModName} v{ModVersion} loaded (provider={GroqSecrets.ProviderName}, pipeline={architecture}).");
+                Log.LogInfo($"{ModName} v{ModVersion} loaded (model={BuddyAiArchitecture.OpenAiRealtimeModel}, native audio + tool calling).");
                 if (SaveResponses.Value)
-                    Log.LogWarning("Response journaling is enabled and stores raw chat and voice transcripts on this host: " + ResponseJournal.JournalPath);
+                    Log.LogWarning("Response journaling is enabled and stores typed chat, Buddy replies, observations and tool results on this host: " + ResponseJournal.JournalPath);
             }
             catch (Exception ex)
             {

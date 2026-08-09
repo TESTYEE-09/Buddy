@@ -9,8 +9,6 @@
     <Compile Include="..\..\src\TransportValidation.cs" Link="TransportValidation.cs" />
     <Compile Include="..\..\src\VoiceSignalMath.cs" Link="VoiceSignalMath.cs" />
     <Compile Include="..\..\src\VisionIntent.cs" Link="VisionIntent.cs" />
-    <Compile Include="..\..\src\ShipCommandParsing.cs" Link="ShipCommandParsing.cs" />
-    <Compile Include="..\..\src\MovementCommandParsing.cs" Link="MovementCommandParsing.cs" />
     <Compile Include="..\..\src\ResponseJournal.cs" Link="ResponseJournal.cs" />
     <Compile Include="..\..\src\LobbyVisibilityPolicy.cs" Link="LobbyVisibilityPolicy.cs" />
     <Compile Include="..\..\src\BuddyCharacterArc.cs" Link="BuddyCharacterArc.cs" />

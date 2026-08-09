@@ -10,11 +10,11 @@ He also remembers. Across fulfilled quotas, survived shifts and deaths he person
 
 ## Quick start
 
-1. Install **BepInExPack 5.4.2100**.
+1. Install **BepInExPack 5.4.2100** and **LethalSettings 1.4.1**. Thunderstore/r2modman installs both dependencies automatically.
 2. Install **Buddy** on **every player in the lobby**. Same version, no exceptions — Buddy will not spawn otherwise.
-3. Launch the game. On the main menu, find the **Buddy settings** panel.
-4. The host leaves **OpenAI — Recommended** selected, pastes an OpenAI API key, presses **Save key**, then **Test**.
-5. Host a lobby. Buddy walks into the ship once every connected player passes the compatibility handshake.
+3. Launch the game. On the main menu, open **Settings > Mod Settings > Buddy**.
+4. The host pastes an OpenAI API key, presses **Save key**, then **Test**.
+5. Host a lobby. In orbit Buddy is intentionally voice-only; after the ship has fully landed and stopped, his physical body spawns outside.
 
 **Only the host needs an API key.** It is stored in that Windows user's Credential Manager and is never sent to other players.
 
@@ -48,7 +48,7 @@ Talk to him in chat, or hold **B** to talk to him with your voice. Every modded 
 
 You can also just talk to him, or ask a question near him.
 
-Every ship and terminal action runs through the same game state a player would use. Purchases respect sales, credits and the 12-item dropship limit. Door codes respect their cooldown. Ship doors still need working controls and hydraulic power. **The AI cannot perform any of these by talking about them** — a deterministic command parser owns every side effect.
+Every ship and terminal action runs through the same game state a player would use. Purchases respect sales, credits and the 12-item dropship limit. Door codes respect their cooldown. Ship doors still need working controls and hydraulic power. Buddy understands ordinary requests with `gpt-realtime-2.1-mini`, selects a narrowly typed in-game tool, and receives the real host-side result before he answers. There is no exact-command parser and the model has no file, shell, process or arbitrary-network tool.
 
 **Sees what is really there.** Buddy reports confirmed exits, closed and locked doors, placed turrets and live landmines, weather and what it means for you, nearby scrap worth carrying, and genuinely unusual situations — like something standing behind a crewmate who is facing the other way. He is not allowed to invent a monster he cannot see.
 
@@ -107,7 +107,7 @@ Buddy is host-authoritative, and clients trust only the server.
 - Buddy **does not spawn** if any connected player is unmodded, still loading, or on a different version.
 - His position, rotation and indoor/outdoor state are replicated continuously, including facility transitions.
 - Late joiners recover his identity and held item.
-- The host generates his speech once and distributes bounded audio. Clients never receive the provider key.
+- The host generates his speech once and distributes bounded audio. Clients never receive the OpenAI key.
 - He catches up by walking, with variable speed and natural spacing. Teleporting is reserved for a persistent navigation failure after repeated path rebuilds.
 - If his follow target dies he hesitates rather than snapping to someone else, only reports a nearby death he had line of sight on, and walks to the next crewmate.
 - At a closed door he waits briefly instead of shoving into it. This never grants him the authority to unlock anything.
@@ -116,17 +116,13 @@ Upgrading from the old `LethalAICrewmate` package? Remove that mod-manager entry
 
 ---
 
-## AI providers
+## AI model
 
-**OpenAI (recommended)** — `gpt-realtime-2.1-mini` handles typed chat, push-to-talk and the native Ash voice. Each player turn uses a fresh session, model tool calling is disabled, and `gpt-live-transcribe` supplies voice transcripts inside the turn.
+Buddy uses one model only: **OpenAI `gpt-realtime-2.1-mini`**. The same persistent Realtime session hears voice, reads typed chat, reasons, chooses supported in-game tools and speaks with the native Ash voice. No separate transcription, chat or text-to-speech model is required.
 
-**Groq (free / budget)** — a separate pipeline: `qwen/qwen3.6-27b` for conversation, `whisper-large-v3-turbo` for speech recognition, `canopylabs/orpheus-v1-english` for speech.
+The session remains connected during play so recent conversation survives moon trips and later references instead of resetting every turn. A compact in-memory text history supplements it; neither is cross-session storage, and neither reaches disk unless response saving is explicitly enabled.
 
-Switching providers never sends one provider's key or model IDs to the other. The main-menu **Test** button validates your key before you start a lobby.
-
-`LETHAL_AI_OPENAI_API_KEY` and `LETHAL_AI_GROQ_API_KEY` take precedence over the saved key when set before launching Steam.
-
-> **Groq voice:** Orpheus requires the Groq organization owner to accept the model's terms once. If you see `model_terms_required`, open [the Orpheus playground](https://console.groq.com/playground?model=canopylabs%2Forpheus-v1-english), accept, and restart. Text replies work regardless.
+The main-menu **Test** button validates the host's key before a lobby. `LETHAL_AI_OPENAI_API_KEY` takes precedence over the securely saved key when set before launching Steam.
 
 ### The bounded item request
 
@@ -178,11 +174,11 @@ SavePromptContext = false
 Enabled = false
 ```
 
-Use **Settings > Mod Settings > Buddy** in the main menu or pause menu to choose the provider, securely save/test/clear its API key, select the microphone, change Buddy's volume, control the story feature, and control response saving. The settings use LethalSettings rather than a custom overlay.
+Use **Settings > Mod Settings > Buddy** in the main menu or pause menu to securely save/test/clear the OpenAI key, select the microphone, change Buddy's volume, control the story feature, and control response saving. The settings use LethalSettings rather than a custom overlay.
 
 `AllowRemoteVoice` controls whether compatible remote crewmates can relay push-to-talk audio to the host. Lobby visibility is not used as an authorization signal; remote transfers still require the exact Buddy protocol/version and remain sender-bound, range-gated, rate-limited, size-limited and audio-validated.
 
-**The response journal is opt-in.** `SaveResponses = true` writes every input and reply — chat, voice transcripts, Buddy's answers, observations and tool results — to `BepInEx/LethalAICrewmate-responses.log` on the host, capped at 8 MB. `SavePromptContext = true` also records the exact system prompt whenever it changes and the live sensor context behind each turn. When response saving is off, Buddy removes an existing journal during startup.
+**The response journal is opt-in.** `SaveResponses = true` writes typed inputs, Buddy's replies, observations and tool results to `BepInEx/LethalAICrewmate-responses.log` on the host, capped at 8 MB. Voice audio is sent directly to the Realtime model and is not separately transcribed into the journal. `SavePromptContext = true` also records the exact system prompt whenever it changes and the live sensor context behind each turn. When response saving is off, Buddy removes an existing journal during startup.
 
 > This records what your crewmates say. **Enable it only after everyone in the lobby has agreed to it.**
 
@@ -200,7 +196,7 @@ Use **Settings > Mod Settings > Buddy** in the main menu or pause menu to choose
 
 **He talks too much.** Lower `ObservationIntervalSeconds` to `0`, or set `EnvironmentAwareness = false`. `DynamicPacing = true` already makes him quieter as the story progresses.
 
-**He answers the wrong person.** `SocialAwareness = true` improves this. Note that Lethal Company chat is unauthenticated, so a modded client can make a line appear to come from someone else — this can mislead him about who to answer, but it can never grant command authority.
+**He answers the wrong person.** `SocialAwareness = true` improves this. Lethal Company chat identity is not a strong authentication mechanism, so use Buddy with people you trust; every model-selected action is still clamped to the mod's small in-game tool set.
 
 **A friend can type but Buddy cannot hear their microphone.** Confirm both players have the exact same Buddy version, `AllowRemoteVoice = true`, and the friend's microphone device is selected in Buddy's native settings.
 
@@ -210,8 +206,8 @@ Use **Settings > Mod Settings > Buddy** in the main menu or pause menu to choose
 
 ## Privacy and cost
 
-- Only the host holds an API key, and only the host calls the provider. Keys are never put in multiplayer messages, logs or the config file.
-- Host push-to-talk audio goes to the speech provider when the host uses the Buddy voice key. Client audio is relayed only while that client holds the key, and the host can disable remote audio entirely.
+- Only the host holds an API key, and only the host calls OpenAI. Keys are never put in multiplayer messages, logs or the config file.
+- Host push-to-talk audio goes to OpenAI Realtime when the host uses the Buddy voice key. Client audio is relayed only while that client holds the key, and the host can disable remote audio entirely.
 - Generated speech is distributed from the host as bounded PCM audio.
 - Relationship data stores at most eight sets of three small numbers per save, keyed by a non-reversible digest. No names, IDs, chat or transcripts reach disk.
 - The opt-in response journal is host-only and records what players say. See the configuration note above.

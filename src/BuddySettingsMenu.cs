@@ -1,6 +1,5 @@
 using System;
 using System.Collections;
-using System.Collections.Generic;
 using LethalSettings.UI;
 using LethalSettings.UI.Components;
 using TMPro;
@@ -22,21 +21,9 @@ namespace LethalAICrewmate
             if (_registered) return;
             _registered = true;
 
-            var openAi = new TMP_Dropdown.OptionData("OpenAI (recommended)");
-            var groq = new TMP_Dropdown.OptionData("Groq (budget)");
-            var provider = new DropdownComponent
-            {
-                Text = "AI provider",
-                Options = new List<TMP_Dropdown.OptionData> { openAi, groq },
-                Value = GroqSecrets.IsOpenAi ? openAi : groq,
-                OnValueChanged = (_, selected) => SelectProvider(selected == groq
-                    ? BuddyAiArchitecture.GroqProvider
-                    : BuddyAiArchitecture.OpenAiProvider)
-            };
-
             _keyInput = new InputComponent
             {
-                Placeholder = "Paste the selected provider API key",
+                Placeholder = "Paste an OpenAI API key",
                 Value = "",
                 OnValueChanged = (_, value) => _keyBuffer = (value ?? "").Trim(),
                 OnInitialize = input =>
@@ -51,14 +38,14 @@ namespace LethalAICrewmate
 
             _status = new LabelComponent
             {
-                Text = GroqSecrets.HasKey ? "Secure key ready on this PC." : "No key saved for the selected provider.",
+                Text = OpenAiSecrets.HasKey ? "Secure OpenAI key ready on this PC." : "No OpenAI key saved.",
                 FontSize = 11f
             };
 
             var components = new MenuComponent[]
             {
                 new LabelComponent { Text = "AI", FontSize = 19f },
-                provider,
+                new LabelComponent { Text = "gpt-realtime-2.1-mini handles listening, reasoning, game tools and Buddy's voice.", FontSize = 12f },
                 new ToggleComponent
                 {
                     Text = "Final-stage hostile spawning",
@@ -124,7 +111,7 @@ namespace LethalAICrewmate
                 new LabelComponent { Text = "Privacy", FontSize = 19f },
                 new ToggleComponent
                 {
-                    Text = "Save player messages, transcripts and Buddy replies",
+                    Text = "Save typed messages and Buddy replies",
                     Value = Plugin.SaveResponses?.Value == true,
                     OnValueChanged = (_, value) => SetResponseSaving(value)
                 },
@@ -146,7 +133,7 @@ namespace LethalAICrewmate
                 Name = "Buddy",
                 Id = Plugin.ModGuid,
                 Version = Plugin.ModVersion,
-                Description = "AI provider, secure keys, voice, story and privacy controls.",
+                Description = "OpenAI Realtime, secure key, voice, story and privacy controls.",
                 MenuComponents = components
             }, true, true);
             Plugin.Log?.LogInfo("Registered Buddy in the game's Mod Settings menu.");
@@ -159,32 +146,19 @@ namespace LethalAICrewmate
             Plugin.SaveConfiguration();
         }
 
-        private static void SelectProvider(string provider)
-        {
-            if (Plugin.Provider == null) return;
-            Plugin.Provider.Value = BuddyAiArchitecture.NormalizeProvider(provider);
-            Plugin.SaveConfiguration();
-            OpenAiRealtimeVoiceClient.ResetSession();
-            LlmClient.CancelPendingRequests();
-            BuddyTts.ResetSession();
-            _keyBuffer = "";
-            if (_keyInput != null) _keyInput.Value = "";
-            SetStatus(GroqSecrets.ProviderName + " selected. Enter its API key below.");
-        }
-
         private static void SaveKey()
         {
             if (string.IsNullOrWhiteSpace(_keyBuffer))
             {
-                SetStatus("Paste a " + GroqSecrets.ProviderName + " key first.");
+                SetStatus("Paste an OpenAI key first.");
                 return;
             }
-            if (!GroqSecrets.SetFromMenu(_keyBuffer))
+            if (!OpenAiSecrets.SetFromMenu(_keyBuffer))
             {
-                SetStatus("That key does not match the selected provider.");
+                SetStatus("That OpenAI key is empty or invalid.");
                 return;
             }
-            SetStatus(GroqSecrets.LastSavePersisted ? "Key saved securely." : "Key active for this session only.");
+            SetStatus(OpenAiSecrets.LastSavePersisted ? "Key saved securely." : "Key active for this session only.");
             _keyBuffer = "";
             if (_keyInput != null) _keyInput.Value = "";
         }
@@ -193,8 +167,8 @@ namespace LethalAICrewmate
         {
             _keyBuffer = "";
             if (_keyInput != null) _keyInput.Value = "";
-            GroqSecrets.ClearMenuKey();
-            SetStatus(GroqSecrets.ProviderName + " key cleared.");
+            OpenAiSecrets.ClearMenuKey();
+            SetStatus("OpenAI key cleared.");
         }
 
         private static void BeginTest()
@@ -205,20 +179,20 @@ namespace LethalAICrewmate
                 return;
             }
             if (Plugin.Host == null) return;
-            SetStatus("Testing " + GroqSecrets.ProviderName + "...");
+            SetStatus("Testing OpenAI...");
             Plugin.Host.StartCoroutine(TestKey(_keyBuffer));
         }
 
         private static IEnumerator TestKey(string key)
         {
-            using (var request = UnityWebRequest.Get(GroqSecrets.ModelsEndpoint))
+            using (var request = UnityWebRequest.Get(OpenAiSecrets.ModelsEndpoint))
             {
                 request.SetRequestHeader("Authorization", "Bearer " + key);
                 request.timeout = 10;
                 yield return request.SendWebRequest();
                 bool ok = string.IsNullOrEmpty(request.error) && request.responseCode >= 200 && request.responseCode < 300;
-                SetStatus(ok ? GroqSecrets.ProviderName + " connection works. Press Save key to keep it."
-                    : request.responseCode == 401 || request.responseCode == 403 ? "The provider rejected that key."
+                SetStatus(ok ? "OpenAI connection works. Press Save key to keep it."
+                    : request.responseCode == 401 || request.responseCode == 403 ? "OpenAI rejected that key."
                     : "Connection test failed.");
             }
         }

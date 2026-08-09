@@ -10,7 +10,7 @@ namespace LethalAICrewmate
         public static BepInEx.Logging.ManualLogSource Log;
     }
 
-    public static class GroqSecrets
+    public static class OpenAiSecrets
     {
         public static string ProviderName => "test";
     }
