@@ -6,7 +6,7 @@ namespace LethalAICrewmate
         internal const float FollowStopDistance = 4.0f;
         internal const float FollowResumeDistance = 5.8f;
         internal const float EmergencySeparation = 70f;
-        internal const float AreaRecoveryDelay = 14f;
+        internal const float AreaRecoveryDelay = 20f;
         internal const float PathRebuildDelay = 3.5f;
         internal const float EmergencyStallDelay = 20f;
         internal const int RebuildsBeforeEmergency = 3;
