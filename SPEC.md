@@ -1,4 +1,4 @@
-# Buddy — v2.6.0 Design Spec
+# Buddy — v2.8.0 Design Spec
 
 BepInEx 5 plugin for **Lethal Company v81**. Adds a friendly AI-driven crewmate NPC (default name **Buddy**) backed by OpenAI (default) or Groq on the host.
 
@@ -36,7 +36,7 @@ Rules:
 - Host sends custom Buddy state only to compatible clients.
 - Late joiners request current Buddy + held-item state through the handshake path.
 - Item attach messages are retried briefly client-side while spawned objects are still becoming available.
-- If an unmodded or incompatible client is present, Buddy stays disabled. If one joins mid-round, an active Buddy is despawned until the session is compatible again.
+- If an unmodded or incompatible client is present at spawn time, Buddy stays disabled. A mid-round join gets the normal handshake grace window without replacing Buddy's network body; a confirmed mismatch or missing handshake after that window still despawns him fail-closed.
 - The selected provider API key is never part of a network message.
 
 ## Buddy body and AI
@@ -61,6 +61,10 @@ Host state machine:
 
 The host polls for a valid landed state and retries spawning. `MultiplayerSpawnGate` also guards both the public spawn request and the internal spawn attempt so event/retry paths cannot bypass compatibility checks.
 
+Follow movement uses NavMeshAgent only—there is no raw-transform flight fallback. Buddy uses hysteresis, stable side offset, slower turning and distance-based catch-up speed. A stalled path is rebuilt repeatedly; emergency teleport recovery requires at least 20 seconds without progress, three rebuild attempts and either extreme separation or a persistent area mismatch. Facility/exterior mismatches pause for 14 seconds before last-resort recovery.
+
+When the current followed player dies, Buddy holds position for 8–12 seconds. Same-area proximity within 20 metres plus a clear line of sight is the minimum evidence that he witnessed it. He then chooses the nearest living player and follows by walking; only after reaching them can the autonomy director report the witnessed death.
+
 ## Chat and commands
 
 Server chat is observed on the host. Duplicate Harmony observations are deduped by **player ID + message + short time window**.
@@ -76,13 +80,13 @@ Questions can trigger a reply when addressed to Buddy, or when the player is wit
 
 Explicit terminal and ship actions (`route`, quantity-aware `buy`, coded facility doors/hazards, hangar doors and ship lights) are parsed deterministically from player chat. OpenAI Realtime can request the single bounded `execute_game_command` host tool, but the model never performs a side effect directly: the host re-parses, authorizes and executes the request through the same deterministic command layer. Model-produced `[ROUTE:]`, `[BUY:]` and `[TERMINAL:]` text tags are stripped without running them. Deterministic status queries expose player-visible time, credits, quota/deadline, moon/weather, ship scrap and crew state. Buddy maintains a networked physical body in the ship during orbit and moon phases; follow orders transfer ownership to the requesting living player.
 
-Movement orders use one deterministic parser so overlapping conversational keywords cannot accidentally change state. Scout-ahead orders choose a complete reachable path 4-18 metres along the requester's facing direction, report nearby same-area threats or scrap, pause briefly, then return to `FollowOwner`. A blocked or stalled scout cancels safely instead of teleporting forward.
+Movement orders use one deterministic parser so overlapping conversational keywords cannot accidentally change state. Scout-ahead orders choose a complete reachable path 4-18 metres along the requester's facing direction, report nearby same-area threats or scrap, pause briefly, then return to `FollowOwner`. A blocked or stalled scout cancels safely instead of teleporting forward. Fetch selection uses a bounded value-versus-distance score. Personal `bring me` fetch phrasing returns the item near the living requester; ordinary fetch remains ship delivery. Closed-door detection only permits a short wait while the owner is nearby and never grants unlock, terminal or protected action authority.
 
 ## Slow-burn character arc
 
 `[Character] SlowBurnHorror=true` enables a four-stage presentation arc: `Coworker`, `OffNote`,
 `Unsettling`, and `Cold`. The host increments a numeric score only from confirmed game evidence:
-fulfilled quota cycles, new landed round seeds, and drops in `StartOfRound.livingPlayers`. Thresholds
+fulfilled quota cycles, new landed round seeds, and deaths Buddy locally witnessed while following. Global drops in `StartOfRound.livingPlayers` are not knowledge. Thresholds
 are deliberately slow (3, 8, and 15 points). Two integers are stored in the current Lethal Company
 save: `LethalAICrewmate_CharacterArcProgress` and the last counted
 `LethalAICrewmate_CharacterArcQuotaCycles`. The baseline prevents quota double-counting across reloads;
@@ -90,9 +94,18 @@ no player dialogue, transcript, name, or inferred personal fact is persisted. A 
 `ResetSlowBurnProgress=true` resets both values for the current save and automatically clears itself.
 
 Stage changes tune the conversation and native voice policy. Sparse deterministic
-lines may fire after a real round/quota/death event, with a 150-second cooldown. Stage zero produces no
-forced horror beats. Arc state cannot change movement, combat, terminal, spawn, networking, visibility
-or authorization policy; Buddy remains a neutralized companion at every stage.
+lines may fire after a real round/quota/witnessed-death event, with a 150-second cooldown. Stage zero produces no
+forced horror beats. Arc state may adjust only valid idle gaze and follow spacing for presentation; it
+cannot cause invalid navigation, teleport recovery, combat, terminal, spawn, networking, visibility or
+authorization changes. Buddy remains a neutralized companion at every stage.
+
+## Contextual autonomy
+
+A single host-side director may enqueue one grounded observation after facility entry/exit, returning
+to ship, long travel, sustained separation, high-value loose scrap or long quiet downtime. It uses a
+55-second global cooldown, per-event repetition limits and a 12-second player-priority window.
+Observations are disposable and never stack ahead of player chat or PTT. The selected provider creates
+the actual short line from live sensor context; deterministic danger warnings remain separate.
 
 ## AI providers
 
@@ -132,7 +145,7 @@ TTS is generated exactly once on the host. The decoded clip is downmixed/downsam
 
 ## Scrap
 
-Fetch mode finds valid unheld scrap, moves to it, mirrors a held visual on clients, returns toward the ship and drops it. Failures should fall back to dropping safely and returning to Follow.
+Fetch mode finds useful valid unheld scrap, moves to it, mirrors a held visual on clients, then returns either to the ship or—only for explicit personal handoff phrasing—to the requesting living player. Failures fall back to safe ship delivery or dropping safely and returning to Follow.
 
 ## Privacy and security
 
