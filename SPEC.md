@@ -1,4 +1,4 @@
-# Buddy — v2.8.0 Design Spec
+# Buddy — v3.0.0 Design Spec
 
 BepInEx 5 plugin for **Lethal Company v81**. Adds a friendly AI-driven crewmate NPC (default name **Buddy**) backed by OpenAI (default) or Groq on the host.
 
@@ -61,7 +61,7 @@ Host state machine:
 
 The host polls for a valid landed state and retries spawning. `MultiplayerSpawnGate` also guards both the public spawn request and the internal spawn attempt so event/retry paths cannot bypass compatibility checks.
 
-Follow movement uses NavMeshAgent only—there is no raw-transform flight fallback. Buddy uses hysteresis, stable side offset, slower turning and distance-based catch-up speed. A stalled path is rebuilt repeatedly; emergency teleport recovery requires at least 20 seconds without progress, three rebuild attempts and either extreme separation or a persistent area mismatch. Facility/exterior mismatches pause for 14 seconds before last-resort recovery.
+Follow movement uses NavMeshAgent only—there is no raw-transform flight fallback. Buddy uses hysteresis, stable side offset, slower turning and distance-based catch-up speed. A stalled path is rebuilt repeatedly; emergency teleport recovery requires at least 20 seconds without progress, three rebuild attempts and either extreme separation or a persistent area mismatch. Facility/exterior mismatches receive three spaced path rebuild attempts and must persist for at least 20 seconds before last-resort sampled-NavMesh recovery.
 
 When the current followed player dies, Buddy holds position for 8–12 seconds. Same-area proximity within 20 metres plus a clear line of sight is the minimum evidence that he witnessed it. He then chooses the nearest living player and follows by walking; only after reaching them can the autonomy director report the witnessed death.
 
