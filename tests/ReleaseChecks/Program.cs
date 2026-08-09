@@ -1,0 +1,271 @@
+using System;
+using System.IO;
+using BepInEx;
+using BepInEx.Configuration;
+using LethalAICrewmate;
+
+static class Program
+{
+    private static int _checks;
+
+    static int Main()
+    {
+        Check(TransportValidation.IsExactChunk(15000, 7000, 0, 7000), "first chunk");
+        Check(TransportValidation.IsExactChunk(15000, 7000, 14000, 1000), "final chunk");
+        Check(!TransportValidation.IsExactChunk(15000, 7000, 3500, 7000), "reject overlapping offset");
+        Check(!TransportValidation.IsExactChunk(15000, 7000, 7000, 6000), "reject short middle chunk");
+        Check(!TransportValidation.IsExactChunk(15000, 7000, 21000, 1), "reject out-of-range chunk");
+
+        Check(LobbyVisibilityPolicy.Parse(" public ") == LobbyVisibility.Public, "parse public lobby visibility");
+        Check(LobbyVisibilityPolicy.Parse("FRIENDS") == LobbyVisibility.Friends, "parse friends lobby visibility");
+        Check(LobbyVisibilityPolicy.Parse("inviteOnly") == LobbyVisibility.InviteOnly, "parse invite-only lobby visibility");
+        Check(!LobbyVisibilityPolicy.AllowsRestrictedRemoteFeatures(LobbyVisibility.Public), "block restricted features in public lobbies");
+        Check(!LobbyVisibilityPolicy.AllowsRestrictedRemoteFeatures(LobbyVisibilityPolicy.Parse(null)), "fail closed when lobby visibility is missing");
+        Check(!LobbyVisibilityPolicy.AllowsRestrictedRemoteFeatures(LobbyVisibilityPolicy.Parse("unexpected")), "fail closed for unknown lobby visibility");
+        Check(LobbyVisibilityPolicy.AllowsRestrictedRemoteFeatures(LobbyVisibility.Friends) &&
+              LobbyVisibilityPolicy.AllowsRestrictedRemoteFeatures(LobbyVisibility.InviteOnly),
+              "allow restricted features only in known private lobbies");
+
+        Check(BuddyCharacterArc.StageFor(0, 0, 0) == BuddyArcStage.Coworker, "character arc starts as an ordinary coworker");
+        Check(BuddyCharacterArc.StageFor(0, 2, 0) == BuddyArcStage.Coworker, "character arc does not turn ominous immediately");
+        Check(BuddyCharacterArc.StageFor(0, 3, 0) == BuddyArcStage.OffNote, "character arc develops an off note slowly");
+        Check(BuddyCharacterArc.StageFor(1, 4, 0) == BuddyArcStage.Unsettling, "character arc reaches unsettling after sustained play");
+        Check(BuddyCharacterArc.StageFor(2, 3, 2) == BuddyArcStage.Cold, "character arc reaches cold only after substantial evidence");
+        Check(BuddyCharacterArc.Beat(BuddyArcStage.Coworker, BuddyArcEvent.CrewDeath, 1) == null,
+              "ordinary stage does not force horror beats");
+        string unsettlingBeat = BuddyCharacterArc.Beat(BuddyArcStage.Unsettling, BuddyArcEvent.LastCrewmate, 7);
+        Check(!string.IsNullOrWhiteSpace(unsettlingBeat) && unsettlingBeat.Length <= 80,
+              "unsettling beat remains a short coworker line");
+        Check(BuddyCharacterArc.PromptDirective(BuddyArcStage.Cold).Contains("Never attack") &&
+              BuddyCharacterArc.PromptDirective(BuddyArcStage.Cold).Contains("fabricate evidence"),
+              "late character arc cannot override gameplay safety or truth");
+        Check(BuddyCharacterArc.TtsDirection(BuddyArcStage.Cold).Contains("Never use a monster voice"),
+              "late character voice stays restrained rather than theatrical");
+        Check(BuddyCharacterArc.Score(int.MaxValue, int.MaxValue, int.MaxValue) == int.MaxValue,
+              "character score arithmetic saturates safely");
+        Check(BuddyCharacterArc.AdvanceScore(int.MaxValue, 4) == int.MaxValue,
+              "persisted character score cannot overflow");
+        int simulatedArc = 0;
+        simulatedArc = BuddyCharacterArc.AdvanceScore(simulatedArc, BuddyCharacterArc.EventPoints(BuddyArcEvent.RoundStarted, 3));
+        Check(simulatedArc == 3 && BuddyCharacterArc.StageForScore(simulatedArc) == BuddyArcStage.OffNote,
+              "three confirmed rounds produce the first slow-burn stage");
+        simulatedArc = BuddyCharacterArc.AdvanceScore(simulatedArc, BuddyCharacterArc.EventPoints(BuddyArcEvent.CrewDeath, 1));
+        Check(simulatedArc == 5 && BuddyCharacterArc.StageForScore(simulatedArc) == BuddyArcStage.OffNote,
+              "one death does not skip directly to full horror");
+        simulatedArc = BuddyCharacterArc.AdvanceScore(simulatedArc, BuddyCharacterArc.EventPoints(BuddyArcEvent.QuotaAdvanced, 1));
+        Check(simulatedArc == 9 && BuddyCharacterArc.StageForScore(simulatedArc) == BuddyArcStage.Unsettling,
+              "confirmed quota progression advances the persistent arc");
+        Check(BuddyCharacterArc.EventPoints(BuddyArcEvent.StageAdvanced, 99) == 0,
+              "stage announcements cannot recursively advance character progress");
+        bool safeBeatCatalog = true;
+        foreach (BuddyArcStage stage in Enum.GetValues<BuddyArcStage>())
+        foreach (BuddyArcEvent eventKind in Enum.GetValues<BuddyArcEvent>())
+        for (int variant = 0; variant < 2; variant++)
+        {
+            string beat = BuddyCharacterArc.Beat(stage, eventKind, variant);
+            if (beat == null) continue;
+            string lowerBeat = beat.Trim().ToLowerInvariant();
+            if (beat.Length > 80 || beat.Contains('\r') || beat.Contains('\n') || beat.Contains('[') ||
+                lowerBeat.StartsWith("buy ") || lowerBeat.StartsWith("route ") || lowerBeat.StartsWith("open ") ||
+                lowerBeat.StartsWith("close ") || lowerBeat.StartsWith("disable ") || lowerBeat.StartsWith("spawn ") ||
+                lowerBeat.StartsWith("follow ") || lowerBeat.StartsWith("go ") || lowerBeat.StartsWith("leave "))
+                safeBeatCatalog = false;
+        }
+        Check(safeBeatCatalog, "scripted horror catalog stays short, plain and non-commanding");
+        Check(BuddyCharacterArc.InitialProgress(false, 0, 2) == 8,
+              "first install can join an established campaign at its earned arc stage");
+        Check(BuddyCharacterArc.InitialProgress(true, 0, 2) == 0,
+              "explicitly reset saved arc stays reset despite existing quota history");
+        Check(BuddyCharacterArc.QuotaDeltaPoints(2, 2) == 0,
+              "save reload does not count the same fulfilled quotas twice");
+        Check(BuddyCharacterArc.QuotaDeltaPoints(2, 3) == 4,
+              "only newly fulfilled quota cycles advance persistent progress");
+        string continuity = BuddyCharacterArc.ContinuitySummary(2, 3, 1);
+        Check(continuity.Contains("fulfilled 2 quota") && continuity.Contains("3 additional landed") &&
+              continuity.Contains("1 crew death") && continuity.Contains("do not recite counters"),
+              "character memory exposes only confirmed bounded campaign counters");
+
+        byte[] audible = MakeWav(16000, 1f, 0.12f);
+        Check(TransportValidation.TryValidateMonoPcm16Wav(audible, 400 * 1024, 0.35f, 12.5f, 0.008f, out _), "accept bounded audible WAV");
+        byte[] silence = MakeWav(16000, 1f, 0f);
+        Check(!TransportValidation.TryValidateMonoPcm16Wav(silence, 400 * 1024, 0.35f, 12.5f, 0.008f, out _), "reject silence");
+        byte[] malformed = (byte[])audible.Clone();
+        malformed[0] = (byte)'X';
+        Check(!TransportValidation.TryValidateMonoPcm16Wav(malformed, 400 * 1024, 0.35f, 12.5f, 0.008f, out _), "reject malformed header");
+        byte[] truncated = new byte[audible.Length - 2];
+        Buffer.BlockCopy(audible, 0, truncated, 0, truncated.Length);
+        Check(!TransportValidation.TryValidateMonoPcm16Wav(truncated, 400 * 1024, 0.35f, 12.5f, 0.008f, out _), "reject inconsistent data length");
+        byte[] overflowingChunk = (byte[])audible.Clone();
+        WriteAscii(overflowingChunk, 12, "JUNK");
+        WriteInt(overflowingChunk, 16, int.MaxValue);
+        Check(!TransportValidation.TryValidateMonoPcm16Wav(overflowingChunk, 400 * 1024, 0.35f, 12.5f, 0.008f, out _),
+              "reject overflowing RIFF chunk size without throwing");
+
+        byte[] withListChunk = MakeWavWithExtraChunk(audible, "LIST", new byte[] { (byte)'I', (byte)'N', (byte)'F', (byte)'O' });
+        Check(TransportValidation.TryValidateMonoPcm16Wav(withListChunk, 400 * 1024, 0.35f, 12.5f, 0.008f, out _),
+              "accept WAV with INFO chunk before data");
+        byte[] floatFormat = (byte[])audible.Clone();
+        WriteShort(floatFormat, 20, 3);
+        Check(!TransportValidation.TryValidateMonoPcm16Wav(floatFormat, 400 * 1024, 0.35f, 12.5f, 0.008f, out _),
+              "reject non-PCM WAV format");
+
+        Check(VoiceSignalMath.HasUsableSignal(0.0011f), "accept observed quiet microphone signal");
+        Check(!VoiceSignalMath.HasUsableSignal(0.0001f), "reject true silence floor");
+        float quietGain = VoiceSignalMath.CalculateGain(0.0011f, 0.01f);
+        Check(quietGain > 10f && quietGain <= 30f, "adaptively amplify quiet microphone");
+        Check(VisionIntent.IsVisualQuestion("Buddy, what am I looking at?"), "detect looking-at vision request");
+        Check(VisionIntent.IsVisualQuestion("Can you see my screen?"), "detect screen vision request");
+        Check(VisionIntent.IsVisualQuestion("what's in front of me?"), "detect what-is-in-front vision request");
+        Check(!VisionIntent.IsVisualQuestion("Buddy follow me"), "avoid screenshots for normal commands");
+        Check(!VisionIntent.IsVisualQuestion("get in front of me"), "avoid screenshots for position command");
+
+        ShipCommandParsing.ParsePurchase("3 pro flashlights", out string purchaseItem, out int purchaseQuantity);
+        Check(purchaseItem == "pro flashlights" && purchaseQuantity == 3, "parse purchase quantity");
+        Check(ShipCommandParsing.TryParsePoliteSpawn("please spawn 2 flashlights in front of me", out string spawnItem, out int spawnQuantity) &&
+              spawnItem == "flashlights" && spawnQuantity == 2, "parse polite bounded spawn");
+        Check(ShipCommandParsing.TryParsePoliteSpawn("please spawn a flashlight for me", out spawnItem, out spawnQuantity) &&
+              spawnItem == "flashlight" && spawnQuantity == 1, "parse natural article in polite spawn");
+        Check(ShipCommandParsing.TryParsePoliteSpawn("Can I please have a flashlight? I'm begging you.", out spawnItem, out spawnQuantity) &&
+              spawnItem == "flashlight" && spawnQuantity == 1, "parse natural pleaded item request");
+        Check(!ShipCommandParsing.TryParsePoliteSpawn("spawn 2 flashlights", out _, out _), "reject spawn without pleading");
+        Check(ShipCommandParsing.TryParsePoliteSpawn("i beg you spawn 99 shovels", out _, out spawnQuantity) && spawnQuantity == 3,
+              "cap polite spawn quantity");
+        Check(ShipCommandParsing.TryParseFacilityAction("disable turret B3", out string facilityCode, out bool facilityEnable) &&
+              facilityCode == "b3" && !facilityEnable, "parse terminal hazard disable");
+        Check(ShipCommandParsing.TryParseFacilityAction("open door c7", out _, out facilityEnable) && facilityEnable,
+              "parse terminal door open");
+        Check(!ShipCommandParsing.TryParseFacilityAction("c7", out _, out _), "reject bare facility code without action");
+        Check(!ShipCommandParsing.TryParseFacilityAction("terminal c7", out _, out _), "reject implicit terminal-code disable");
+        Check(!ShipCommandParsing.TryParseFacilityAction("code c7", out _, out _), "reject implicit code disable");
+        Check(ShipCommandParsing.IsGenericTerminalPassthrough("terminal route titan"), "identify generic terminal passthrough");
+        Check(ShipCommandParsing.IsStateChangingRequest("buy 3 flashlights"), "classify purchase as state changing");
+        Check(ShipCommandParsing.IsStateChangingRequest("open door c7"), "classify facility action as state changing");
+        Check(!ShipCommandParsing.IsStateChangingRequest("terminal store"), "keep store query read only");
+        Check(ShipCommandParsing.IsStatusRequest("what time is it?"), "parse ship status question");
+        Check(!ShipCommandParsing.IsStatusRequest("what's the weather in Brisbane?"), "do not hijack real-world weather question");
+
+        Check(MovementCommandParsing.Parse("go forward 12 metres").Kind == MovementCommandKind.ScoutAhead &&
+              MovementCommandParsing.Parse("go forward 12 metres").ScoutDistance == 12f, "parse bounded scout distance");
+        Check(MovementCommandParsing.Parse("check in front").Kind == MovementCommandKind.ScoutAhead, "parse natural scout command");
+        Check(MovementCommandParsing.Parse("scout forwards").Kind == MovementCommandKind.ScoutAhead, "parse spoken scout forwards command");
+        Check(MovementCommandParsing.Parse("check the next room").Kind == MovementCommandKind.ScoutAhead, "parse next-room scout command");
+        Check(MovementCommandParsing.Parse("clear the way").Kind == MovementCommandKind.ScoutAhead, "parse clear-way scout command");
+        Check(MovementCommandParsing.Parse("stop following me").Kind == MovementCommandKind.Stay, "stop following is not follow");
+        Check(MovementCommandParsing.Parse("stay still").Kind == MovementCommandKind.Stay, "parse verbatim stay-still command");
+        Check(MovementCommandParsing.Parse("do not move").Kind == MovementCommandKind.Stay, "preserve negation in stay command");
+        Check(MovementCommandParsing.Parse("stay in place").Kind == MovementCommandKind.Stay, "parse stay-in-place command");
+        Check(MovementCommandParsing.Parse("stay put").Kind == MovementCommandKind.Stay, "parse stay-put command");
+        Check(MovementCommandParsing.Parse("stay right here").Kind == MovementCommandKind.Stay, "parse stay-right-here command");
+        Check(MovementCommandParsing.Parse("stand by").Kind == MovementCommandKind.Stay, "parse stand-by command");
+        Check(MovementCommandParsing.Parse("freeze").Kind == MovementCommandKind.Stay, "parse freeze command");
+        Check(MovementCommandParsing.IsDirectDirective("stay in place"), "stay in place is a direct directive");
+        Check(MovementCommandParsing.Parse("move forwards").Kind == MovementCommandKind.ScoutAhead, "parse verbatim move-forwards command");
+        Check(MovementCommandParsing.Parse("go to the ship").Kind == MovementCommandKind.ReturnToShip, "ship return is not moon route");
+        Check(MovementCommandParsing.Parse("what is scrap?").Kind == MovementCommandKind.None, "scrap question is not fetch command");
+        Check(MovementCommandParsing.Parse("can you follow me?").Kind == MovementCommandKind.Follow, "parse polite follow command");
+        Check(MovementCommandParsing.Parse("ship").Kind == MovementCommandKind.ReturnToShip, "retain short ship command");
+        Check(MovementCommandParsing.Parse("no, get off the ship and follow us").Kind == MovementCommandKind.Follow, "parse follow-us correction");
+        Check(MovementCommandParsing.Parse("you are not following us").Kind == MovementCommandKind.None, "complaint is not a fresh follow order");
+
+        // Response journal behavior: file creation, input/reply pairing, FIFO ordering, config suppression.
+        string journalDir = Path.Combine(Path.GetTempPath(), "lethal-ai-journal-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(journalDir);
+        try
+        {
+            Paths.BepInExRootPath = journalDir;
+            Plugin.SaveResponses = new ConfigEntry<bool> { Value = true };
+            Plugin.CrewmateName = new ConfigEntry<string> { Value = "Buddy" };
+
+            long voiceId = ResponseJournal.NoteInput("voice", "eamon", "stay in place");
+            ResponseJournal.RecordReply(voiceId, "Parked. Try not to miss me.");
+            string journalPath = Path.Combine(journalDir, "LethalAICrewmate-responses.log");
+            Check(File.Exists(journalPath), "journal file created");
+            string text = File.ReadAllText(journalPath);
+            Check(text.Contains("voice | eamon: \"stay in place\"") && text.Contains("Parked. Try not to miss me."),
+                  "journal pairs input with reply");
+
+            long slowChatId = ResponseJournal.NoteInput("chat", "sam", "where's the scrap?");
+            long fastCommandId = ResponseJournal.NoteInput("command", "sam", "open door c7");
+            ResponseJournal.RecordReply(fastCommandId, "Door's open. Hope it was worth it.");
+            ResponseJournal.RecordReply(slowChatId, "Two bits of scrap. Worth carrying.");
+            text = File.ReadAllText(journalPath);
+            Check(text.Contains("chat | sam: \"where's the scrap?\" -> Buddy: \"Two bits of scrap. Worth carrying.\"") &&
+                  text.Contains("command | sam: \"open door c7\" -> Buddy: \"Door's open. Hope it was worth it.\""),
+                  "journal correlates out-of-order replies to the correct input");
+
+            long secretId = ResponseJournal.NoteInput("chat", "sam", "say something secret");
+            Plugin.SaveResponses.Value = false;
+            ResponseJournal.RecordReply(secretId, "silent reply");
+            Check(!File.ReadAllText(journalPath).Contains("silent reply"), "journal suppressed by SaveResponses config");
+
+            Plugin.SaveResponses.Value = true;
+            long freshId = ResponseJournal.NoteInput("chat", "sam", "fresh question");
+            ResponseJournal.RecordDirect("callout", "system", "deterministic danger callout", "RUN! Bracken is right on us!", "bracken within 4.2m");
+            ResponseJournal.RecordReply(freshId, "Fresh answer.");
+            text = File.ReadAllText(journalPath);
+            Check(text.Contains("callout | system: \"deterministic danger callout\"") &&
+                  text.Contains("chat | sam: \"fresh question\"") && text.Contains("Fresh answer.") &&
+                  !text.Contains("say something secret\" -> Buddy: \"Fresh answer"),
+                  "disabled journal input cannot leak into a later pairing");
+        }
+        finally
+        {
+            try { Directory.Delete(journalDir, true); } catch { /* ignore */ }
+        }
+
+        Console.WriteLine($"Release checks passed: {_checks}");
+        return 0;
+    }
+
+    private static void Check(bool condition, string name)
+    {
+        if (!condition) throw new InvalidOperationException("Release check failed: " + name);
+        _checks++;
+    }
+
+    private static byte[] MakeWavWithExtraChunk(byte[] wav, string chunkId, byte[] chunkData)
+    {
+        // Insert an extra RIFF chunk between fmt (ends at 36) and the data chunk, then fix sizes.
+        int extra = 8 + chunkData.Length;
+        byte[] result = new byte[wav.Length + extra];
+        Buffer.BlockCopy(wav, 0, result, 0, 36);
+        WriteAscii(result, 36, chunkId);
+        WriteInt(result, 40, chunkData.Length);
+        Buffer.BlockCopy(chunkData, 0, result, 44, chunkData.Length);
+        Buffer.BlockCopy(wav, 36, result, 44 + chunkData.Length, wav.Length - 36);
+        WriteInt(result, 4, 36 + (result.Length - 44)); // RIFF size covers fmt..end
+        return result;
+    }
+
+    private static byte[] MakeWav(int rate, float seconds, float amplitude)
+    {
+        int samples = (int)(rate * seconds);
+        int dataLength = samples * 2;
+        byte[] wav = new byte[44 + dataLength];
+        WriteAscii(wav, 0, "RIFF");
+        WriteInt(wav, 4, 36 + dataLength);
+        WriteAscii(wav, 8, "WAVE");
+        WriteAscii(wav, 12, "fmt ");
+        WriteInt(wav, 16, 16);
+        WriteShort(wav, 20, 1);
+        WriteShort(wav, 22, 1);
+        WriteInt(wav, 24, rate);
+        WriteInt(wav, 28, rate * 2);
+        WriteShort(wav, 32, 2);
+        WriteShort(wav, 34, 16);
+        WriteAscii(wav, 36, "data");
+        WriteInt(wav, 40, dataLength);
+        for (int i = 0; i < samples; i++)
+            WriteShort(wav, 44 + i * 2, (short)(Math.Sin(i * 0.1) * amplitude * short.MaxValue));
+        return wav;
+    }
+
+    private static void WriteAscii(byte[] target, int offset, string value) =>
+        System.Text.Encoding.ASCII.GetBytes(value).CopyTo(target, offset);
+
+    private static void WriteInt(byte[] target, int offset, int value) =>
+        BitConverter.GetBytes(value).CopyTo(target, offset);
+
+    private static void WriteShort(byte[] target, int offset, short value) =>
+        BitConverter.GetBytes(value).CopyTo(target, offset);
+}

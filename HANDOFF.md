@@ -1,0 +1,118 @@
+# HANDOFF — Buddy v2.5.0
+
+## Current status
+
+Buddy is a BepInEx 5 mod for **Lethal Company v81** adding a friendly AI crewmate named Buddy. Public source: `https://github.com/TESTYEE-09/Buddy`.
+
+Release target: **v2.5.0** (wire protocol **7**, unchanged because no wire format changed).
+
+v2.5.0 adds the shippable slow-burn character arc after the v2.4.3 public audit hardening. Buddy begins as the trustworthy dry coworker, then progresses through OffNote, Unsettling and Cold stages using numeric progress from confirmed quota cycles, landed rounds and witnessed deaths. Progress plus a quota baseline persist per Lethal Company save; dialogue/transcripts do not, reloads cannot double-count quotas, and `ResetSlowBurnProgress=true` restarts the story. Each model turn gets only confirmed quota/session counters for subtle continuity. Sparse deterministic beats have a 150-second cooldown, conversation and OpenAI TTS direction change by stage, and `[Character] SlowBurnHorror=false` opts out. The arc is presentation-only and cannot enable hostility, sabotage, fabricated events or action authority. Release checks: 91.
+
+Automated release requirements:
+
+- compile against `LethalCompany.GameLibs.Steam 81.0.5-ngd.0`,
+- warnings treated as errors,
+- source + compiled DLL secret scans (Groq- and OpenAI-shaped keys),
+- manifest/csproj/plugin version equality,
+- exact Thunderstore package whitelist,
+- ZIP extraction validation,
+- SHA-256 checksum,
+- ready-to-install CI artifact + GitHub release on `main`.
+
+## Architecture
+
+- Buddy body: neutralized networked `MaskedPlayerEnemy`.
+- Host authoritative for AI movement, item actions and all provider API calls.
+- Multiplayer clients never receive the host API key.
+- Every player must run the same Buddy version/protocol.
+- Buddy spawn is compatibility-gated. An unmodded/mismatched client disables Buddy rather than allowing a hostile/desynced Masked on that client.
+- Late joins recover Buddy + held-item state.
+- Buddy text and generated TTS audio are replicated to compatible clients.
+- Native OpenAI Realtime voice (hold-to-talk, Ash voice) runs over an authenticated host WebSocket with a deterministic `execute_game_command` tool.
+- Optional response journaling records paired raw player input/replies to `BepInEx/LethalAICrewmate-responses.log` on the host (`[Logging] SaveResponses=false` by default).
+- The slow-burn arc persists only `LethalAICrewmate_CharacterArcProgress` and `LethalAICrewmate_CharacterArcQuotaCycles` as integers in the current game save.
+
+## AI providers
+
+The host selects the provider (`OpenAI` default, `Groq` optional) and configures the key from the main menu with **Save / Test / Clear**.
+
+OpenAI stock defaults:
+
+- Chat: `gpt-5.6-luna` (Responses API, fast tier, low reasoning, low verbosity)
+- STT: `gpt-live-transcribe`
+- TTS: `gpt-4o-mini-tts`, voice `ash`
+- Realtime voice: `gpt-realtime-2.1-mini`
+- Vision: disabled by default
+
+Groq defaults (legacy path):
+
+- Chat: `openai/gpt-oss-120b`
+- STT: `whisper-large-v3-turbo`
+- TTS: `canopylabs/orpheus-v1-english`
+
+Persistent keys: `LETHAL_AI_OPENAI_API_KEY` / `LETHAL_AI_GROQ_API_KEY` environment variables, or the main-menu Save button (Windows Credential Manager). Only the host performs provider requests.
+
+## Commands
+
+- `buddy follow`, `buddy stay`, `buddy go to ship`, `buddy fetch scrap`
+- `buddy go forward` / `buddy scout ahead <n> metres` (bounded 4-18 m scouting)
+- `buddy buy <qty> <item>`, `buddy open door <code>`, `buddy disable turret <code>`, `buddy open ship doors`, `buddy turn ship lights off`, `buddy status`
+- `please spawn <item>` (bounded polite item spawner; hard per-round cap)
+
+Explicit player commands are handled deterministically on the host. LLM-produced terminal tags are stripped and cannot spend credits or route the ship. On voice, the Realtime model must call `execute_game_command` for any catalogue command (the prompt makes ambiguous phrases default to the tool); on text chat the host executes before the LLM turn, so Buddy may only acknowledge confirmed results.
+
+## Build
+
+```powershell
+powershell -File pack.ps1
+```
+
+or:
+
+```powershell
+dotnet restore src/LethalAICrewmate.csproj
+dotnet build src/LethalAICrewmate.csproj -c Release
+```
+
+Generated release binaries are intentionally ignored by Git. Use CI artifacts/releases for distribution.
+
+## Multiplayer test checklist
+
+When doing a real in-game multi-PC test:
+
+1. Install the exact same release on host + clients.
+2. Host enters a lobby; clients join and handshake.
+3. Land on a moon; one Buddy spawns, never one per client.
+4. Verify no hostile Masked kill behaviour from Buddy on any peer.
+5. Verify follow/stay/ship/fetch commands from different players.
+6. Verify two players can send the same text close together without one being deduped.
+7. Verify late join after Buddy spawn restores Buddy identity/name/item visual.
+8. Verify Buddy text appears once per compatible client and respects range.
+9. Verify host TTS is heard by clients without client API keys.
+10. Verify held scrap pickup/drop is mirrored and remains grabbable after drop.
+11. Join with an unmodded/mismatched client: Buddy must remain disabled/despawn rather than becoming hostile.
+12. Return to a fully compatible lobby: Buddy should become spawnable again on the landed round polling path.
+13. Try an explicit `buddy buy ...` command and verify only one purchase occurs.
+14. Clear/break the host API key: Buddy movement remains functional and API features fail without crashing the game.
+15. Verify native Realtime push-to-talk: host and remote hold-to-talk produce one synced Buddy voice reply, and commands spoken into it execute once.
+16. In a public lobby, verify remote PTT and remote buy/route/facility/spawn commands are rejected while host actions and remote read-only status still work.
+17. Simulate missing/unknown lobby visibility and verify the same fail-closed behavior; verify friends/invite-only still allows remote PTT/actions.
+18. Enable `SaveResponses` with informed participants and verify concurrent text, deterministic command and Realtime replies remain paired to the correct input.
+19. Play through multiple landed rounds and a fulfilled quota; verify the arc advances gradually, survives a save reload, and never emits a character beat without the corresponding round/quota/death evidence.
+20. Set `[Character] SlowBurnHorror=false`; verify Buddy immediately uses the ordinary coworker prompt/voice and emits no further arc beats.
+21. Set `ResetSlowBurnProgress=true`, reload as host, verify the log reports `Coworker progress=0`, and confirm the switch automatically returns to false.
+
+No live host-plus-friend v2.5.0 test has been performed yet; the package remains a release candidate until this checklist is smoke-tested, including multi-day arc progression and opt-out behavior.
+
+## Security note
+
+Old private builds/history included a shared Groq key. Deleting old tracked binaries from the current branch does **not** revoke a credential or erase Git history. Revoke/rotate that old key in Groq before any public distribution.
+
+## Release flow
+
+1. Make changes on a feature branch (`ship/**` also builds) and bump manifest/csproj/plugin versions together.
+2. Require a green feature-branch and pull-request GitHub Actions build.
+3. Merge to `main`.
+4. The `main` workflow reruns all validation and packaging gates.
+5. Only after those gates pass, CI publishes `vX.Y.Z` from that exact `main` SHA with the tested ZIP + `SHA256SUMS.txt`.
+6. If that version already has a GitHub Release, CI leaves it untouched instead of overwriting published assets.
