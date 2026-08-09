@@ -136,9 +136,6 @@ namespace LethalAICrewmate
         {
             if (nm == null || !nm.IsServer || nm.CustomMessagingManager == null)
                 return;
-            if (!NetMessenger.IsHostSessionReadyForBuddy())
-                return;
-
             foreach (var data in CrewmateRegistry.All)
             {
                 if (data?.Enemy == null || data.Enemy.isEnemyDead || data.NetworkObjectId == 0)
