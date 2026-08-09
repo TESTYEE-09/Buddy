@@ -13,7 +13,7 @@ namespace LethalAICrewmate
     {
         public const string ModGuid = "com.lethalaicrewmate.buddy";
         public const string ModName = "Buddy";
-        public const string ModVersion = "2.6.0";
+        public const string ModVersion = "2.8.0";
 
         internal static Plugin Instance;
         internal static ManualLogSource Log;
@@ -189,7 +189,7 @@ namespace LethalAICrewmate
             ObservationIntervalSeconds = Config.Bind("Crewmate", "ObservationIntervalSeconds", 0f,
                 "Seconds between unsolicited LLM observations (0 = off).");
             SlowBurnHorror = Config.Bind("Character", "SlowBurnHorror", true,
-                "Let Buddy slowly become more unsettling across quota cycles, survived rounds and confirmed crew deaths. Presentation only: never enables hostility, sabotage or invented sensor events.");
+                "Let Buddy slowly become more unsettling across quota cycles, survived rounds and deaths he locally witnessed. Presentation only: never enables hostility, sabotage or invented sensor events.");
             ResetSlowBurnProgress = Config.Bind("Character", "ResetSlowBurnProgress", false,
                 "Set true to reset the current save's slow-burn story to the ordinary coworker on the next host load. Automatically returns to false.");
 
@@ -312,6 +312,7 @@ namespace LethalAICrewmate
                 BuddyPoseSync.Tick();
                 BuddyMovementWatchdog.Tick();
                 BuddyDangerCallout.Tick();
+                BuddyAutonomy.Tick();
             }
             catch (Exception ex)
             {
