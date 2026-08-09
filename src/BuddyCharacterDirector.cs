@@ -106,18 +106,9 @@ namespace LethalAICrewmate
                         evidenceBeat = MakeBeat(BuddyArcEvent.RoundStarted, "new landed round seed " + seed, seed);
                     }
 
-                    int living = Mathf.Max(0, sor.livingPlayers);
-                    if (_lastLivingPlayers >= 0 && living < _lastLivingPlayers)
-                    {
-                        int deaths = _lastLivingPlayers - living;
-                        _witnessedDeaths += deaths;
-                        BuddyArcEvent kind = living == 1 ? BuddyArcEvent.LastCrewmate : BuddyArcEvent.CrewDeath;
-                        _progress = BuddyCharacterArc.AdvanceScore(_progress,
-                            BuddyCharacterArc.EventPoints(kind, deaths));
-                        evidenceBeat = MakeBeat(kind, deaths + " confirmed crew death(s); " + living + " living player(s)",
-                            sor.randomMapSeed + _witnessedDeaths);
-                    }
-                    _lastLivingPlayers = living;
+                    // A global living-player count is not evidence Buddy witnessed a death.
+                    // Follow-target death handling records only locally confirmable events.
+                    _lastLivingPlayers = Mathf.Max(0, sor.livingPlayers);
                 }
 
                 if (quotaCycles > _lastQuotaCycles)
@@ -170,6 +161,19 @@ namespace LethalAICrewmate
             _progress = 0;
             _pending = null;
             CurrentStage = BuddyArcStage.Coworker;
+        }
+
+        internal static void RecordWitnessedDeath(string playerName)
+        {
+            if (!CrewmateSpawner.IsHost() || Plugin.SlowBurnHorror?.Value != true) return;
+            _witnessedDeaths++;
+            int living = Mathf.Max(0, StartOfRound.Instance?.livingPlayers ?? 0);
+            BuddyArcEvent kind = living <= 1 ? BuddyArcEvent.LastCrewmate : BuddyArcEvent.CrewDeath;
+            _progress = BuddyCharacterArc.AdvanceScore(_progress, BuddyCharacterArc.EventPoints(kind, 1));
+            _pending = MakeBeat(kind,
+                "Buddy personally witnessed " + (string.IsNullOrWhiteSpace(playerName) ? "a crewmate" : playerName) + " die nearby.",
+                (StartOfRound.Instance?.randomMapSeed ?? 0) + _witnessedDeaths);
+            SaveProgress();
         }
 
         private static PendingBeat MakeBeat(BuddyArcEvent eventKind, string evidence, int variantSeed) =>
