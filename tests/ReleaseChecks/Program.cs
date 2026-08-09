@@ -16,6 +16,75 @@ static class Program
         Check(!TransportValidation.IsExactChunk(15000, 7000, 7000, 6000), "reject short middle chunk");
         Check(!TransportValidation.IsExactChunk(15000, 7000, 21000, 1), "reject out-of-range chunk");
 
+        Check(LobbyVisibilityPolicy.Parse(" public ") == LobbyVisibility.Public, "parse public lobby visibility");
+        Check(LobbyVisibilityPolicy.Parse("FRIENDS") == LobbyVisibility.Friends, "parse friends lobby visibility");
+        Check(LobbyVisibilityPolicy.Parse("inviteOnly") == LobbyVisibility.InviteOnly, "parse invite-only lobby visibility");
+        Check(!LobbyVisibilityPolicy.AllowsRestrictedRemoteFeatures(LobbyVisibility.Public), "block restricted features in public lobbies");
+        Check(!LobbyVisibilityPolicy.AllowsRestrictedRemoteFeatures(LobbyVisibilityPolicy.Parse(null)), "fail closed when lobby visibility is missing");
+        Check(!LobbyVisibilityPolicy.AllowsRestrictedRemoteFeatures(LobbyVisibilityPolicy.Parse("unexpected")), "fail closed for unknown lobby visibility");
+        Check(LobbyVisibilityPolicy.AllowsRestrictedRemoteFeatures(LobbyVisibility.Friends) &&
+              LobbyVisibilityPolicy.AllowsRestrictedRemoteFeatures(LobbyVisibility.InviteOnly),
+              "allow restricted features only in known private lobbies");
+
+        Check(BuddyCharacterArc.StageFor(0, 0, 0) == BuddyArcStage.Coworker, "character arc starts as an ordinary coworker");
+        Check(BuddyCharacterArc.StageFor(0, 2, 0) == BuddyArcStage.Coworker, "character arc does not turn ominous immediately");
+        Check(BuddyCharacterArc.StageFor(0, 3, 0) == BuddyArcStage.OffNote, "character arc develops an off note slowly");
+        Check(BuddyCharacterArc.StageFor(1, 4, 0) == BuddyArcStage.Unsettling, "character arc reaches unsettling after sustained play");
+        Check(BuddyCharacterArc.StageFor(2, 3, 2) == BuddyArcStage.Cold, "character arc reaches cold only after substantial evidence");
+        Check(BuddyCharacterArc.Beat(BuddyArcStage.Coworker, BuddyArcEvent.CrewDeath, 1) == null,
+              "ordinary stage does not force horror beats");
+        string unsettlingBeat = BuddyCharacterArc.Beat(BuddyArcStage.Unsettling, BuddyArcEvent.LastCrewmate, 7);
+        Check(!string.IsNullOrWhiteSpace(unsettlingBeat) && unsettlingBeat.Length <= 80,
+              "unsettling beat remains a short coworker line");
+        Check(BuddyCharacterArc.PromptDirective(BuddyArcStage.Cold).Contains("Never attack") &&
+              BuddyCharacterArc.PromptDirective(BuddyArcStage.Cold).Contains("fabricate evidence"),
+              "late character arc cannot override gameplay safety or truth");
+        Check(BuddyCharacterArc.TtsDirection(BuddyArcStage.Cold).Contains("Never use a monster voice"),
+              "late character voice stays restrained rather than theatrical");
+        Check(BuddyCharacterArc.Score(int.MaxValue, int.MaxValue, int.MaxValue) == int.MaxValue,
+              "character score arithmetic saturates safely");
+        Check(BuddyCharacterArc.AdvanceScore(int.MaxValue, 4) == int.MaxValue,
+              "persisted character score cannot overflow");
+        int simulatedArc = 0;
+        simulatedArc = BuddyCharacterArc.AdvanceScore(simulatedArc, BuddyCharacterArc.EventPoints(BuddyArcEvent.RoundStarted, 3));
+        Check(simulatedArc == 3 && BuddyCharacterArc.StageForScore(simulatedArc) == BuddyArcStage.OffNote,
+              "three confirmed rounds produce the first slow-burn stage");
+        simulatedArc = BuddyCharacterArc.AdvanceScore(simulatedArc, BuddyCharacterArc.EventPoints(BuddyArcEvent.CrewDeath, 1));
+        Check(simulatedArc == 5 && BuddyCharacterArc.StageForScore(simulatedArc) == BuddyArcStage.OffNote,
+              "one death does not skip directly to full horror");
+        simulatedArc = BuddyCharacterArc.AdvanceScore(simulatedArc, BuddyCharacterArc.EventPoints(BuddyArcEvent.QuotaAdvanced, 1));
+        Check(simulatedArc == 9 && BuddyCharacterArc.StageForScore(simulatedArc) == BuddyArcStage.Unsettling,
+              "confirmed quota progression advances the persistent arc");
+        Check(BuddyCharacterArc.EventPoints(BuddyArcEvent.StageAdvanced, 99) == 0,
+              "stage announcements cannot recursively advance character progress");
+        bool safeBeatCatalog = true;
+        foreach (BuddyArcStage stage in Enum.GetValues<BuddyArcStage>())
+        foreach (BuddyArcEvent eventKind in Enum.GetValues<BuddyArcEvent>())
+        for (int variant = 0; variant < 2; variant++)
+        {
+            string beat = BuddyCharacterArc.Beat(stage, eventKind, variant);
+            if (beat == null) continue;
+            string lowerBeat = beat.Trim().ToLowerInvariant();
+            if (beat.Length > 80 || beat.Contains('\r') || beat.Contains('\n') || beat.Contains('[') ||
+                lowerBeat.StartsWith("buy ") || lowerBeat.StartsWith("route ") || lowerBeat.StartsWith("open ") ||
+                lowerBeat.StartsWith("close ") || lowerBeat.StartsWith("disable ") || lowerBeat.StartsWith("spawn ") ||
+                lowerBeat.StartsWith("follow ") || lowerBeat.StartsWith("go ") || lowerBeat.StartsWith("leave "))
+                safeBeatCatalog = false;
+        }
+        Check(safeBeatCatalog, "scripted horror catalog stays short, plain and non-commanding");
+        Check(BuddyCharacterArc.InitialProgress(false, 0, 2) == 8,
+              "first install can join an established campaign at its earned arc stage");
+        Check(BuddyCharacterArc.InitialProgress(true, 0, 2) == 0,
+              "explicitly reset saved arc stays reset despite existing quota history");
+        Check(BuddyCharacterArc.QuotaDeltaPoints(2, 2) == 0,
+              "save reload does not count the same fulfilled quotas twice");
+        Check(BuddyCharacterArc.QuotaDeltaPoints(2, 3) == 4,
+              "only newly fulfilled quota cycles advance persistent progress");
+        string continuity = BuddyCharacterArc.ContinuitySummary(2, 3, 1);
+        Check(continuity.Contains("fulfilled 2 quota") && continuity.Contains("3 additional landed") &&
+              continuity.Contains("1 crew death") && continuity.Contains("do not recite counters"),
+              "character memory exposes only confirmed bounded campaign counters");
+
         byte[] audible = MakeWav(16000, 1f, 0.12f);
         Check(TransportValidation.TryValidateMonoPcm16Wav(audible, 400 * 1024, 0.35f, 12.5f, 0.008f, out _), "accept bounded audible WAV");
         byte[] silence = MakeWav(16000, 1f, 0f);
@@ -26,6 +95,11 @@ static class Program
         byte[] truncated = new byte[audible.Length - 2];
         Buffer.BlockCopy(audible, 0, truncated, 0, truncated.Length);
         Check(!TransportValidation.TryValidateMonoPcm16Wav(truncated, 400 * 1024, 0.35f, 12.5f, 0.008f, out _), "reject inconsistent data length");
+        byte[] overflowingChunk = (byte[])audible.Clone();
+        WriteAscii(overflowingChunk, 12, "JUNK");
+        WriteInt(overflowingChunk, 16, int.MaxValue);
+        Check(!TransportValidation.TryValidateMonoPcm16Wav(overflowingChunk, 400 * 1024, 0.35f, 12.5f, 0.008f, out _),
+              "reject overflowing RIFF chunk size without throwing");
 
         byte[] withListChunk = MakeWavWithExtraChunk(audible, "LIST", new byte[] { (byte)'I', (byte)'N', (byte)'F', (byte)'O' });
         Check(TransportValidation.TryValidateMonoPcm16Wav(withListChunk, 400 * 1024, 0.35f, 12.5f, 0.008f, out _),
@@ -61,6 +135,12 @@ static class Program
         Check(ShipCommandParsing.TryParseFacilityAction("open door c7", out _, out facilityEnable) && facilityEnable,
               "parse terminal door open");
         Check(!ShipCommandParsing.TryParseFacilityAction("c7", out _, out _), "reject bare facility code without action");
+        Check(!ShipCommandParsing.TryParseFacilityAction("terminal c7", out _, out _), "reject implicit terminal-code disable");
+        Check(!ShipCommandParsing.TryParseFacilityAction("code c7", out _, out _), "reject implicit code disable");
+        Check(ShipCommandParsing.IsGenericTerminalPassthrough("terminal route titan"), "identify generic terminal passthrough");
+        Check(ShipCommandParsing.IsStateChangingRequest("buy 3 flashlights"), "classify purchase as state changing");
+        Check(ShipCommandParsing.IsStateChangingRequest("open door c7"), "classify facility action as state changing");
+        Check(!ShipCommandParsing.IsStateChangingRequest("terminal store"), "keep store query read only");
         Check(ShipCommandParsing.IsStatusRequest("what time is it?"), "parse ship status question");
         Check(!ShipCommandParsing.IsStatusRequest("what's the weather in Brisbane?"), "do not hijack real-world weather question");
 
@@ -96,36 +176,37 @@ static class Program
             Plugin.SaveResponses = new ConfigEntry<bool> { Value = true };
             Plugin.CrewmateName = new ConfigEntry<string> { Value = "Buddy" };
 
-            ResponseJournal.NoteInput("voice", "eamon", "stay in place");
-            ResponseJournal.RecordReply("Parked. Try not to miss me.");
+            long voiceId = ResponseJournal.NoteInput("voice", "eamon", "stay in place");
+            ResponseJournal.RecordReply(voiceId, "Parked. Try not to miss me.");
             string journalPath = Path.Combine(journalDir, "LethalAICrewmate-responses.log");
             Check(File.Exists(journalPath), "journal file created");
             string text = File.ReadAllText(journalPath);
             Check(text.Contains("voice | eamon: \"stay in place\"") && text.Contains("Parked. Try not to miss me."),
                   "journal pairs input with reply");
 
-            ResponseJournal.NoteInput("chat", "sam", "where's the scrap?");
-            ResponseJournal.RecordReply("Two bits of scrap. Worth carrying.");
-            ResponseJournal.NoteInput("command", "sam", "open door c7");
-            ResponseJournal.RecordReply("Door's open. Hope it was worth it.");
+            long slowChatId = ResponseJournal.NoteInput("chat", "sam", "where's the scrap?");
+            long fastCommandId = ResponseJournal.NoteInput("command", "sam", "open door c7");
+            ResponseJournal.RecordReply(fastCommandId, "Door's open. Hope it was worth it.");
+            ResponseJournal.RecordReply(slowChatId, "Two bits of scrap. Worth carrying.");
             text = File.ReadAllText(journalPath);
-            Check(text.Contains("chat | sam: \"where's the scrap?\"") && text.Contains("command | sam: \"open door c7\""),
-                  "journal preserves FIFO input pairing");
+            Check(text.Contains("chat | sam: \"where's the scrap?\" -> Buddy: \"Two bits of scrap. Worth carrying.\"") &&
+                  text.Contains("command | sam: \"open door c7\" -> Buddy: \"Door's open. Hope it was worth it.\""),
+                  "journal correlates out-of-order replies to the correct input");
 
-            ResponseJournal.NoteInput("chat", "sam", "say something secret");
+            long secretId = ResponseJournal.NoteInput("chat", "sam", "say something secret");
             Plugin.SaveResponses.Value = false;
-            ResponseJournal.RecordReply("silent reply");
+            ResponseJournal.RecordReply(secretId, "silent reply");
             Check(!File.ReadAllText(journalPath).Contains("silent reply"), "journal suppressed by SaveResponses config");
 
             Plugin.SaveResponses.Value = true;
-            ResponseJournal.NoteInput("chat", "sam", "where's the scrap?");
+            long freshId = ResponseJournal.NoteInput("chat", "sam", "fresh question");
             ResponseJournal.RecordDirect("callout", "system", "deterministic danger callout", "RUN! Bracken is right on us!", "bracken within 4.2m");
-            ResponseJournal.RecordReply("Two bits of scrap. Worth carrying.");
+            ResponseJournal.RecordReply(freshId, "Fresh answer.");
             text = File.ReadAllText(journalPath);
             Check(text.Contains("callout | system: \"deterministic danger callout\"") &&
-                  text.Contains("chat | sam: \"where's the scrap?\"") &&
-                  text.Contains("Two bits of scrap. Worth carrying."),
-                  "direct callout record does not consume pending input note");
+                  text.Contains("chat | sam: \"fresh question\"") && text.Contains("Fresh answer.") &&
+                  !text.Contains("say something secret\" -> Buddy: \"Fresh answer"),
+                  "disabled journal input cannot leak into a later pairing");
         }
         finally
         {

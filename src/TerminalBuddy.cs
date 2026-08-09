@@ -47,6 +47,17 @@ namespace LethalAICrewmate
 
             try
             {
+                // Read-only terminal queries remain available. State-changing requests from
+                // remote players require either a verified private lobby or an explicit opt-in.
+                if (ShipCommandParsing.IsStatusRequest(lower))
+                    return BuildShipStatus(lower);
+                if (lower == "moons" || lower == "list moons" || lower == "terminal moons")
+                    return ListMoons();
+                if (lower == "store" || lower == "terminal store")
+                    return ShowCreditsAndStoreHint();
+                if (ShipCommandParsing.IsStateChangingRequest(lower) && !CanRunRemoteGameAction(requestingPlayerId))
+                    return "Remote ship and terminal actions are disabled unless this is a verified friends/invite-only lobby.";
+
                 if (ShipCommandParsing.TryParsePoliteSpawn(lower, out string spawnItem, out int spawnQuantity))
                     return SpawnItemInFront(spawnItem, spawnQuantity, requestingPlayerId);
 
@@ -69,9 +80,6 @@ namespace LethalAICrewmate
                 if (lower.StartsWith("buy "))
                     return BuyItem(lower.Substring(4).Trim());
 
-                if (ShipCommandParsing.IsStatusRequest(lower))
-                    return BuildShipStatus(lower);
-
                 if (ShipCommandParsing.TryParseFacilityAction(lower, out string facilityCode, out bool enableFacility))
                     return SetFacilityObject(facilityCode, enableFacility, InferFacilityKind(lower));
 
@@ -92,14 +100,8 @@ namespace LethalAICrewmate
                     (lower.Contains("turn on") || lower.Contains("turn off") || lower.Contains("lights on") || lower.Contains("lights off")))
                     return SetShipLights(!lower.Contains("off"));
 
-                if (lower == "moons" || lower == "list moons" || lower == "terminal moons")
-                    return ListMoons();
-
-                if (lower == "store" || lower == "terminal store")
-                    return ShowCreditsAndStoreHint();
-
-                if (lower.StartsWith("terminal "))
-                    return RunTerminalSentence(lower.Substring(9).Trim());
+                if (ShipCommandParsing.IsGenericTerminalPassthrough(lower))
+                    return "Use a supported explicit command: status, moons, store, route, buy, door code, turret, mine, ship door, or lights.";
             }
             catch (Exception ex)
             {
@@ -188,6 +190,18 @@ namespace LethalAICrewmate
             foreach (var player in players)
                 if (player != null && (int)player.playerClientId == playerId) return player;
             return playerId >= 0 && playerId < players.Length ? players[playerId] : null;
+        }
+
+        private static bool CanRunRemoteGameAction(int requestingPlayerId)
+        {
+            if (requestingPlayerId < 0 || Plugin.RemoteGameActionsInPublicLobbies?.Value == true)
+                return true;
+            var nm = NetworkManager.Singleton;
+            if (nm == null || !nm.IsServer) return false;
+            var player = ResolvePlayer(requestingPlayerId);
+            ulong senderId = player != null ? player.actualClientId : (ulong)requestingPlayerId;
+            if (senderId == NetworkManager.ServerClientId) return true;
+            return LobbySafety.AllowsRestrictedRemoteFeaturesByDefault();
         }
 
         private static string NormalizeItemName(string value)
@@ -533,7 +547,7 @@ namespace LethalAICrewmate
         }
 
         /// <summary>Best-effort: feed a sentence into Terminal.ParsePlayerSentence / OnSubmit.</summary>
-        public static string RunTerminalSentence(string sentence)
+        private static string RunTerminalSentence(string sentence)
         {
             if (string.IsNullOrWhiteSpace(sentence)) return null;
             var term = UnityEngine.Object.FindObjectOfType<Terminal>();

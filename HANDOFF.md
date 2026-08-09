@@ -1,12 +1,12 @@
-# HANDOFF — LethalAICrewmate v2.4.2
+# HANDOFF — Buddy v2.5.0
 
 ## Current status
 
-LethalAICrewmate is a BepInEx 5 mod for **Lethal Company v81** adding a friendly AI crewmate named Buddy.
+Buddy is a BepInEx 5 mod for **Lethal Company v81** adding a friendly AI crewmate named Buddy. Public source: `https://github.com/TESTYEE-09/Buddy`.
 
-Release target: **v2.4.2** (wire protocol **7**).
+Release target: **v2.5.0** (wire protocol **7**, unchanged because no wire format changed).
 
-v2.4.2: public-lobby hardening — remote push-to-talk is rejected by default in public Steam lobbies (`[Security] RemoteVoiceInPublicLobbies`, default false; `LobbySafety` reads the Facepunch "joinable" lobby key). Friends/invite-only lobbies always allow remote voice. v2.4.1 hardening notes: terminal side effects require addressing Buddy; the enemy-kill guard cannot abort vanilla kills; config migration preserves Groq provider models; `[Vision] Enabled` is honored (default off); speech queue clears on lobby change; recovery teleports refuse void targets; spawn fallback never adopts engaged Masked enemies; ChatHearRange positional audio works; WAV validation parses RIFF chunks; 56 release checks.
+v2.5.0 adds the shippable slow-burn character arc after the v2.4.3 public audit hardening. Buddy begins as the trustworthy dry coworker, then progresses through OffNote, Unsettling and Cold stages using numeric progress from confirmed quota cycles, landed rounds and witnessed deaths. Progress plus a quota baseline persist per Lethal Company save; dialogue/transcripts do not, reloads cannot double-count quotas, and `ResetSlowBurnProgress=true` restarts the story. Each model turn gets only confirmed quota/session counters for subtle continuity. Sparse deterministic beats have a 150-second cooldown, conversation and OpenAI TTS direction change by stage, and `[Character] SlowBurnHorror=false` opts out. The arc is presentation-only and cannot enable hostility, sabotage, fabricated events or action authority. Release checks: 91.
 
 Automated release requirements:
 
@@ -24,12 +24,13 @@ Automated release requirements:
 - Buddy body: neutralized networked `MaskedPlayerEnemy`.
 - Host authoritative for AI movement, item actions and all provider API calls.
 - Multiplayer clients never receive the host API key.
-- Every player must run the same LethalAICrewmate version/protocol.
+- Every player must run the same Buddy version/protocol.
 - Buddy spawn is compatibility-gated. An unmodded/mismatched client disables Buddy rather than allowing a hostile/desynced Masked on that client.
 - Late joins recover Buddy + held-item state.
 - Buddy text and generated TTS audio are replicated to compatible clients.
 - Native OpenAI Realtime voice (hold-to-talk, Ash voice) runs over an authenticated host WebSocket with a deterministic `execute_game_command` tool.
-- Every Buddy reply is journaled with its paired player input to `BepInEx/LethalAICrewmate-responses.log` (host only; `[Logging] SaveResponses` toggle).
+- Optional response journaling records paired raw player input/replies to `BepInEx/LethalAICrewmate-responses.log` on the host (`[Logging] SaveResponses=false` by default).
+- The slow-burn arc persists only `LethalAICrewmate_CharacterArcProgress` and `LethalAICrewmate_CharacterArcQuotaCycles` as integers in the current game save.
 
 ## AI providers
 
@@ -94,6 +95,14 @@ When doing a real in-game multi-PC test:
 13. Try an explicit `buddy buy ...` command and verify only one purchase occurs.
 14. Clear/break the host API key: Buddy movement remains functional and API features fail without crashing the game.
 15. Verify native Realtime push-to-talk: host and remote hold-to-talk produce one synced Buddy voice reply, and commands spoken into it execute once.
+16. In a public lobby, verify remote PTT and remote buy/route/facility/spawn commands are rejected while host actions and remote read-only status still work.
+17. Simulate missing/unknown lobby visibility and verify the same fail-closed behavior; verify friends/invite-only still allows remote PTT/actions.
+18. Enable `SaveResponses` with informed participants and verify concurrent text, deterministic command and Realtime replies remain paired to the correct input.
+19. Play through multiple landed rounds and a fulfilled quota; verify the arc advances gradually, survives a save reload, and never emits a character beat without the corresponding round/quota/death evidence.
+20. Set `[Character] SlowBurnHorror=false`; verify Buddy immediately uses the ordinary coworker prompt/voice and emits no further arc beats.
+21. Set `ResetSlowBurnProgress=true`, reload as host, verify the log reports `Coworker progress=0`, and confirm the switch automatically returns to false.
+
+No live host-plus-friend v2.5.0 test has been performed yet; the package remains a release candidate until this checklist is smoke-tested, including multi-day arc progression and opt-out behavior.
 
 ## Security note
 

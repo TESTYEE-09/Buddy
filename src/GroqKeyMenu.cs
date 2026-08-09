@@ -54,7 +54,7 @@ namespace LethalAICrewmate
             GUI.Box(new Rect(x, y, PanelWidth, PanelHeight), GUIContent.none);
             GUILayout.BeginArea(new Rect(x + 14f, y + 11f, PanelWidth - 28f, PanelHeight - 22f));
 
-            GUILayout.Label("Lethal AI Crewmate - " + GroqSecrets.ProviderName);
+            GUILayout.Label("Buddy - " + GroqSecrets.ProviderName);
             GUILayout.Label("API key (host only — never shared with clients)");
 
             _keyBuffer = GUILayout.PasswordField(_keyBuffer ?? "", '*', GUILayout.Height(26f));

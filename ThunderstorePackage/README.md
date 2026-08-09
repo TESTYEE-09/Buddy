@@ -1,13 +1,17 @@
-# LethalAICrewmate
+# Buddy
 
-Buddy is a friendly AI crewmate for **Lethal Company v81**. He follows the crew, answers chat, obeys commands, fetches scrap and speaks through the host's selected AI provider.
+> A useful crewmate with a memory. The longer you work together, the stranger it gets.
+
+Buddy starts as a friendly AI crewmate for **Lethal Company v81**. He follows the crew, answers chat, obeys commands, fetches scrap and speaks through the host's selected AI provider. Across a campaign he remembers just enough to become something quieter, colder and harder to trust.
 
 ## Install
 
 - Install **BepInExPack 5.4.2100**.
-- Install the **same LethalAICrewmate version on every player**.
+- Install the **same Buddy version on every player**.
 - The host adds an OpenAI API key from the small main-menu panel and presses **Test**.
 - Only the host needs the selected provider key.
+
+When upgrading from the former `LethalAICrewmate` package listing, remove that entry first so the plugin is not loaded twice.
 
 ## Multiplayer
 
@@ -19,7 +23,7 @@ Buddy is a friendly AI crewmate for **Lethal Company v81**. He follows the crew,
 - Safe late-join state recovery.
 - Synced chat and synced Buddy speech for compatible clients.
 - Every modded player can use Buddy push-to-talk; client mic clips are bounded and relayed to the host for transcription.
-- Groq keys are never sent over multiplayer.
+- Provider API keys are never sent over multiplayer.
 
 ## Commands
 
@@ -45,6 +49,8 @@ Buddy can report live time, credits, quota/deadline, moon/weather, ship scrap an
 
 Buddy is conversation-first rather than a sensor/wiki narrator. He is a dry, practical coworker who says the useful Lethal Company answer first, then uses low-key situational humour only when it fits. He avoids forced catchphrases, hyperactive internet slang and mascot-style jokes; he also ignores harmless background wildlife unless it is actually relevant.
 
+`SlowBurnHorror` is on by default. Buddy begins as the safe, familiar coworker, then changes gradually across real quota cycles, landed rounds and witnessed crew deaths: first an off-note, then restrained psychological horror, then a cold and possessive edge. Sparse evidence-triggered lines and stage-aware voice direction make the shift noticeable without constant chatter. Only numeric progress and its quota baseline persist in the current save; Buddy never becomes hostile, sabotages the run or invents world events. Set `[Character] SlowBurnHorror = false` to opt out, or set `ResetSlowBurnProgress = true` once to restart the current save's story.
+
 ## Voice
 
 Host:
@@ -55,7 +61,9 @@ Client:
 
 `client mic -> host relay -> GPT-Realtime-2.1 mini native speech-to-speech (Ash) -> synced Buddy voice`
 
-Buddy selects the same active microphone as Lethal Company's voice chat, amplifies quiet speech, and reports failed transcriptions to the speaking client. Replies are synchronized to matching players. Screen capture is disabled. Keys saved in the menu persist in the host's Windows Credential Manager. Public-lobby hosts can set `[Security] AllowRemoteVoice = false`.
+Buddy selects the same active microphone as Lethal Company's voice chat, amplifies quiet speech, and reports failed transcriptions to the speaking client. Replies are synchronized to matching players. Screenshot vision is off by default. Keys saved in the menu persist in the host's Windows Credential Manager. Buddy's spoken voice is AI-generated.
+
+Remote PTT and remote state-changing terminal/ship commands are allowed by default only in a verified friends/invite-only Steam lobby. Public, missing, unknown or failed visibility checks block them unless the host explicitly enables `RemoteVoiceInPublicLobbies` and/or `RemoteGameActionsInPublicLobbies`. Read-only status/store/moon queries remain available.
 
 v2 includes a bounded polite item-spawn joke: say `Buddy, please spawn a flashlight in front of me` or `Buddy, can I please have a flashlight? I'm begging you.` Only validated grabbable items work, with a maximum of 3 per request and 12 per round; enemies, hazards and arbitrary prefabs are rejected.
 
@@ -73,7 +81,9 @@ Groq requires the organization owner to accept the Orpheus model terms once in i
 - Buddy chat/voice range: global
 - Nearby question/client PTT range: `60m`
 - Vision: disabled
+- Response journal: disabled; opting in records raw chat and voice transcripts on the host
+- Slow-burn horror character arc: enabled; presentation-only and safely opt-out
 
 Config file: `BepInEx/config/com.lethalaicrewmate.buddy.cfg`
 
-Source: https://github.com/TESTYEE-09/LethalAICrewmate
+Source: https://github.com/TESTYEE-09/Buddy

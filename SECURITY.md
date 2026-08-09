@@ -23,17 +23,31 @@ Historical private builds contained a shared Groq credential. Any credential tha
 ## Multiplayer trust boundary
 
 - The host is authoritative for Buddy spawning, AI, item actions and all provider API calls.
-- Remote push-to-talk is enabled for matching friends by default. Set `[Security] AllowRemoteVoice = false`
-  when hosting an untrusted public lobby.
-- In public Steam lobbies remote push-to-talk is additionally rejected by default
-  (`[Security] RemoteVoiceInPublicLobbies = false`): strangers cannot upload audio that would
-  consume the host's provider budget or be transcribed by the speech service. Set it to `true`
-  to allow remote voice everywhere. Friends/invite-only lobbies always allow remote voice.
+- `AllowRemoteVoice` permits matching clients to use the relay, but `RemoteVoiceInPublicLobbies = false`
+  accepts remote audio only after Steam visibility is positively identified as friends/invite-only.
+  Public, missing, unknown and failed visibility checks are blocked. Set it to `true` only if the host
+  explicitly accepts remote audio and provider cost in untrusted/unknown lobbies.
+- Remote purchases, routes, polite item spawning and ship/facility changes follow the same fail-closed
+  boundary through `RemoteGameActionsInPublicLobbies = false`. The host and read-only status/store/moon
+  queries remain available. Arbitrary terminal sentence passthrough is not exposed.
 - When enabled, remote voice is sender-bound, compatibility-gated, range-gated before allocation,
   rate-limited, size-limited, transfer-capped and WAV/RMS-validated before it reaches the provider.
 - Clients send only a compatibility hello and, when explicitly enabled, bounded voice transfers through the mod's custom networking path.
 - Clients accept Buddy state only from `NetworkManager.ServerClientId` after a successful exact version/protocol handshake.
 - Buddy does not spawn if any connected remote player is unmodded or incompatible.
+
+## Local response journal
+
+`[Logging] SaveResponses = false` is the default and older configs are migrated to off. Opting in stores
+raw player chat, voice transcripts, Buddy replies and confirmed tool results on the host at
+`BepInEx/LethalAICrewmate-responses.log` (bounded to 2 MB). Treat this file as sensitive player data and
+obtain the crew's informed consent before enabling or sharing it. Input/reply correlation uses explicit
+turn IDs so concurrent chat, deterministic commands and Realtime tool calls cannot cross-pair records.
+
+Buddy's spoken output is AI-generated.
+- The optional slow-burn character arc persists only numeric progress and its quota-cycle baseline in the current game save.
+  It stores no dialogue, transcript, player name or personal fact. Arc stages affect dialogue/voice presentation
+  only and cannot grant movement, terminal, spawn, combat or network authority.
 - LLM text cannot directly buy items, route moons or change Buddy movement state; those actions require deterministic player-command parsing.
 
 ## Release protections

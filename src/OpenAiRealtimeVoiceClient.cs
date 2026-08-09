@@ -27,7 +27,6 @@ namespace LethalAICrewmate
         private static ClientWebSocket _socket;
         private static CancellationTokenSource _sessionCancel;
         private static readonly SemaphoreSlim SendLock = new SemaphoreSlim(1, 1);
-        private static string _lastToolResult;
 
         private sealed class VoiceTurn
         {
@@ -35,6 +34,7 @@ namespace LethalAICrewmate
             public int PlayerId;
             public string PlayerName;
             public string Instructions;
+            public long JournalId;
         }
 
         internal static bool Enabled => GroqSecrets.IsOpenAi &&
@@ -133,6 +133,8 @@ namespace LethalAICrewmate
                     try { await ProcessTurnAsync(turn).ConfigureAwait(false); }
                     catch (Exception ex)
                     {
+                        ResponseJournal.Discard(turn.JournalId);
+                        turn.JournalId = 0;
                         Plugin.Log?.LogWarning("Realtime voice turn failed: " + ex.GetType().Name + ": " + ex.Message);
                         CloseSocket();
                         string reason = ex.Message ?? "Unknown Realtime error";
@@ -158,6 +160,7 @@ namespace LethalAICrewmate
 
         private static async Task ProcessTurnAsync(VoiceTurn turn)
         {
+            string toolResult = null;
             await EnsureConnectedAsync().ConfigureAwait(false);
             string update = BuildSessionUpdate(turn.Instructions);
             await SendAsync(update, _sessionCancel.Token).ConfigureAwait(false);
@@ -195,7 +198,11 @@ namespace LethalAICrewmate
                     if (type == "conversation.item.input_audio_transcription.completed")
                     {
                         string transcript = ReadJsonString(message, "transcript");
-                        if (!string.IsNullOrWhiteSpace(transcript)) QueueInputTranscript(turn.PlayerName, transcript);
+                        if (!string.IsNullOrWhiteSpace(transcript))
+                        {
+                            if (turn.JournalId == 0) turn.JournalId = ResponseJournal.NoteInput("voice", turn.PlayerName, transcript);
+                            QueueInputTranscript(turn.PlayerName, transcript);
+                        }
                     }
                     else if (type == "response.output_audio.delta")
                     {
@@ -225,7 +232,12 @@ namespace LethalAICrewmate
                     else if (type == "response.done")
                     {
                         bool wasCancelled = FinishResponse();
-                        if (wasCancelled) return;
+                        if (wasCancelled)
+                        {
+                            ResponseJournal.Discard(turn.JournalId);
+                            turn.JournalId = 0;
+                            return;
+                        }
                         if (!string.IsNullOrEmpty(pendingCallId))
                         {
                             audio.SetLength(0);
@@ -233,6 +245,7 @@ namespace LethalAICrewmate
                             completedAudioChunks.Clear();
                             assistantTranscript = "";
                             string result = await ExecuteCommandOnMainThread(turn.PlayerId, pendingCommand).ConfigureAwait(false);
+                            toolResult = result;
                             string output = "{\"result\":\"" + LlmClient.Escape(result) + "\"}";
                             string toolEvent = "{\"type\":\"conversation.item.create\",\"item\":{\"type\":\"function_call_output\",\"call_id\":\"" +
                                                LlmClient.Escape(pendingCallId) + "\",\"output\":\"" + LlmClient.Escape(output) + "\"}}";
@@ -266,9 +279,15 @@ namespace LethalAICrewmate
                     QueueAudioChunk(pcm);
                     queuedAnyAudio = true;
                 }
-                if (!string.IsNullOrWhiteSpace(assistantTranscript)) QueueAssistantChat(assistantTranscript);
+                if (!string.IsNullOrWhiteSpace(assistantTranscript))
+                {
+                    QueueAssistantChat(assistantTranscript, turn.JournalId, toolResult);
+                    turn.JournalId = 0;
+                }
                 if (!queuedAnyAudio) throw new InvalidOperationException("Realtime response completed without audio.");
             }
+            ResponseJournal.Discard(turn.JournalId);
+            turn.JournalId = 0;
         }
 
         private static async Task EnsureConnectedAsync()
@@ -352,13 +371,11 @@ namespace LethalAICrewmate
                 try
                 {
                     string result = ChatObserver.ExecuteDeterministicOnly(command, playerId);
-                    _lastToolResult = result;
                     done.TrySetResult(result);
                 }
                 catch (Exception ex)
                 {
                     string failure = "Command failed: " + ex.Message;
-                    _lastToolResult = failure;
                     done.TrySetResult(failure);
                 }
             });
@@ -370,7 +387,6 @@ namespace LethalAICrewmate
             MainThread.Enqueue(() =>
             {
                 Plugin.Log?.LogInfo("Realtime voice transcript " + playerName + ": " + transcript);
-                ResponseJournal.NoteInput("voice", playerName, transcript);
                 HUDManager.Instance?.AddChatMessage(transcript, playerName + " (voice)");
             });
         }
@@ -385,9 +401,10 @@ namespace LethalAICrewmate
             });
         }
 
-        private static void QueueAssistantChat(string transcript) => MainThread.Enqueue(() => QueueAssistantChatNow(transcript));
+        private static void QueueAssistantChat(string transcript, long journalId, string toolResult) =>
+            MainThread.Enqueue(() => QueueAssistantChatNow(transcript, journalId, toolResult));
 
-        private static void QueueAssistantChatNow(string transcript)
+        private static void QueueAssistantChatNow(string transcript, long journalId, string toolResult)
         {
             var primary = CrewmateRegistry.GetPrimary();
             Vector3 pos = primary?.Enemy != null ? primary.Enemy.transform.position : Vector3.zero;
@@ -395,8 +412,7 @@ namespace LethalAICrewmate
             string name = Plugin.CrewmateName?.Value ?? "Buddy";
             NetMessenger.BroadcastCrewmateChat(name, transcript, pos, netId);
             ProximityChat.TryShowLocal(name, transcript, pos);
-            ResponseJournal.RecordReply(transcript, _lastToolResult);
-            _lastToolResult = null;
+            ResponseJournal.RecordReply(journalId, transcript, toolResult);
         }
 
         private static void QueueHint(string message) => MainThread.Enqueue(() =>

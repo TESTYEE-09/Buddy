@@ -44,7 +44,8 @@ namespace LethalAICrewmate
             for (int at = 12; at + 8 <= wav.Length;)
             {
                 int size = BitConverter.ToInt32(wav, at + 4);
-                if (size < 0 || at + 8 + size > wav.Length)
+                int payloadOffset = at + 8;
+                if (size < 0 || size > wav.Length - payloadOffset)
                 {
                     reason = "corrupt RIFF chunk";
                     return false;
@@ -67,7 +68,17 @@ namespace LethalAICrewmate
                         return false;
                     }
                 }
-                at += 8 + size + (size & 1);
+                int next = payloadOffset + size;
+                if ((size & 1) != 0)
+                {
+                    if (next >= wav.Length)
+                    {
+                        reason = "corrupt RIFF chunk padding";
+                        return false;
+                    }
+                    next++;
+                }
+                at = next;
             }
 
             if (dataOffset < 0 || dataBytes <= 0 || dataOffset + dataBytes > wav.Length)

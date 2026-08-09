@@ -28,6 +28,8 @@ namespace LethalAICrewmate
                     BuddyTts.ResetSession();
                     LlmClient.ResetSession();
                     ResponseJournal.ResetSession();
+                    LobbySafety.ResetSession();
+                    BuddyCharacterDirector.ResetSession();
                     CrewmateSpawner.DespawnAll();
                     Plugin.Log?.LogInfo("Cleared LethalAICrewmate session state after network disconnect/change.");
                 }

@@ -12,39 +12,50 @@ namespace LethalAICrewmate
     internal static class LobbySafety
     {
         private static bool _warned;
-        private static bool _lastKnownPublic;
+        private static LobbyVisibility _lastKnownVisibility = LobbyVisibility.Unknown;
         private static float _nextCheckAt;
 
-        internal static bool IsPublicLobby()
+        internal static LobbyVisibility GetVisibility()
         {
             try
             {
                 float now = Time.unscaledTime;
-                if (now < _nextCheckAt) return _lastKnownPublic;
+                if (now < _nextCheckAt) return _lastKnownVisibility;
                 _nextCheckAt = now + 5f;
 
                 var gm = GameNetworkManager.Instance;
                 if (gm == null || !gm.currentLobby.HasValue)
                 {
-                    _lastKnownPublic = false;
-                    return false;
+                    _lastKnownVisibility = LobbyVisibility.Unknown;
+                    return _lastKnownVisibility;
                 }
 
                 string joinable = gm.currentLobby.Value.GetData("joinable");
-                _lastKnownPublic = string.Equals(joinable, "public", StringComparison.OrdinalIgnoreCase);
-                return _lastKnownPublic;
+                _lastKnownVisibility = LobbyVisibilityPolicy.Parse(joinable);
+                return _lastKnownVisibility;
             }
             catch (Exception ex)
             {
-                // Detection problems must not break friends lobbies: treat the lobby as private
-                // (remote voice allowed) and say so loudly so the host can decide.
+                _lastKnownVisibility = LobbyVisibility.Unknown;
                 if (!_warned)
                 {
                     _warned = true;
-                    Plugin.Log?.LogWarning("Lobby visibility could not be detected; treating lobby as private. " + ex.Message);
+                    Plugin.Log?.LogWarning("Lobby visibility could not be detected; restricted remote features will remain disabled. " + ex.Message);
                 }
-                return false;
+                return _lastKnownVisibility;
             }
+        }
+
+        internal static bool IsPublicLobby() => GetVisibility() == LobbyVisibility.Public;
+
+        internal static bool AllowsRestrictedRemoteFeaturesByDefault() =>
+            LobbyVisibilityPolicy.AllowsRestrictedRemoteFeatures(GetVisibility());
+
+        internal static void ResetSession()
+        {
+            _lastKnownVisibility = LobbyVisibility.Unknown;
+            _nextCheckAt = 0f;
+            _warned = false;
         }
     }
 }

@@ -1,5 +1,26 @@
 # Changelog
 
+## 2.5.0
+
+- Renames the public mod and repository branding to **Buddy**, with a new minimalist human coworker icon and the tagline: "A useful crewmate with a memory. The longer you work together, the stranger it gets."
+- Adds an opt-out slow-burn horror character arc inspired by the emotional shape of companion horror: Buddy begins as the trustworthy dry coworker, develops subtle off-notes, becomes quietly unsettling, and eventually turns cold and possessive.
+- Progress is host-authoritative and grounded in confirmed campaign evidence: fulfilled quota cycles, new landed rounds and witnessed crew deaths. Numeric progress and its quota baseline persist in the current Lethal Company save; no dialogue or personal data is stored. Reloads cannot double-count a quota.
+- Adds sparse deterministic character beats for real round, quota and death events, with a 150-second cooldown. The early game never forces ominous lines.
+- Adapts both conversation policy and OpenAI TTS direction by stage, moving from familiar coworker delivery to restrained psychological horror without a monster voice or cartoon-villain writing.
+- The arc is presentation-only: Buddy remains neutralized and helpful, never attacks, sabotages, invents sensor evidence, bypasses host authority or encourages a lethal decision. Set `[Character] SlowBurnHorror = false` for the ordinary coworker throughout.
+- Adds the one-shot `[Character] ResetSlowBurnProgress` switch to restart the current save's story without deleting the campaign.
+- Expands deterministic release checks from 70 to 91.
+
+## 2.4.3
+
+- Fails closed when Steam lobby visibility is missing, unknown or throws: remote PTT and remote state-changing game actions require a verified friends/invite-only lobby unless the host explicitly opts in.
+- Makes raw response journaling an explicit opt-in (`[Logging] SaveResponses = false`) and migrates older configs to the private default.
+- Correlates journal inputs and replies by turn ID, preventing deterministic replies, observations and Realtime tool results from pairing with another player's input.
+- Removes arbitrary terminal passthrough and requires an explicit enable/disable/open/close verb for facility codes.
+- Rejects overflowing RIFF chunk sizes, refuses recovery teleports without a nearby NavMesh point, and fixes OpenAI screenshot requests to use Responses image input with the configured Luna model.
+- Replaces the oversized gameplay encyclopedia prompt with a lean v81 coworker policy: short grounded replies, evidence-only proactivity and precise host-authoritative action rules.
+- Adds public-release privacy and AI-generated voice disclosures and expands deterministic release checks from 56 to 70.
+
 ## 2.4.2
 
 - Public-lobby hardening: remote push-to-talk voice is rejected by default in public Steam lobbies, protecting the host's API budget and keeping strangers' audio away from the speech service. Friends/invite-only lobbies are unaffected; hosts can opt in with `[Security] RemoteVoiceInPublicLobbies = true`. The host gets an in-game notice when the lobby is public.

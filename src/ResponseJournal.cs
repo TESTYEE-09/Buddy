@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text;
+using System.Collections.Generic;
 using BepInEx;
 
 namespace LethalAICrewmate
@@ -17,8 +18,9 @@ namespace LethalAICrewmate
         private const long MaxBytes = 2L * 1024 * 1024;
         private const int MaxPendingNotes = 32;
         private static readonly object Gate = new object();
-        private static readonly System.Collections.Generic.Queue<InputNote> PendingInputs =
-            new System.Collections.Generic.Queue<InputNote>();
+        private static readonly Dictionary<long, InputNote> PendingInputs = new Dictionary<long, InputNote>();
+        private static readonly Queue<long> PendingOrder = new Queue<long>();
+        private static long _nextInputId = 1;
         private static string _resolvedPath;
 
         private sealed class InputNote
@@ -28,19 +30,33 @@ namespace LethalAICrewmate
             internal string Input;
         }
 
-        /// <summary>Record an incoming player message so the next Buddy reply can be paired with it.</summary>
-        internal static void NoteInput(string mode, string speaker, string input)
+        internal static string JournalPath => ResolvePath();
+
+        /// <summary>Record an incoming player message and return its explicit reply-correlation id.</summary>
+        internal static long NoteInput(string mode, string speaker, string input)
         {
+            if (!IsEnabled()) return 0;
             lock (Gate)
             {
-                if (PendingInputs.Count >= MaxPendingNotes) PendingInputs.Dequeue();
-                PendingInputs.Enqueue(new InputNote
+                while (PendingInputs.Count >= MaxPendingNotes && PendingOrder.Count > 0)
+                    PendingInputs.Remove(PendingOrder.Dequeue());
+                long id = _nextInputId++;
+                if (_nextInputId <= 0) _nextInputId = 1;
+                PendingInputs[id] = new InputNote
                 {
                     Mode = string.IsNullOrWhiteSpace(mode) ? "system" : mode,
                     Speaker = string.IsNullOrWhiteSpace(speaker) ? "-" : speaker.Trim(),
                     Input = Sanitize(input)
-                });
+                };
+                PendingOrder.Enqueue(id);
+                return id;
             }
+        }
+
+        internal static void Discard(long inputId)
+        {
+            if (inputId == 0) return;
+            lock (Gate) PendingInputs.Remove(inputId);
         }
 
         /// <summary>
@@ -51,7 +67,7 @@ namespace LethalAICrewmate
         {
             try
             {
-                if (Plugin.SaveResponses != null && !Plugin.SaveResponses.Value) return;
+                if (!IsEnabled()) return;
                 var sb = new StringBuilder(320);
                 sb.Append('[').Append(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")).Append("] ");
                 sb.Append(string.IsNullOrWhiteSpace(mode) ? "system" : mode).Append(" | ");
@@ -73,26 +89,30 @@ namespace LethalAICrewmate
         /// <summary>Drop unpaired input notes when a session ends so stale pairings cannot leak across lobbies.</summary>
         internal static void ResetSession()
         {
-            lock (Gate) PendingInputs.Clear();
+            lock (Gate)
+            {
+                PendingInputs.Clear();
+                PendingOrder.Clear();
+            }
         }
 
-        /// <summary>Write a Buddy reply to the journal, paired with the oldest unpaired input note.</summary>
-        internal static void RecordReply(string reply, string toolResult = null)
+        /// <summary>Write a Buddy reply paired only with its explicitly correlated input.</summary>
+        internal static void RecordReply(long inputId, string reply, string toolResult = null)
         {
             try
             {
-                if (Plugin.SaveResponses != null && !Plugin.SaveResponses.Value) return;
                 string mode = "system", speaker = "-", input = "-";
                 lock (Gate)
                 {
-                    if (PendingInputs.Count > 0)
+                    if (inputId != 0 && PendingInputs.TryGetValue(inputId, out InputNote note))
                     {
-                        InputNote note = PendingInputs.Dequeue();
+                        PendingInputs.Remove(inputId);
                         mode = note.Mode;
                         speaker = note.Speaker;
                         input = note.Input;
                     }
                 }
+                if (!IsEnabled()) return;
 
                 var sb = new StringBuilder(320);
                 sb.Append('[').Append(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")).Append("] ");
@@ -136,7 +156,7 @@ namespace LethalAICrewmate
                 bool exists = File.Exists(path);
                 if (!exists)
                     File.AppendAllText(path,
-                        "# LethalAICrewmate response journal — every Buddy reply with its paired input.\n" +
+                        "# LethalAICrewmate response journal - every Buddy reply with its paired input.\n" +
                         "# Format: [time] mode | speaker: \"input\" -> Buddy: \"reply\" [tool: result]\n",
                         Encoding.UTF8);
                 File.AppendAllText(path, line, Encoding.UTF8);
@@ -168,5 +188,7 @@ namespace LethalAICrewmate
             if (string.IsNullOrEmpty(value)) return "-";
             return value.Replace('\r', ' ').Replace('\n', ' ').Trim();
         }
+
+        private static bool IsEnabled() => Plugin.SaveResponses != null && Plugin.SaveResponses.Value;
     }
 }

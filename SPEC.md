@@ -1,10 +1,11 @@
-# LethalAICrewmate — v2.3.0 Design Spec
+# Buddy — v2.5.0 Design Spec
 
 BepInEx 5 plugin for **Lethal Company v81**. Adds a friendly AI-driven crewmate NPC (default name **Buddy**) backed by OpenAI (default) or Groq on the host.
 
 ## Release architecture
 
 - One `netstandard2.1` BepInEx assembly: `LethalAICrewmate.dll`.
+- Public product/package name: **Buddy**. The assembly filename, namespace, plugin GUID, wire message names, credential target, save keys and existing response-log filename intentionally retain legacy identifiers for upgrade and multiplayer compatibility.
 - Pinned game references: `LethalCompany.GameLibs.Steam 81.0.5-ngd.0`.
 - Harmony patches only; no custom network prefab or asset bundle required.
 - Buddy uses the game's registered `MaskedPlayerEnemy` NetworkObject, then the mod neutralizes the hostile Masked behaviour and drives a host-side state machine.
@@ -18,6 +19,7 @@ Protocol version is maintained in `NetMessenger.ProtocolVersion` and must be inc
 Client outbound custom messages:
 
 - `Hello`: local mod version + protocol only.
+- `VoiceStart` / `VoiceChunk`: bounded remote PTT upload to the host when security policy permits it.
 
 Server outbound custom messages:
 
@@ -26,6 +28,7 @@ Server outbound custom messages:
 - `ItemAttach`: mirror held scrap visuals.
 - `CrewmateChat`: Buddy name/text/position.
 - `TtsStart` / `TtsChunk`: already-generated, downsampled Buddy speech.
+- `VoiceHint`: bounded relay/transcription feedback to the speaking client.
 
 Rules:
 
@@ -34,7 +37,7 @@ Rules:
 - Late joiners request current Buddy + held-item state through the handshake path.
 - Item attach messages are retried briefly client-side while spawned objects are still becoming available.
 - If an unmodded or incompatible client is present, Buddy stays disabled. If one joins mid-round, an active Buddy is despawned until the session is compatible again.
-- The Groq API key is never part of a network message.
+- The selected provider API key is never part of a network message.
 
 ## Buddy body and AI
 
@@ -75,17 +78,37 @@ Explicit terminal and ship actions (`route`, quantity-aware `buy`, coded facilit
 
 Movement orders use one deterministic parser so overlapping conversational keywords cannot accidentally change state. Scout-ahead orders choose a complete reachable path 4-18 metres along the requester's facing direction, report nearby same-area threats or scrap, pause briefly, then return to `FollowOwner`. A blocked or stalled scout cancels safely instead of teleporting forward.
 
-## Groq
+## Slow-burn character arc
 
-Host config section:
+`[Character] SlowBurnHorror=true` enables a four-stage presentation arc: `Coworker`, `OffNote`,
+`Unsettling`, and `Cold`. The host increments a numeric score only from confirmed game evidence:
+fulfilled quota cycles, new landed round seeds, and drops in `StartOfRound.livingPlayers`. Thresholds
+are deliberately slow (3, 8, and 15 points). Two integers are stored in the current Lethal Company
+save: `LethalAICrewmate_CharacterArcProgress` and the last counted
+`LethalAICrewmate_CharacterArcQuotaCycles`. The baseline prevents quota double-counting across reloads;
+no player dialogue, transcript, name, or inferred personal fact is persisted. A one-shot
+`ResetSlowBurnProgress=true` resets both values for the current save and automatically clears itself.
+
+Stage changes tune the conversation policy and OpenAI TTS performance direction. Sparse deterministic
+lines may fire after a real round/quota/death event, with a 150-second cooldown. Stage zero produces no
+forced horror beats. Arc state cannot change movement, combat, terminal, spawn, networking, visibility
+or authorization policy; Buddy remains a neutralized companion at every stage.
+
+## AI providers
+
+OpenAI is the stock provider: `gpt-5.6-luna` through Responses (Fast tier, low reasoning,
+low verbosity), `gpt-live-transcribe`, `gpt-4o-mini-tts` with Ash, and
+`gpt-realtime-2.1-mini` for native PTT. Groq remains an optional legacy provider.
+
+Groq host config section:
 
 - `Groq.ApiKey`: empty by default; saved locally.
-- `Groq.Model`: `qwen/qwen3.6-27b` multimodal production default.
+- `Groq.Model`: `openai/gpt-oss-120b` text default.
 - `Groq.SttModel`: `whisper-large-v3-turbo`.
 - `Groq.TtsModel`: `canopylabs/orpheus-v1-english`.
 - `Groq.TtsVoice`: `troy` by default.
 
-The main-menu panel supports **Save / Test / Clear**. Test validates the key against Groq's models endpoint.
+The main-menu panel supports **Save / Test / Clear** for the selected provider.
 
 Vision is disabled by default. If the host opts in, use a Groq model that supports images, such as `qwen/qwen3.6-27b` while available.
 
@@ -94,7 +117,7 @@ LLM rules:
 - live game sensor context is included,
 - the model is instructed not to invent unseen enemies/hazards,
 - replies are short,
-- movement tags can be parsed for Buddy movement only,
+- model-produced movement/action tags are stripped; only deterministic host parsing changes game state,
 - one request at a time with a bounded queue,
 - no API work blocks the Unity main thread.
 
@@ -102,7 +125,7 @@ LLM rules:
 
 Host push-to-talk defaults to **B**:
 
-`host microphone -> Groq Whisper -> LLM -> Groq Orpheus -> Buddy speech`
+`host microphone -> selected STT/native Realtime path -> Buddy response -> synced AI-generated speech`
 
 TTS is generated exactly once on the host. The decoded clip is downmixed/downsampled to 16 kHz mono PCM, capped, chunked over reliable NGO named messages, rebuilt on clients and played locally near Buddy. Multiplayer clients do not make Groq calls.
 
@@ -115,6 +138,8 @@ Fetch mode finds valid unheld scrap, moves to it, mirrors a held visual on clien
 - No API key default in source or binaries.
 - Never log the API key.
 - Never transmit the API key to clients.
+- Response journaling is opt-in and stores raw chat/transcripts only on the host; paired turns use explicit correlation IDs.
+- Public or unverified lobby visibility fails closed for remote audio and state-changing game actions unless the host opts in.
 - Legacy `[OpenRouter] ApiKey` migration only accepts a Groq-shaped `gsk_` key; other provider keys are ignored.
 - Historical private builds contained a shared key; that historical key must be revoked/rotated externally.
 - Generated DLLs and release ZIPs are not tracked in source.

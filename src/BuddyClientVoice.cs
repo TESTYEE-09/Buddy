@@ -88,7 +88,7 @@ namespace LethalAICrewmate
                     // Tell the host once they are in a public lobby that remote voice is off,
                     // even before any stranger tries to speak.
                     if (Plugin.RemoteVoiceInPublicLobbies?.Value == false && LobbySafety.IsPublicLobby())
-                        WarnPublicLobbyVoiceOnce();
+                        WarnRestrictedVoiceOnce();
                     ExpireHostTransfers();
                     StartNextHostTranscription();
                 }
@@ -113,7 +113,7 @@ namespace LethalAICrewmate
             _hostBusy = false;
             _clientRecording = false;
             _clientSending = false;
-            _publicVoiceWarned = false;
+            _restrictedVoiceWarned = false;
             if (_clientClip != null)
             {
                 AudioClip old = _clientClip;
@@ -333,17 +333,17 @@ namespace LethalAICrewmate
             }
         }
 
-        private static bool _publicVoiceWarned;
+        private static bool _restrictedVoiceWarned;
 
-        private static void WarnPublicLobbyVoiceOnce()
+        private static void WarnRestrictedVoiceOnce()
         {
-            if (_publicVoiceWarned) return;
-            _publicVoiceWarned = true;
-            Plugin.Log?.LogWarning("Public lobby detected: remote Buddy push-to-talk is disabled (Security.RemoteVoiceInPublicLobbies=false). Friends lobbies are unaffected.");
+            if (_restrictedVoiceWarned) return;
+            _restrictedVoiceWarned = true;
+            Plugin.Log?.LogWarning("Remote Buddy push-to-talk is disabled because the lobby is public or its visibility cannot be verified (Security.RemoteVoiceInPublicLobbies=false).");
             try
             {
                 HUDManager.Instance?.DisplayTip("Buddy",
-                    "Public lobby: remote Buddy voice is disabled to protect the host's API budget and privacy. Set [Security] RemoteVoiceInPublicLobbies = true to allow it.",
+                    "Remote Buddy voice is disabled unless this is a verified friends/invite-only lobby. The host can explicitly opt in under [Security].",
                     false, false, "BuddyPublicVoiceTip");
             }
             catch { /* optional */ }
@@ -362,9 +362,10 @@ namespace LethalAICrewmate
                 // Public-lobby hardening: remote push-to-talk costs the host API budget and
                 // processes strangers' audio, so it is rejected in public lobbies unless the
                 // host explicitly opts in. Friends/invite-only lobbies are unaffected.
-                if (Plugin.RemoteVoiceInPublicLobbies?.Value == false && LobbySafety.IsPublicLobby())
+                if (Plugin.RemoteVoiceInPublicLobbies?.Value == false && !LobbySafety.AllowsRestrictedRemoteFeaturesByDefault())
                 {
-                    WarnPublicLobbyVoiceOnce();
+                    WarnRestrictedVoiceOnce();
+                    SendClientHint(senderId, "Remote Buddy voice is disabled unless the host can verify a friends/invite-only lobby.");
                     return;
                 }
 
@@ -403,6 +404,11 @@ namespace LethalAICrewmate
                 if (nm == null || !nm.IsServer || Plugin.AllowRemoteVoice?.Value != true || senderId == NetworkManager.ServerClientId ||
                     !IsConnectedRemote(nm, senderId) || !NetMessenger.IsCompatibleClient(senderId))
                     return;
+                if (Plugin.RemoteVoiceInPublicLobbies?.Value == false && !LobbySafety.AllowsRestrictedRemoteFeaturesByDefault())
+                {
+                    IncomingBySender.Remove(senderId);
+                    return;
+                }
                 if (!IncomingBySender.TryGetValue(senderId, out var incoming) || incoming == null)
                     return;
 
@@ -462,6 +468,12 @@ namespace LethalAICrewmate
 
         private static void StartNextHostTranscription()
         {
+            if (Plugin.RemoteVoiceInPublicLobbies?.Value == false && !LobbySafety.AllowsRestrictedRemoteFeaturesByDefault())
+            {
+                HostQueue.Clear();
+                QueuedSenders.Clear();
+                return;
+            }
             if (_hostBusy || HostQueue.Count == 0 || Plugin.Host == null)
                 return;
             if (!GroqSecrets.HasKey)

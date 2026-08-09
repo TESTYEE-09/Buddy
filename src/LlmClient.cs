@@ -27,6 +27,7 @@ namespace LethalAICrewmate
         private static float _lastCallTime = -999f;
         private static Coroutine _running;
         private static float _requestStartedAt = -999f;
+        private static long _inFlightJournalId;
         private static string _lastRequestKey = "";
         private static float _lastRequestAt = -999f;
 
@@ -34,7 +35,7 @@ namespace LethalAICrewmate
         {
             try
             {
-                Queue.Clear();
+                while (Queue.Count > 0) ResponseJournal.Discard(Queue.Dequeue().JournalId);
                 History.Clear();
                 _inFlight = false;
                 _lastCallTime = -999f;
@@ -44,6 +45,8 @@ namespace LethalAICrewmate
                 }
                 _running = null;
                 _requestStartedAt = -999f;
+                ResponseJournal.Discard(_inFlightJournalId);
+                _inFlightJournalId = 0;
                 _lastRequestKey = "";
                 _lastRequestAt = -999f;
             }
@@ -59,6 +62,7 @@ namespace LethalAICrewmate
             public string HistoryContent;
             public bool IsObservation;
             public bool WantVision;
+            public long JournalId;
         }
 
         private struct ChatTurn
@@ -69,9 +73,9 @@ namespace LethalAICrewmate
 
         public static bool HasApiKey => GroqSecrets.HasKey;
 
-        public static void EnqueuePlayerMessage(string playerName, string message, bool isCommand)
+        public static bool EnqueuePlayerMessage(string playerName, string message, bool isCommand, long journalId)
         {
-            if (!HasApiKey) return;
+            if (!HasApiKey) return false;
             var content = new StringBuilder(1400);
             content.AppendLine("[PLAYER MESSAGE - ANSWER THIS FIRST]");
             content.Append(string.IsNullOrWhiteSpace(playerName) ? "Player" : playerName)
@@ -81,17 +85,17 @@ namespace LethalAICrewmate
             content.AppendLine().AppendLine("[LIVE GAME CONTEXT - SILENT BACKGROUND UNLESS RELEVANT]")
                 .AppendLine(GameSensors.BuildLiveContext())
                 .AppendLine("[Do not turn sensor entries into the topic. Harmless wildlife requires no callout.]");
-            Enqueue(content.ToString(), isObservation: false, withVision: VisionIntent.IsVisualQuestion(message));
+            return Enqueue(content.ToString(), isObservation: false, withVision: VisionIntent.IsVisualQuestion(message), journalId: journalId);
         }
 
         public static void EnqueueObservation(string summary)
         {
             if (!HasApiKey) return;
             string sensors = GameSensors.BuildLiveContext();
-            Enqueue(sensors + "\n[Observation] " + summary, isObservation: true, withVision: false);
+            Enqueue(sensors + "\n[Observation] " + summary, isObservation: true, withVision: false, journalId: 0);
         }
 
-        private static void Enqueue(string userContent, bool isObservation, bool withVision = false)
+        private static bool Enqueue(string userContent, bool isObservation, bool withVision = false, long journalId = 0)
         {
             userContent = BuddyFourthWall.MaybeAnnotate(userContent, isObservation);
             string historyContent = BuildHistoryContent(userContent, isObservation);
@@ -100,7 +104,7 @@ namespace LethalAICrewmate
             if (!isObservation && requestKey == _lastRequestKey && now - _lastRequestAt < DuplicateWindowSeconds)
             {
                 Plugin.Log?.LogInfo("Dropped duplicate Buddy request before Groq.");
-                return;
+                return false;
             }
 
             // Observations are disposable background work. Never stack stale observations behind
@@ -108,26 +112,28 @@ namespace LethalAICrewmate
             if (isObservation)
             {
                 foreach (var queued in Queue)
-                    if (queued.IsObservation) return;
+                    if (queued.IsObservation) return false;
             }
 
             if (Queue.Count >= MaxQueue)
             {
                 Plugin.Log?.LogInfo("LLM queue full; dropping request.");
-                return;
+                return false;
             }
             Queue.Enqueue(new PendingRequest
             {
                 UserContent = userContent,
                 HistoryContent = historyContent,
                 IsObservation = isObservation,
-                WantVision = withVision
+                WantVision = withVision,
+                JournalId = journalId
             });
             if (!isObservation)
             {
                 _lastRequestKey = requestKey;
                 _lastRequestAt = now;
             }
+            return true;
         }
 
         private static string BuildHistoryContent(string userContent, bool isObservation)
@@ -176,6 +182,8 @@ namespace LethalAICrewmate
                         }
                         _running = null;
                         _inFlight = false;
+                        ResponseJournal.Discard(_inFlightJournalId);
+                        _inFlightJournalId = 0;
                         Plugin.Log?.LogWarning("Recovered a Buddy chat request that exceeded the hard request ceiling.");
                     }
                     return;
@@ -184,13 +192,14 @@ namespace LethalAICrewmate
                 if (Plugin.Host == null) return;
                 if (!HasApiKey)
                 {
-                    Queue.Clear();
+                    while (Queue.Count > 0) ResponseJournal.Discard(Queue.Dequeue().JournalId);
                     return;
                 }
                 if (Time.time - _lastCallTime < MinInterval) return;
                 if (!CrewmateSpawner.IsHost()) return;
 
                 var req = Queue.Dequeue();
+                _inFlightJournalId = req.JournalId;
                 _running = Plugin.Host.StartCoroutine(SendRequest(req));
             }
             catch (Exception ex)
@@ -216,12 +225,12 @@ namespace LethalAICrewmate
             if (pending.WantVision)
                 VisionCapture.TryCaptureJpegBase64(out imageB64);
 
-            string model = imageB64 != null
-                ? (Plugin.VisionModel?.Value ?? "qwen/qwen3.6-27b")
-                : (Plugin.Model?.Value ?? (GroqSecrets.IsOpenAi ? "gpt-5.6-luna" : "openai/gpt-oss-120b"));
-            bool useResponses = GroqSecrets.IsOpenAi && imageB64 == null;
+            string model = GroqSecrets.IsOpenAi
+                ? (Plugin.Model?.Value ?? "gpt-5.6-luna")
+                : (imageB64 != null ? (Plugin.VisionModel?.Value ?? "qwen/qwen3.6-27b") : (Plugin.Model?.Value ?? "openai/gpt-oss-120b"));
+            bool useResponses = GroqSecrets.IsOpenAi;
             string body = useResponses
-                ? BuildResponsesRequestJson(systemPrompt, requestHistory, model)
+                ? BuildResponsesRequestJson(systemPrompt, requestHistory, model, imageB64)
                 : BuildRequestJson(systemPrompt, requestHistory, imageB64, model);
             string endpoint = useResponses ? GroqSecrets.OpenAiResponsesEndpoint : GroqSecrets.ChatEndpoint;
 
@@ -259,7 +268,7 @@ namespace LethalAICrewmate
                             : ParseAssistantContent(responseText);
                         content = StripThinking(content);
                         if (!string.IsNullOrEmpty(content))
-                            HandleAssistantReply(content, pending.HistoryContent);
+                            HandleAssistantReply(content, pending.HistoryContent, pending.JournalId);
                         else
                             Plugin.Log?.LogWarning($"{GroqSecrets.ProviderName} chat: empty assistant content (after stripping thinking)");
                     }
@@ -273,20 +282,22 @@ namespace LethalAICrewmate
                 {
                     Plugin.Log?.LogInfo("Retrying chat without vision…");
                     string fallbackModel = Plugin.Model?.Value ?? (GroqSecrets.IsOpenAi ? "gpt-5.6-luna" : "openai/gpt-oss-120b");
-                    yield return SendRequestNoVision(systemPrompt, fallbackModel, requestHistory, pending.HistoryContent);
+                    yield return SendRequestNoVision(systemPrompt, fallbackModel, requestHistory, pending.HistoryContent, pending.JournalId);
                 }
             }
 
             _inFlight = false;
             _running = null;
             _requestStartedAt = -999f;
+            ResponseJournal.Discard(pending.JournalId);
+            _inFlightJournalId = 0;
         }
 
-        private static IEnumerator SendRequestNoVision(string systemPrompt, string model, List<ChatTurn> requestHistory, string historyContent)
+        private static IEnumerator SendRequestNoVision(string systemPrompt, string model, List<ChatTurn> requestHistory, string historyContent, long journalId)
         {
             bool useResponses = GroqSecrets.IsOpenAi;
             string body = useResponses
-                ? BuildResponsesRequestJson(systemPrompt, requestHistory, model)
+                ? BuildResponsesRequestJson(systemPrompt, requestHistory, model, null)
                 : BuildRequestJson(systemPrompt, requestHistory, null, model);
             string endpoint = useResponses ? GroqSecrets.OpenAiResponsesEndpoint : GroqSecrets.ChatEndpoint;
             using (var uwr = new UnityWebRequest(endpoint, "POST"))
@@ -305,7 +316,7 @@ namespace LethalAICrewmate
                         ? ParseResponsesContent(responseText)
                         : ParseAssistantContent(responseText));
                     if (!string.IsNullOrEmpty(content))
-                        HandleAssistantReply(content, historyContent);
+                        HandleAssistantReply(content, historyContent, journalId);
                 }
                 else
                     Plugin.Log?.LogWarning($"{GroqSecrets.ProviderName} chat retry HTTP {uwr.responseCode}: {uwr.error}");
@@ -374,7 +385,7 @@ namespace LethalAICrewmate
             return sb.ToString();
         }
 
-        private static string BuildResponsesRequestJson(string systemPrompt, List<ChatTurn> history, string model)
+        private static string BuildResponsesRequestJson(string systemPrompt, List<ChatTurn> history, string model, string imageJpegBase64)
         {
             var sb = new StringBuilder(8192);
             sb.Append("{\"model\":\"").Append(Escape(model)).Append("\",");
@@ -385,8 +396,17 @@ namespace LethalAICrewmate
             for (int i = 0; i < history.Count; i++)
             {
                 if (i > 0) sb.Append(',');
-                sb.Append("{\"role\":\"").Append(Escape(history[i].Role)).Append("\",\"content\":\"")
-                  .Append(Escape(history[i].Content)).Append("\"}");
+                bool lastUserWithVision = imageJpegBase64 != null && i == history.Count - 1 && history[i].Role == "user";
+                sb.Append("{\"role\":\"").Append(Escape(history[i].Role)).Append("\",\"content\":");
+                if (lastUserWithVision)
+                {
+                    sb.Append("[{\"type\":\"input_text\",\"text\":\"").Append(Escape(history[i].Content)).Append("\"},");
+                    sb.Append("{\"type\":\"input_image\",\"image_url\":\"data:image/jpeg;base64,")
+                      .Append(imageJpegBase64).Append("\",\"detail\":\"auto\"}]");
+                }
+                else
+                    sb.Append('"').Append(Escape(history[i].Content)).Append('"');
+                sb.Append('}');
             }
             sb.Append("]}");
             return sb.ToString();
@@ -602,7 +622,7 @@ namespace LethalAICrewmate
             return sb.ToString().Trim();
         }
 
-        private static void HandleAssistantReply(string content, string historyContent)
+        private static void HandleAssistantReply(string content, string historyContent, long journalId)
         {
             string display = StripThinking(content);
             string moveTag = null;
@@ -637,7 +657,7 @@ namespace LethalAICrewmate
             NetMessenger.BroadcastCrewmateChat(name, display, pos, netId);
             ProximityChat.TryShowLocal(name, display, pos);
             BuddyTts.Speak(display, pos + Vector3.up * 1.6f);
-            ResponseJournal.RecordReply(display, !string.IsNullOrEmpty(termFb) ? termFb : null);
+            ResponseJournal.RecordReply(journalId, display, !string.IsNullOrEmpty(termFb) ? termFb : null);
 
             if (!string.IsNullOrEmpty(termFb) && termFb != display)
             {
@@ -646,7 +666,7 @@ namespace LethalAICrewmate
             }
         }
 
-        internal static void PublishLocalReply(string display)
+        internal static void PublishLocalReply(string display, long journalId = 0)
         {
             if (string.IsNullOrWhiteSpace(display)) return;
             var primary = CrewmateRegistry.GetPrimary();
@@ -656,7 +676,20 @@ namespace LethalAICrewmate
             NetMessenger.BroadcastCrewmateChat(name, display, pos, netId);
             ProximityChat.TryShowLocal(name, display, pos);
             BuddyTts.Speak(display, pos + Vector3.up * 1.6f);
-            ResponseJournal.RecordReply(display);
+            ResponseJournal.RecordReply(journalId, display);
+        }
+
+        internal static void PublishCharacterBeat(string display, string evidence)
+        {
+            if (string.IsNullOrWhiteSpace(display)) return;
+            var primary = CrewmateRegistry.GetPrimary();
+            Vector3 pos = primary?.Enemy != null ? primary.Enemy.transform.position : Vector3.zero;
+            ulong netId = primary?.NetworkObjectId ?? 0;
+            string name = Plugin.CrewmateName?.Value ?? "Buddy";
+            NetMessenger.BroadcastCrewmateChat(name, display, pos, netId);
+            ProximityChat.TryShowLocal(name, display, pos);
+            BuddyTts.Speak(display, pos + Vector3.up * 1.6f);
+            ResponseJournal.RecordDirect("character", "system", evidence, display);
         }
 
         private static void ExtractMoveTag(ref string display, ref string tag)

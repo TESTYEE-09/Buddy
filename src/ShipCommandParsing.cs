@@ -98,12 +98,37 @@ namespace LethalAICrewmate
                            lower.Contains("close") || lower.Contains("shut");
             bool turnOn = lower.Contains("enable") || lower.Contains("activate") || lower.Contains("turn on") ||
                           lower.Contains("open");
-            if (!turnOff && !turnOn && !lower.StartsWith("terminal ") && !lower.StartsWith("code "))
-                return false;
+            if (!turnOff && !turnOn) return false;
 
             code = match.Groups[1].Value;
             enable = turnOn && !turnOff;
             return true;
+        }
+
+        internal static bool IsGenericTerminalPassthrough(string value)
+        {
+            string lower = value?.Trim().ToLowerInvariant() ?? "";
+            return lower.StartsWith("terminal ") && lower != "terminal moons" && lower != "terminal store";
+        }
+
+        internal static bool IsStateChangingRequest(string value)
+        {
+            string lower = value?.Trim().ToLowerInvariant() ?? "";
+            if (string.IsNullOrEmpty(lower) || IsStatusRequest(lower) ||
+                lower == "moons" || lower == "list moons" || lower == "terminal moons" ||
+                lower == "store" || lower == "terminal store") return false;
+            if (TryParsePoliteSpawn(lower, out _, out _)) return true;
+            if (lower.StartsWith("buy ") || lower.StartsWith("route ") || lower.StartsWith("moon ")) return true;
+            if (lower.StartsWith("go to ") && !lower.Contains("ship") && !lower.Contains("home") &&
+                !lower.Contains("forward") && !lower.Contains("ahead")) return true;
+            if (TryParseFacilityAction(lower, out _, out _)) return true;
+            if ((lower.Contains("turret") || lower.Contains("landmine") || lower.Contains("mine")) &&
+                (lower.Contains("disable") || lower.Contains("deactivate") || lower.Contains("turn off") ||
+                 lower.Contains("enable") || lower.Contains("activate") || lower.Contains("turn on"))) return true;
+            if (lower.Contains("ship door") || lower.Contains("hangar door") || lower == "open doors" || lower == "close doors") return true;
+            if (lower.Contains("lights") && (lower.Contains("turn on") || lower.Contains("turn off") ||
+                lower.Contains("lights on") || lower.Contains("lights off"))) return true;
+            return IsGenericTerminalPassthrough(lower);
         }
     }
 }

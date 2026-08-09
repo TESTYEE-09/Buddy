@@ -12,7 +12,7 @@ if (!(Test-Path $dotnetCommand)) { throw "Could not locate dotnet.exe" }
 
 $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
 $version = [string]$manifest.version_number
-if ([string]$manifest.name -ne "LethalAICrewmate") { throw "Unexpected manifest name" }
+if ([string]$manifest.name -ne "Buddy") { throw "Unexpected manifest name" }
 if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "Manifest version must be x.y.z: $version" }
 if ([string]::IsNullOrWhiteSpace([string]$manifest.description)) { throw "Manifest description is empty" }
 if (@($manifest.dependencies) -notcontains "BepInEx-BepInExPack-5.4.2100") { throw "Required BepInEx dependency missing" }
@@ -26,7 +26,7 @@ if ($version -ne $projectVersion -or $version -ne $pluginVersion) {
     throw "Version mismatch: manifest=$version csproj=$projectVersion plugin=$pluginVersion"
 }
 
-$trackedBinaries = @(git -C $root ls-files 'LethalAICrewmate-*.zip' 'ThunderstorePackage/LethalAICrewmate.dll')
+$trackedBinaries = @(git -C $root ls-files 'Buddy-*.zip' 'LethalAICrewmate-*.zip' 'ThunderstorePackage/LethalAICrewmate.dll')
 if ($trackedBinaries.Count -gt 0) { throw "Generated release binaries must not be tracked: $($trackedBinaries -join ', ')" }
 
 # Block accidental key shipping before compilation.
@@ -75,7 +75,7 @@ $expected = @("LethalAICrewmate.dll", "manifest.json", "README.md", "CHANGELOG.m
 $actual = Get-ChildItem $staging -File | Select-Object -ExpandProperty Name | Sort-Object
 if (($expected -join '|') -ne ($actual -join '|')) { throw "Unexpected package contents: $($actual -join ', ')" }
 
-$zip = Join-Path $root "LethalAICrewmate-$version.zip"
+$zip = Join-Path $root "Buddy-$version.zip"
 if (Test-Path $zip) { Remove-Item $zip -Force }
 Compress-Archive -Path (Join-Path $staging "*") -DestinationPath $zip -CompressionLevel Optimal
 Remove-Item $staging -Recurse -Force
@@ -90,7 +90,7 @@ Remove-Item $verify -Recurse -Force
 
 $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
 $sumPath = Join-Path $root "SHA256SUMS.txt"
-"$hash  LethalAICrewmate-$version.zip" | Set-Content $sumPath -Encoding ascii
+"$hash  Buddy-$version.zip" | Set-Content $sumPath -Encoding ascii
 Write-Host "Built $zip"
 Write-Host "SHA256 $hash"
 Get-Item $zip, $dll, $sumPath | Format-Table Name, Length, LastWriteTime

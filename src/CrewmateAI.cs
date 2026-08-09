@@ -884,16 +884,14 @@ namespace LethalAICrewmate
 
                 if (data.State == CrewmateState.ReturnToShip || data.HeldItem != null)
                 {
-                    TeleportToPosition(data, GetShipDropPosition(), false, "return-to-ship stall");
-                    return true;
+                    return TeleportToPosition(data, GetShipDropPosition(), false, "return-to-ship stall");
                 }
 
                 if (data.State == CrewmateState.FetchScrap && data.FetchTarget != null)
                 {
                     bool outside = data.Enemy.isOutside;
                     try { outside = !data.FetchTarget.isInFactory; } catch { }
-                    TeleportToPosition(data, data.FetchTarget.transform.position, outside, "fetch stall");
-                    return true;
+                    return TeleportToPosition(data, data.FetchTarget.transform.position, outside, "fetch stall");
                 }
 
                 if (data.State == CrewmateState.ScoutAhead)
@@ -911,11 +909,15 @@ namespace LethalAICrewmate
             return false;
         }
 
-        private static void TeleportToPosition(CrewmateData data, Vector3 destination, bool outside, string reason)
+        private static bool TeleportToPosition(CrewmateData data, Vector3 destination, bool outside, string reason)
         {
             var enemy = data.Enemy;
-            if (NavMesh.SamplePosition(destination, out var hit, 12f, NavMesh.AllAreas))
-                destination = hit.position;
+            if (!NavMesh.SamplePosition(destination, out var hit, 12f, NavMesh.AllAreas))
+            {
+                Plugin.Log?.LogWarning($"Buddy refused unsafe teleport recovery reason={reason}: no NavMesh near {destination}.");
+                return false;
+            }
+            destination = hit.position;
             try { enemy.TeleportMaskedEnemyAndSync(destination, outside); }
             catch
             {
@@ -930,6 +932,7 @@ namespace LethalAICrewmate
             data.ManualDestination = destination;
             BuddyPoseSync.SendImmediate(data);
             Plugin.Log?.LogWarning($"Buddy safe teleport recovery reason={reason} outside={outside} position={destination}.");
+            return true;
         }
 
         private static void MaybeObserve(CrewmateData data)

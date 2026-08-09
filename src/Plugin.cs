@@ -11,8 +11,8 @@ namespace LethalAICrewmate
     public class Plugin : BaseUnityPlugin
     {
         public const string ModGuid = "com.lethalaicrewmate.buddy";
-        public const string ModName = "LethalAICrewmate";
-        public const string ModVersion = "2.4.2";
+        public const string ModName = "Buddy";
+        public const string ModVersion = "2.5.0";
 
         internal static Plugin Instance;
         internal static ManualLogSource Log;
@@ -35,6 +35,8 @@ namespace LethalAICrewmate
         internal static ConfigEntry<float> ChatHearRange;
         internal static ConfigEntry<float> ChatTriggerRange;
         internal static ConfigEntry<float> ObservationIntervalSeconds;
+        internal static ConfigEntry<bool> SlowBurnHorror;
+        internal static ConfigEntry<bool> ResetSlowBurnProgress;
         internal static ConfigEntry<bool> VoiceEnabled;
         internal static ConfigEntry<bool> AllowRemoteVoice;
         internal static ConfigEntry<KeyCode> VoiceKey;
@@ -45,10 +47,17 @@ namespace LethalAICrewmate
         internal static ConfigEntry<string> VisionModel;
         internal static ConfigEntry<bool> SaveResponses;
         internal static ConfigEntry<bool> RemoteVoiceInPublicLobbies;
+        internal static ConfigEntry<bool> RemoteGameActionsInPublicLobbies;
         internal static ConfigEntry<int> ConfigRevision;
 
         private Harmony _harmony;
         internal static PluginHost Host;
+
+        internal static void SaveConfiguration()
+        {
+            try { Instance?.Config.Save(); }
+            catch (Exception ex) { Log?.LogDebug("Config save: " + ex.Message); }
+        }
 
         private void Awake()
         {
@@ -117,6 +126,10 @@ namespace LethalAICrewmate
                 "Distance within which nearby unaddressed questions and multiplayer push-to-talk can trigger Buddy. Addressing Buddy by text name still works normally.");
             ObservationIntervalSeconds = Config.Bind("Crewmate", "ObservationIntervalSeconds", 0f,
                 "Seconds between unsolicited LLM observations (0 = off).");
+            SlowBurnHorror = Config.Bind("Character", "SlowBurnHorror", true,
+                "Let Buddy slowly become more unsettling across quota cycles, survived rounds and confirmed crew deaths. Presentation only: never enables hostility, sabotage or invented sensor events.");
+            ResetSlowBurnProgress = Config.Bind("Character", "ResetSlowBurnProgress", false,
+                "Set true to reset the current save's slow-burn story to the ordinary coworker on the next host load. Automatically returns to false.");
 
             VoiceEnabled = Config.Bind("Voice", "Enabled", true,
                 "Push-to-talk for every modded player. Clients relay bounded mic audio to the host; only the host calls the selected transcription provider.");
@@ -134,10 +147,12 @@ namespace LethalAICrewmate
                 "Optional host screenshot analysis. Disabled in the stock text-only GPT-OSS setup.");
             VisionModel = Config.Bind("Vision", "Model", "qwen/qwen3.6-27b",
                 "Groq multimodal model used for screenshot questions.");
-            SaveResponses = Config.Bind("Logging", "SaveResponses", true,
-                "Write every Buddy reply (chat, voice, deterministic commands, danger callouts) to BepInEx/LethalAICrewmate-responses.log for review.");
+            SaveResponses = Config.Bind("Logging", "SaveResponses", false,
+                "Opt in to a host-only journal containing raw player chat, voice transcripts, Buddy replies and tool results at BepInEx/LethalAICrewmate-responses.log.");
             RemoteVoiceInPublicLobbies = Config.Bind("Security", "RemoteVoiceInPublicLobbies", false,
-                "Reject remote push-to-talk voice when the Steam lobby is public. Protects the host's API budget and keeps strangers' audio away from the speech service; friends/invite-only lobbies always allow remote voice.");
+                "Allow remote push-to-talk when the Steam lobby is public or its visibility cannot be verified. Off by default; known friends/invite-only lobbies remain allowed.");
+            RemoteGameActionsInPublicLobbies = Config.Bind("Security", "RemoteGameActionsInPublicLobbies", false,
+                "Allow remote players to route, buy, spawn or change ship/facility state when the lobby is public or its visibility cannot be verified. Off by default.");
             ConfigRevision = Config.Bind("Internal", "ConfigRevision", 0,
                 "Internal migration marker. Do not edit.");
 
@@ -245,6 +260,12 @@ namespace LethalAICrewmate
                             Personality.Value = BuddyConversationPrompt.DefaultPersonality;
                         ConfigRevision.Value = 10;
                     }
+                    // Raw chat and transcript persistence is a privacy-sensitive opt-in.
+                    if (ConfigRevision.Value < 11)
+                    {
+                        SaveResponses.Value = false;
+                        ConfigRevision.Value = 11;
+                    }
                     if (string.IsNullOrWhiteSpace(Model.Value) ||
                         Model.Value.IndexOf("whisper", StringComparison.OrdinalIgnoreCase) >= 0 ||
                         Model.Value.IndexOf("orpheus", StringComparison.OrdinalIgnoreCase) >= 0)
@@ -272,6 +293,8 @@ namespace LethalAICrewmate
             ConfigSafety.NormalizeOnce();
 
                 Log.LogInfo($"{ModName} v{ModVersion} loaded (provider={GroqSecrets.ProviderName}, chat={Model.Value}, stt={SttModel.Value}, tts={TtsModel.Value}).");
+                if (SaveResponses.Value)
+                    Log.LogWarning("Response journaling is enabled and stores raw chat and voice transcripts on this host: " + ResponseJournal.JournalPath);
             }
             catch (Exception ex)
             {
@@ -305,6 +328,7 @@ namespace LethalAICrewmate
                 }
 
                 CrewmateAI.HostUpdate();
+                BuddyCharacterDirector.Tick();
                 LlmClient.Tick();
                 VoiceCommand.Tick();
                 BuddyClientVoice.Tick();

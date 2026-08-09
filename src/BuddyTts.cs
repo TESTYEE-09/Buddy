@@ -142,12 +142,14 @@ namespace LethalAICrewmate
             string voice = Plugin.TtsVoice?.Value ?? (GroqSecrets.IsOpenAi ? "ash" : "troy");
             if (string.IsNullOrWhiteSpace(voice)) voice = GroqSecrets.IsOpenAi ? "ash" : "troy";
 
+            string performanceDirection = "Perform this as a natural male Lethal Company coworker. Sound practical, a little tired, alert when danger is real, and quietly funny without internet slang, chaos-goblin jokes, or a cartoon voice. React to the line: dry amusement for banter, clear urgency for danger, relief after success, and restrained concern for bad news. Never sound like an announcer, assistant, mascot, or forced comedian. Keep the exact words and do not add a preamble. " +
+                BuddyCharacterArc.TtsDirection(Plugin.SlowBurnHorror?.Value == true ? BuddyCharacterDirector.CurrentStage : BuddyArcStage.Coworker);
             string body = "{\"model\":\"" + LlmClient.Escape(model) +
                           "\",\"voice\":\"" + LlmClient.Escape(voice) +
                           "\",\"input\":\"" + LlmClient.Escape(input) +
                           "\",\"response_format\":\"wav\"" +
                           (GroqSecrets.IsOpenAi
-                              ? ",\"instructions\":\"Perform this as a natural male Lethal Company coworker. Sound practical, a little tired, alert when danger is real, and quietly funny without internet slang, chaos-goblin jokes, or a cartoon voice. React to the line: dry amusement for banter, clear urgency for danger, relief after success, and restrained concern for bad news. Never sound like an announcer, assistant, mascot, or forced comedian. Keep the exact words and do not add a preamble.\""
+                              ? ",\"instructions\":\"" + LlmClient.Escape(performanceDirection) + "\""
                               : "") + "}";
 
             byte[] audioBytes = null;
