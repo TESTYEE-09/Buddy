@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.0.0
+
+- Establishes the v3 gameplay baseline for real host-and-client testing before system-prompt refinement.
+- Removes the premature 14-second facility/exterior teleport path. Area mismatch now requires three spaced path rebuild attempts and at least 20 seconds of continuous failure before recovery.
+- Keeps every recovery destination sampled onto a valid NavMesh and retains the existing host-authoritative pose sync.
+- Failed transition recovery no longer clears its evidence timer; retries remain bounded by a cooldown.
+- Adds release checks locking the transition threshold to the ordinary emergency-recovery threshold.
+
 ## 2.8.0
 
 - Added believable crewmate fetch routines: Buddy now weighs scrap value against travel distance instead of blindly taking the closest object.
