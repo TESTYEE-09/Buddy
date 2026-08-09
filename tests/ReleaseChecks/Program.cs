@@ -22,6 +22,36 @@ static class Program
               BuddyAiArchitecture.NormalizeProvider("unknown") == "OpenAI" &&
               BuddyAiArchitecture.NormalizeProvider(" groq ") == "Groq",
               "OpenAI is the fail-safe default provider");
+        Check(BuddyMovementPolicy.FollowSpeed(8f) < BuddyMovementPolicy.FollowSpeed(30f),
+              "Buddy accelerates for catch-up instead of moving at one robotic speed");
+        Check(!BuddyMovementPolicy.ShouldEmergencyRecover(8f, 5, 100f, 30f),
+              "short stalls never trigger teleport recovery");
+        Check(!BuddyMovementPolicy.ShouldEmergencyRecover(25f, 2, 100f, 30f),
+              "teleport recovery requires repeated failed path rebuilds");
+        Check(BuddyMovementPolicy.ShouldEmergencyRecover(25f, 4, 80f, 0f),
+              "persistent extreme separation permits emergency recovery");
+        Check(BuddyMovementPolicy.CouldWitnessDeath(12f, true, true) &&
+              !BuddyMovementPolicy.CouldWitnessDeath(40f, true, true) &&
+              !BuddyMovementPolicy.CouldWitnessDeath(5f, false, true) &&
+              !BuddyMovementPolicy.CouldWitnessDeath(5f, true, false),
+              "death witnessing requires local same-area line-of-sight evidence");
+        Check(BuddyMovementPolicy.DeathReactionDelay(2) >= 8f,
+              "dead follow targets produce a believable hesitation");
+        Check(BuddyCrewmateRoutinePolicy.ScrapScore(80, 10f) > BuddyCrewmateRoutinePolicy.ScrapScore(15, 2f),
+              "scrap routine balances useful value against walking distance");
+        Check(BuddyCrewmateRoutinePolicy.ScrapScore(20, 5f) > BuddyCrewmateRoutinePolicy.ScrapScore(20, 20f),
+              "equal-value scrap prefers the sensible nearby choice");
+        Check(BuddyCrewmateRoutinePolicy.ShouldWaitAtDoor(3f) && !BuddyCrewmateRoutinePolicy.ShouldWaitAtDoor(12f),
+              "door waiting only occurs while regrouping with a nearby crewmate");
+        Check(BuddyCrewmateRoutinePolicy.DoorRetrySeconds > BuddyCrewmateRoutinePolicy.DoorWaitSeconds,
+              "door routine yields to path rebuilding instead of waiting forever");
+        Check(!BuddyAutonomyPolicy.CanSpeak(100f, 0f, 95f, -999f, BuddyContextEvent.QuietDowntime),
+              "recent player speech suppresses optional autonomous chatter");
+        Check(BuddyAutonomyPolicy.CanSpeak(200f, 0f, 0f, -999f, BuddyContextEvent.EnteredFacility),
+              "important contextual speech can occur after cooldowns");
+        Check(BuddyAutonomyPolicy.Importance(BuddyContextEvent.WitnessedDeathReport) >
+              BuddyAutonomyPolicy.Importance(BuddyContextEvent.QuietDowntime),
+              "witnessed death reports outrank filler conversation");
         Check(TransportValidation.IsExactChunk(15000, 7000, 0, 7000), "first chunk");
         Check(TransportValidation.IsExactChunk(15000, 7000, 14000, 1000), "final chunk");
         Check(!TransportValidation.IsExactChunk(15000, 7000, 3500, 7000), "reject overlapping offset");
@@ -174,6 +204,8 @@ static class Program
         Check(MovementCommandParsing.Parse("move forwards").Kind == MovementCommandKind.ScoutAhead, "parse verbatim move-forwards command");
         Check(MovementCommandParsing.Parse("go to the ship").Kind == MovementCommandKind.ReturnToShip, "ship return is not moon route");
         Check(MovementCommandParsing.Parse("what is scrap?").Kind == MovementCommandKind.None, "scrap question is not fetch command");
+        Check(MovementCommandParsing.Parse("bring me scrap").DeliverToRequester,
+              "personal fetch request hands scrap back to its requester");
         Check(MovementCommandParsing.Parse("can you follow me?").Kind == MovementCommandKind.Follow, "parse polite follow command");
         Check(MovementCommandParsing.Parse("ship").Kind == MovementCommandKind.ReturnToShip, "retain short ship command");
         Check(MovementCommandParsing.Parse("no, get off the ship and follow us").Kind == MovementCommandKind.Follow, "parse follow-us correction");
