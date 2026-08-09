@@ -28,6 +28,11 @@ Buddy is host-authoritative.
 - Buddy chat and speech are replicated to compatible clients.
 - The host generates TTS once and distributes bounded PCM audio; clients never receive the provider key.
 - A host-side movement watchdog rebuilds stalled NavMesh paths and can safely recover Buddy beside his follow target after a persistent stall.
+- Buddy normally catches up by walking with variable speed, natural spacing and restrained turning. Teleportation is reserved for persistent navigation failure after repeated path rebuilds.
+- If his followed player dies, Buddy hesitates instead of snapping to another target. He only reports a nearby same-area death with line of sight, and reaches the next crewmate by normal navigation.
+- Sparse contextual conversation can begin after real events such as entering or leaving the facility, returning to the ship, prolonged travel, separation, valuable scrap or long quiet downtime. Recent player speech takes priority.
+- Fetch routines choose useful nearby scrap rather than blindly selecting the closest object. Say `buddy bring me scrap` for a personal handoff; the established `buddy fetch scrap` command delivers safely to the ship.
+- At a closed door near his crewmate, Buddy pauses briefly instead of shoving into it. He never unlocks doors or gains extra terminal authority from this routine.
 
 For multiplayer, **all players must use the same release**.
 
@@ -45,6 +50,7 @@ Type these in normal Lethal Company chat:
 | `buddy check ahead 15 metres` | Scout a requested safe distance, clamped between 4m and 18m |
 | `buddy go to ship` | Return toward the ship |
 | `buddy fetch scrap` | Find nearby scrap and bring it back |
+| `buddy bring me scrap` | Find useful nearby scrap and return it to you |
 | `buddy buy 3 flashlights` | Buy store items using the real price, sale and crew credits |
 | `buddy open door C7` | Open a facility door using its visible terminal code |
 | `buddy disable turret B3` | Disable a coded turret/landmine through the terminal |
@@ -66,7 +72,7 @@ Buddy is a dry, practical coworker: he says the useful Lethal Company answer fir
 
 Buddy is conversation-first: he responds to what players actually say instead of dumping sensor/entity facts. Harmless wildlife such as Manticoils and Roaming Locusts stays background unless the player asks about it.
 
-By default, Buddy now has a slow-burn horror arc. He starts completely ordinary and trustworthy. Across fulfilled quotas, landed rounds and confirmed crew deaths, his humor develops small off-notes, his attachment becomes uncomfortable, and his voice grows calmer and colder. Sparse character beats occur only after real game events and are separated by at least 150 seconds, so this plays as a campaign story rather than constant spooky chatter.
+By default, Buddy now has a slow-burn horror arc. He starts completely ordinary and trustworthy. Across fulfilled quotas, landed rounds and deaths he actually witnesses, his humor develops small off-notes, his attachment becomes uncomfortable, and his voice grows calmer and colder. Sparse character beats occur only after real game events and are separated by at least 150 seconds, so this plays as a campaign story rather than constant spooky chatter.
 
 The arc stores only numeric progress and its quota baseline in the current Lethal Company save—never chat, transcripts or personal facts. It changes presentation only: Buddy remains neutralized, useful and host-authoritative, and never attacks, sabotages, fabricates sensor events or encourages a lethal decision. Set `[Character] SlowBurnHorror = false` to keep the ordinary coworker personality throughout. Set `ResetSlowBurnProgress = true` once to restart the current save's story; it automatically returns to false.
 
