@@ -36,6 +36,23 @@ namespace LethalAICrewmate
         public float ScoutStartedAt;
         public float ScoutArrivedAt;
         public bool ScoutReportSent;
+        /// <summary>How long Buddy has been waiting for a legitimate area transition to resolve.</summary>
+        public float AreaMismatchStartedAt;
+        /// <summary>Natural idle timing; presentation only.</summary>
+        public float NextIdleLookAt;
+        public float NextIntentionalPauseAt;
+        public float IntentionalPauseUntil;
+        /// <summary>Follow-target death reaction state. Never populated from global death counts.</summary>
+        public float FollowTargetDiedAt;
+        public Vector3 FollowTargetDeathPosition;
+        public bool FollowTargetDeathWitnessed;
+        public string FollowTargetDeathName;
+        public bool DeathReportPending;
+        public float NextFollowAcquireAt;
+        public bool DeliverFetchToOwner;
+        public float NextDoorCheckAt;
+        public float DoorWaitUntil;
+        public float NextDoorWaitAllowedAt;
     }
 
     public static class CrewmateRegistry
@@ -107,7 +124,9 @@ namespace LethalAICrewmate
                 StayPosition = enemy.transform.position,
                 Neutralized = false,
                 NextObservationAt = Time.time + 30f,
-                FollowSideOffset = Random.Range(-0.75f, 0.75f)
+                FollowSideOffset = Random.Range(-0.75f, 0.75f),
+                NextIdleLookAt = Time.time + Random.Range(7f, 15f),
+                NextIntentionalPauseAt = Time.time + Random.Range(45f, 80f)
             };
 
             InstanceIds.Add(enemy.GetInstanceID());
@@ -250,6 +269,7 @@ namespace LethalAICrewmate
             if (state != CrewmateState.FetchScrap)
             {
                 data.FetchTarget = null;
+                data.DeliverFetchToOwner = false;
             }
             if (state != CrewmateState.ScoutAhead)
             {
