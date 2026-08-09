@@ -7,8 +7,6 @@ namespace LethalAICrewmate
     /// <summary>Small game-facing adapter for Buddy's single OpenAI Realtime session.</summary>
     public static class LlmClient
     {
-        private const float MinInterval = 2f;
-        private static float _lastEnqueueAt = -999f;
 
         internal static float LastPlayerInteractionAt { get; private set; } = -999f;
         internal static float LastBuddyLineAt { get; private set; } = -999f;
@@ -16,7 +14,6 @@ namespace LethalAICrewmate
 
         public static void ResetSession()
         {
-            _lastEnqueueAt = -999f;
             LastPlayerInteractionAt = -999f;
             LastBuddyLineAt = -999f;
             OpenAiRealtimeVoiceClient.ResetSession();
@@ -29,26 +26,6 @@ namespace LethalAICrewmate
 
         internal static void Tick() { }
 
-        public static bool EnqueuePlayerMessage(string playerName, int playerId, string message, long journalId)
-        {
-            if (!HasApiKey) return false;
-            NotePlayerInteraction();
-            if (Time.unscaledTime - _lastEnqueueAt < MinInterval) return false;
-            _lastEnqueueAt = Time.unscaledTime;
-
-            playerName = PromptSafety.SanitizePlayerName(playerName);
-            string liveContext = GameSensors.BuildLiveContext(playerId);
-            ResponseJournal.RecordContext(journalId, liveContext);
-            var content = new StringBuilder(1400);
-            content.AppendLine("[PLAYER MESSAGE - ANSWER THIS FIRST]")
-                .Append(playerName).Append(": ").AppendLine(message ?? "")
-                .AppendLine().AppendLine("[LIVE GAME CONTEXT - SILENT BACKGROUND UNLESS RELEVANT]")
-                .AppendLine(liveContext)
-                .AppendLine("[Do not turn sensor entries into the topic. Harmless wildlife requires no callout.]");
-            content = new StringBuilder(BuddyFourthWall.MaybeAnnotate(content.ToString(), false));
-            return OpenAiRealtimeVoiceClient.EnqueueText(content.ToString(), playerName, playerId, journalId,
-                includeScreenshot: false, allowTools: true);
-        }
 
         public static void EnqueueObservation(string summary) => TryEnqueueObservation(summary);
 
@@ -71,17 +48,6 @@ namespace LethalAICrewmate
             BuddyTts.DropQueuedSpeech();
         }
 
-        internal static string BuildHistoryContent(string userContent, bool isObservation)
-        {
-            if (string.IsNullOrWhiteSpace(userContent)) return "";
-            if (isObservation) return "[Observation] " + userContent.Trim();
-            const string marker = "[PLAYER MESSAGE - ANSWER THIS FIRST]";
-            int at = userContent.IndexOf(marker, StringComparison.Ordinal);
-            if (at < 0) return userContent.Trim();
-            int start = at + marker.Length;
-            int end = userContent.IndexOf("[LIVE GAME CONTEXT", start, StringComparison.Ordinal);
-            return (end < 0 ? userContent.Substring(start) : userContent.Substring(start, end - start)).Trim();
-        }
 
         internal static string Escape(string value)
         {

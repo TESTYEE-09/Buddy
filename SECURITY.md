@@ -34,14 +34,14 @@ The model is not given tools for filesystem access, shell commands, process exec
 - Buddy does not spawn if a connected remote player is unmodded, incompatible or still inside the handshake grace period.
 - `AllowRemoteVoice` is the host switch for compatible clients to relay push-to-talk audio. It does not depend on unreliable Steam lobby-visibility detection.
 - Remote voice is transport-sender-bound, exact-version-gated, Buddy-range-gated before allocation, rate-limited, size-limited, transfer-capped and WAV/RMS-validated.
-- Vanilla typed-chat identity is not strong authentication. Run Buddy with players you trust not to deliberately spend host credits or API budget. Even malicious phrasing remains confined to the bounded in-game tool surface above.
-- The final-stage hostile-spawn director is not a model tool and cannot be requested by chat, voice or network messages.
+- Typed chat never triggers Buddy or authorizes a game action. Remote voice remains sender-bound, exact-version-gated, range-gated, rate-limited and audio-validated.
+- The final-stage hostile-spawn director is not a model tool and cannot be requested by voice, chat or network messages.
 
 ## Response journal
 
 `[Logging] SaveResponses = false` is the default. With it off, Buddy removes an existing journal during startup and does not persist conversation.
+Opting in stores Buddy voice-turn results, observations and confirmed tool results at `BepInEx/LethalAICrewmate-responses.log`, bounded to 8 MB. Typed chat never enters the model or journal. Voice audio goes directly to Realtime and is not separately transcribed into the journal. `SavePromptContext` is a second opt-in for the system prompt and live sensor context. Treat the journal as sensitive player data and obtain the whole crew's consent before enabling or sharing it.
 
-Opting in stores typed player input, Buddy replies, observations and confirmed tool results at `BepInEx/LethalAICrewmate-responses.log`, bounded to 8 MB. Voice audio goes directly to Realtime and is not separately transcribed into the journal. `SavePromptContext` is a second opt-in for the system prompt and live sensor context. Treat the journal as sensitive player data and obtain the whole crew's consent before enabling or sharing it.
 
 Ordinary logs contain status and lengths, not raw player speech, chat, names, API response bodies or credentials. Host screenshots are disabled in the public build.
 

@@ -100,7 +100,7 @@ namespace LethalAICrewmate
                 PlayerName = PromptSafety.SanitizePlayerName(playerName),
                 Instructions = instructions,
                 JournalId = journalId,
-                MemoryInput = LlmClient.BuildHistoryContent(text, false),
+                MemoryInput = text.Trim(),
                 AllowTools = allowTools
             });
         }
@@ -271,10 +271,14 @@ namespace LethalAICrewmate
 
             using (var audio = new MemoryStream())
             {
-                const int playbackChunkBytes = OutputRate * 2; // roughly one second of PCM16
+                const int playbackChunkBytes = OutputRate; // roughly 500 ms of PCM16
                 bool queuedAnyAudio = false;
-                // A Realtime model may emit a friendly preamble before deciding to call a tool.
-                // Do not play it yet: only confirmed, final output reaches the crew.
+                bool outputItemKnown = !turn.AllowTools;
+                bool streamAudio = !turn.AllowTools;
+                bool streamedAudio = false;
+                // Ordinary message output starts playback as soon as Realtime identifies it as a
+                // message. Tool-call output remains buffered until the confirmed game result so
+                // Buddy cannot speak a preamble that claims an action succeeded.
                 var completedAudioChunks = new List<byte[]>();
                 string assistantTranscript = "";
                 string pendingToolName = null;
@@ -288,7 +292,14 @@ namespace LethalAICrewmate
                     string message = await ReceiveMessageAsync(receive, _sessionCancel.Token).ConfigureAwait(false);
                     if (message == null) throw new IOException("Realtime socket closed.");
                     string type = ReadJsonString(message, "type");
-                    if (type == "response.output_audio.delta")
+                    if (type == "response.output_item.added")
+                    {
+                        int item = message.IndexOf("\"item\"", StringComparison.Ordinal);
+                        string itemType = item >= 0 ? ReadJsonString(message, "type", item) : null;
+                        outputItemKnown = true;
+                        streamAudio = string.Equals(itemType, "message", StringComparison.Ordinal);
+                    }
+                    else if (type == "response.output_audio.delta")
                     {
                         string delta = ReadJsonString(message, "delta");
                         if (!string.IsNullOrEmpty(delta))
@@ -297,7 +308,16 @@ namespace LethalAICrewmate
                             audio.Write(bytes, 0, bytes.Length);
                             if (audio.Length >= playbackChunkBytes)
                             {
-                                completedAudioChunks.Add(audio.ToArray());
+                                if (streamAudio && outputItemKnown)
+                                {
+                                    QueueAudioChunk(audio.ToArray());
+                                    queuedAnyAudio = true;
+                                    streamedAudio = true;
+                                }
+                                else
+                                {
+                                    completedAudioChunks.Add(audio.ToArray());
+                                }
                                 audio.SetLength(0);
                                 audio.Position = 0;
                             }
@@ -336,6 +356,10 @@ namespace LethalAICrewmate
                             audio.Position = 0;
                             completedAudioChunks.Clear();
                             assistantTranscript = "";
+                            outputItemKnown = false;
+                            streamAudio = false;
+                            streamedAudio = false;
+                            queuedAnyAudio = false;
 
                             string output = "{\"result\":\"" + LlmClient.Escape(result) + "\"}";
                             string item = "{\"type\":\"conversation.item.create\",\"item\":{\"type\":\"function_call_output\",\"call_id\":\"" +
@@ -361,19 +385,31 @@ namespace LethalAICrewmate
                     }
                 }
 
-                byte[] pcm;
-                using (var complete = new MemoryStream())
+                if (streamedAudio)
                 {
-                    foreach (byte[] chunk in completedAudioChunks)
-                        complete.Write(chunk, 0, chunk.Length);
                     byte[] tail = audio.ToArray();
-                    if (tail.Length > 0) complete.Write(tail, 0, tail.Length);
-                    pcm = complete.ToArray();
+                    if (tail.Length > 0)
+                    {
+                        QueueAudioChunk(tail);
+                        queuedAnyAudio = true;
+                    }
                 }
-                if (pcm.Length > 1)
+                else
                 {
-                    QueueAudioChunk(pcm);
-                    queuedAnyAudio = true;
+                    byte[] pcm;
+                    using (var complete = new MemoryStream())
+                    {
+                        foreach (byte[] chunk in completedAudioChunks)
+                            complete.Write(chunk, 0, chunk.Length);
+                        byte[] tail = audio.ToArray();
+                        if (tail.Length > 0) complete.Write(tail, 0, tail.Length);
+                        pcm = complete.ToArray();
+                    }
+                    if (pcm.Length > 1)
+                    {
+                        QueueAudioChunk(pcm);
+                        queuedAnyAudio = true;
+                    }
                 }
                 if (!turn.SuppressChat && !string.IsNullOrWhiteSpace(assistantTranscript))
                 {
@@ -453,7 +489,7 @@ namespace LethalAICrewmate
                    "\"noise_reduction\":{\"type\":\"far_field\"},\"turn_detection\":null}," +
                    "\"output\":{\"format\":{\"type\":\"audio/pcm\",\"rate\":24000},\"voice\":\"" +
                    BuddyAiArchitecture.SanitizeRealtimeVoice(Plugin.RealtimeVoiceName?.Value) + "\"}}," +
-                   "\"reasoning\":{\"effort\":\"low\"},\"max_output_tokens\":1024," + tools + "}}";
+                   "\"reasoning\":{\"effort\":\"low\"},\"max_output_tokens\":384," + tools + "}}";
         }
 
         private const string ToolDefinitionsJson =

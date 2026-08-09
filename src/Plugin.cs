@@ -14,7 +14,7 @@ namespace LethalAICrewmate
     {
         public const string ModGuid = "com.lethalaicrewmate.buddy";
         public const string ModName = "Buddy";
-        public const string ModVersion = "3.7.4";
+        public const string ModVersion = "3.7.5";
 
         internal static Plugin Instance;
         internal static ManualLogSource Log;
@@ -162,11 +162,11 @@ namespace LethalAICrewmate
             Enabled = Config.Bind("Crewmate", "Enabled", true,
                 "Master toggle for spawning the AI crewmate.");
             ChatHearRange = Config.Bind("Crewmate", "ChatHearRange", 0f,
-                "Max distance to hear/see Buddy chat and voice. 0 makes replies global so every player receives them.");
+                "Max distance to hear/see Buddy's voice captions and audio. 0 makes Buddy audible to everyone.");
             ChatTriggerRange = Config.Bind("Crewmate", "ChatTriggerRange", 60f,
-                "Distance within which nearby unaddressed questions and multiplayer push-to-talk can trigger Buddy. Addressing Buddy by text name still works normally.");
+                "Distance within which nearby push-to-talk can trigger Buddy. Typed chat never triggers Buddy.");
             ObservationIntervalSeconds = Config.Bind("Crewmate", "ObservationIntervalSeconds", 0f,
-                "Seconds between unsolicited LLM observations (0 = off).");
+                "Periodic unsolicited observations are off by default; confirmed danger and important event callouts remain separate.");
             SlowBurnHorror = Config.Bind("Character", "SlowBurnHorror", true,
                 "Let Buddy slowly become more unsettling across quota cycles, survived rounds and deaths he locally witnessed. Presentation only: never enables hostility, sabotage or invented sensor events.");
             ResetSlowBurnProgress = Config.Bind("Character", "ResetSlowBurnProgress", false,
@@ -202,7 +202,7 @@ namespace LethalAICrewmate
             VisionEnabled = Config.Bind("Vision", "Enabled", false,
                 "Reserved setting. The hardened public release does not upload host screenshots from player chat.");
             SaveResponses = Config.Bind("Logging", "SaveResponses", false,
-                "Opt-in host-only journal of typed chat, Buddy replies, observations and tool results at BepInEx/LethalAICrewmate-responses.log. Voice is not separately transcribed into the journal. Enable only with the crew's informed consent.");
+                "Opt-in host-only journal of Buddy voice turns, replies, observations and tool results at BepInEx/LethalAICrewmate-responses.log. Voice audio is not separately transcribed into the journal. Enable only with the crew's informed consent.");
             SavePromptContext = Config.Bind("Logging", "SavePromptContext", false,
                 "When response journaling is explicitly enabled, also record the system prompt and live sensor context. This may contain sensitive game and player data.");
             ConfigRevision = Config.Bind("Internal", "ConfigRevision", 0,
@@ -269,7 +269,7 @@ namespace LethalAICrewmate
 
                 Log.LogInfo($"{ModName} v{ModVersion} loaded (model={BuddyAiArchitecture.OpenAiRealtimeModel}, native audio + tool calling).");
                 if (SaveResponses.Value)
-                    Log.LogWarning("Response journaling is enabled and stores typed chat, Buddy replies, observations and tool results on this host: " + ResponseJournal.JournalPath);
+                    Log.LogWarning("Response journaling is enabled and stores Buddy voice-turn results, observations and tool results on this host: " + ResponseJournal.JournalPath);
             }
             catch (Exception ex)
             {

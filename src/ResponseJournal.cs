@@ -7,9 +7,9 @@ using BepInEx;
 namespace LethalAICrewmate
 {
     /// <summary>
-    /// Appends every Buddy reply (chat, voice, Realtime tool results and danger callouts)
+    /// Appends Buddy voice-turn results, observations, Realtime tool results and danger callouts
     /// to a human-readable journal next to the BepInEx log, so the player can review exactly
-    /// what Buddy said, to whom, and which deterministic tool result produced it.
+    /// what Buddy said, to whom, and which confirmed tool result produced it.
     /// Host only: replies are generated on the host and journaled there.
     /// </summary>
     internal static class ResponseJournal
@@ -56,7 +56,7 @@ namespace LethalAICrewmate
             }
         }
 
-        /// <summary>Record an incoming player message and return its explicit reply-correlation id.</summary>
+        /// <summary>Record an incoming player voice turn or system event and return its correlation id.</summary>
         internal static long NoteInput(string mode, string speaker, string input)
         {
             if (!IsEnabled()) return 0;

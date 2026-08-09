@@ -1,4 +1,9 @@
 # Changelog
+## 3.7.5
+
+- Sets the conversational reply target to 2-14 words: concise without forcing clipped one-word answers.
+- Keeps typed chat vanilla-only, with voice push-to-talk as Buddy's only conversational input.
+- Retains low Realtime reasoning, the 384-token response ceiling, 500 ms ordinary-audio chunking and confirmed-result buffering for tool calls.
 
 ## 3.7.4
 

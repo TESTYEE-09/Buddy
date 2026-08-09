@@ -41,10 +41,10 @@ internal static class SecurityRegressionChecks
                 realtime.Contains("function_call_output", StringComparison.Ordinal) &&
                 realtime.Contains("ExecuteRealtimeToolAsync", StringComparison.Ordinal),
                 "Realtime must expose game tools, execute them on the host, and return results to the model");
-        Require(!realtime.Contains("OpenAiTranscriptionModel", StringComparison.Ordinal) &&
-                !realtime.Contains("input_audio_transcription", StringComparison.Ordinal) &&
-                realtime.Contains("max_output_tokens\\\":1024", StringComparison.Ordinal),
-                "Realtime must use only gpt-realtime-2.1-mini and retain enough audio output budget");
+            Require(!realtime.Contains("OpenAiTranscriptionModel", StringComparison.Ordinal) &&
+                    !realtime.Contains("input_audio_transcription", StringComparison.Ordinal) &&
+                    realtime.Contains("max_output_tokens\\\":384", StringComparison.Ordinal),
+                    "Realtime must use only gpt-realtime-2.1-mini and keep the normal voice response ceiling small");
 
         string promptPath = Path.Combine(root, "src", "BuddyConversationPrompt.cs");
         string prompt = File.ReadAllText(promptPath);
@@ -69,10 +69,12 @@ internal static class SecurityRegressionChecks
         string chat = File.ReadAllText(chatPath);
         Require(!chat.Contains("Chat observed: '", StringComparison.Ordinal),
                 "ordinary logs must not contain raw player chat");
-        Require(!chat.Contains("MovementCommandParsing", StringComparison.Ordinal) &&
-                !chat.Contains("ShipCommandParsing", StringComparison.Ordinal) &&
-                chat.Contains("Natural-language action selection belongs", StringComparison.Ordinal),
-                "chat must route natural language to Realtime tools instead of phrase parsers");
+            Require(!chat.Contains("MovementCommandParsing", StringComparison.Ordinal) &&
+                    !chat.Contains("ShipCommandParsing", StringComparison.Ordinal) &&
+                    chat.Contains("voice-only for conversational input", StringComparison.Ordinal) &&
+                    !chat.Contains("EnqueueText", StringComparison.Ordinal) &&
+                    !chat.Contains("EnqueueWav", StringComparison.Ordinal),
+                    "typed chat must remain vanilla-only while voice routes through Realtime");
         Require(!File.Exists(Path.Combine(root, "src", "MovementCommandParsing.cs")) &&
                 !File.Exists(Path.Combine(root, "src", "ShipCommandParsing.cs")),
                 "legacy natural-language command parsers must stay removed");
