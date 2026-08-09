@@ -19,5 +19,9 @@
     <Compile Include="..\..\src\BuddyMovementPolicy.cs" Link="BuddyMovementPolicy.cs" />
     <Compile Include="..\..\src\BuddyAutonomyPolicy.cs" Link="BuddyAutonomyPolicy.cs" />
     <Compile Include="..\..\src\BuddyCrewmateRoutinePolicy.cs" Link="BuddyCrewmateRoutinePolicy.cs" />
+    <Compile Include="..\..\src\BuddyRelationshipModel.cs" Link="BuddyRelationshipModel.cs" />
+    <Compile Include="..\..\src\BuddyPacingPolicy.cs" Link="BuddyPacingPolicy.cs" />
+    <Compile Include="..\..\src\BuddySocialPolicy.cs" Link="BuddySocialPolicy.cs" />
+    <Compile Include="..\..\src\BuddyMalicePolicy.cs" Link="BuddyMalicePolicy.cs" />
   </ItemGroup>
 </Project>

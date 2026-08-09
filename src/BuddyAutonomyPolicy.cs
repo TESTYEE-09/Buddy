@@ -9,7 +9,10 @@ namespace LethalAICrewmate
         QuietDowntime,
         Separated,
         ValuableScrap,
-        WitnessedDeathReport
+        WitnessedDeathReport,
+        HazardNearby,
+        WeatherTurn,
+        UnusualEnemy
     }
 
     internal static class BuddyAutonomyPolicy
@@ -20,7 +23,10 @@ namespace LethalAICrewmate
         internal static int Importance(BuddyContextEvent kind)
         {
             if (kind == BuddyContextEvent.WitnessedDeathReport) return 100;
+            if (kind == BuddyContextEvent.UnusualEnemy) return 85;
+            if (kind == BuddyContextEvent.HazardNearby) return 75;
             if (kind == BuddyContextEvent.Separated) return 70;
+            if (kind == BuddyContextEvent.WeatherTurn) return 50;
             if (kind == BuddyContextEvent.EnteredFacility || kind == BuddyContextEvent.LeftFacility) return 55;
             if (kind == BuddyContextEvent.ReturnedToShip || kind == BuddyContextEvent.ValuableScrap) return 45;
             return 20;
@@ -29,7 +35,11 @@ namespace LethalAICrewmate
         internal static float RepeatCooldown(BuddyContextEvent kind)
         {
             if (kind == BuddyContextEvent.WitnessedDeathReport) return 30f;
+            if (kind == BuddyContextEvent.UnusualEnemy) return 90f;
             if (kind == BuddyContextEvent.Separated) return 120f;
+            // Environmental colour is the easiest way to make Buddy feel noisy, so it stays rare.
+            if (kind == BuddyContextEvent.HazardNearby) return 150f;
+            if (kind == BuddyContextEvent.WeatherTurn) return 300f;
             return 180f;
         }
 

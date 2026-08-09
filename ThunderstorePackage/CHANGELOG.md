@@ -1,5 +1,22 @@
 # Changelog
 
+## 3.1.0
+
+- **Individual player relationships.** Buddy now treats each crewmate differently based on what he has actually observed: commands honoured or rejected, politeness, danger shared, deaths he witnessed, and who keeps walking off without him. Storage is deliberately minimal — at most eight sets of three small bounded numbers per save, keyed by a 16-bit non-reversible digest. No names, Steam IDs, chat or transcripts are ever written to disk, and none of it is replicated to clients. Toggle with `Character.PlayerRelationships`.
+- **Dynamic horror pacing director.** Silence, follow spacing, staged watching beats and how much Buddy talks are now driven by one plan that reads the campaign stage and live tension together, instead of firing independently. Confirmed danger always outranks it: deterministic threat callouts are never delayed or suppressed. Toggle with `Character.DynamicPacing`.
+- **Richer environmental awareness.** Buddy can now see confirmed exits, closed and locked doors, placed turrets and live landmines, weather with its practical consequence, and genuinely unusual entity situations such as something stalking a crewmate who is facing the other way. Unprompted reactions carry long per-kind cooldowns so this adds detail rather than chatter. Toggle with `Crewmate.EnvironmentAwareness`.
+- **Multiplayer social intelligence.** Buddy tracks who is speaking, waits his turn when the humans have the floor, answers the person who actually addressed him, and re-acquires whoever currently needs him rather than whoever is nearest. Speaker identity always comes from the host's own player list, never from anything a message claims. Toggle with `Crewmate.SocialAwareness`.
+- **Normal voice chat keeps working while you talk to Buddy.** Buddy's push-to-talk shares Unity's global microphone with the game's voice chat, which previously left the game's capture stopped afterwards, so the crew stopped hearing that player. Buddy now restores the game's capture on release and never leaves the speaker muted. Toggle with `Voice.KeepGameVoiceDuringPushToTalk`.
+- **New final story stage.** A long campaign can now push Buddy past Cold into a final stage where the performance stops being convincing. At that stage only, and only if the host explicitly enables `Character.FinalStageHostileSpawns` (**off by default**), Buddy will occasionally release one of the current moon's own creatures near a working crewmate. It is host-only, capped at two per round with a seven-minute interval and a delay after landing, never targets anyone standing in the ship, never spawns another Masked, and cannot be requested by chat, a terminal command, a model tool call or any remote player.
+- Release checks now lock the final-stage gates, the relationship storage bounds, prompt-name truncation, turn-taking, and the rule that pacing can never silence a danger callout.
+
+## 3.0.1
+
+- Fixed a vulnerability where a modded client in a public lobby could supply the host's player ID in ordinary chat and gain the host exemption for restricted state-changing commands (buy, route, spawn, ship and facility controls). Vanilla chat identifiers no longer grant host trust on any path, including the OpenAI Realtime tool call route.
+- Remote state-changing requests now require a verified friends/invite-only lobby or an explicit host opt-in, and fail closed when lobby visibility cannot be confirmed. Read-only status, store and moon queries remain available.
+- Legacy plaintext provider keys are migrated into Windows Credential Manager and removed from the config file unconditionally, including when secure storage fails.
+- Added release checks locking the public-lobby authorization behaviour and the legacy key cleanup.
+
 ## 3.0.0
 
 - Establishes the v3 gameplay baseline for real host-and-client testing before system-prompt refinement.

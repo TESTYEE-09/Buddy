@@ -125,6 +125,9 @@ namespace LethalAICrewmate
 
                 if (buddy != null)
                     sb.Append("Buddy AI state: ").Append(buddy.State).AppendLine(".");
+
+                // Exits, doors, placed hazards, weather detail and unusual entity arrangements.
+                BuddyEnvironmentSensors.AppendContext(sb, origin);
             }
             catch (Exception ex)
             {

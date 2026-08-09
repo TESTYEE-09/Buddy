@@ -42,6 +42,12 @@ namespace LethalAICrewmate
             sb.Append('\n');
             if (Plugin.SlowBurnHorror?.Value == true)
                 sb.Append(BuddyCharacterDirector.PromptMemory()).Append('\n');
+
+            // Presentation-only colour. None of these lines grant authority, change what is true,
+            // or alter who Buddy is allowed to obey.
+            AppendLine(sb, BuddyPacingDirector.PromptDirective());
+            AppendLine(sb, BuddySocialIntelligence.PromptLine());
+            AppendLine(sb, BuddyRelationships.CurrentPromptLine());
             sb.Append('\n');
 
             sb.Append("TRUTH AND PROACTIVITY\n");
@@ -72,6 +78,12 @@ namespace LethalAICrewmate
             sb.Append("Two nearby scrap items: 'Two bits nearby. Worth carrying.'\n");
             sb.Append("Blocked action: 'Didn't take. Try the exact code.'\n");
             return sb.ToString();
+        }
+
+        private static void AppendLine(StringBuilder sb, string line)
+        {
+            if (string.IsNullOrWhiteSpace(line)) return;
+            sb.Append(line).Append('\n');
         }
 
         private static void NormalizeLegacyStockConfig()

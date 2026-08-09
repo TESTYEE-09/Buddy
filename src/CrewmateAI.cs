@@ -219,6 +219,8 @@ namespace LethalAICrewmate
             float dist = Vector3.Distance(enemy.transform.position, target.transform.position);
             if (ApplyIntentionalHorrorPause(data, dist))
                 return;
+            if (BuddyPacingDirector.TryHoldAndWatch(data, target, dist))
+                return;
             // Hysteresis: stop inside FollowDistance, only resume after FollowResumeDistance
             // so he doesn't micro-adjust into your personal space
             if (dist <= BuddyMovementPolicy.FollowStopDistance)
@@ -235,7 +237,8 @@ namespace LethalAICrewmate
             }
 
             // Walk toward a point offset behind the player, not into their feet
-            float spacing = BuddyCharacterDirector.CurrentStage >= BuddyArcStage.Cold ? 3.0f : 2.35f;
+            float spacing = BuddyPacingDirector.FollowSpacing(
+                BuddyCharacterDirector.CurrentStage >= BuddyArcStage.Cold ? 3.0f : 2.35f);
             Vector3 followPoint = target.transform.position
                                   - target.transform.forward * spacing
                                   + target.transform.right * data.FollowSideOffset;
@@ -693,7 +696,10 @@ namespace LethalAICrewmate
                     distance, sameArea, HasLineOfSightTo(data.Enemy, owner));
                 data.DeathReportPending = data.FollowTargetDeathWitnessed;
                 if (data.FollowTargetDeathWitnessed)
+                {
                     BuddyCharacterDirector.RecordWitnessedDeath(data.FollowTargetDeathName);
+                    BuddyRelationships.Note(owner?.playerUsername, BuddyRelationEvent.WitnessedTheirDeath);
+                }
                 StopMoving(data.Enemy);
                 Plugin.Log?.LogInfo("Buddy follow target died; witnessed=" + data.FollowTargetDeathWitnessed +
                                     " delay=" + (data.NextFollowAcquireAt - Time.time).ToString("F1") + "s.");
@@ -745,7 +751,9 @@ namespace LethalAICrewmate
                 float distance = Vector3.Distance(data.Enemy.transform.position, player.transform.position);
                 if (distance < bestDistance) { best = player; bestDistance = distance; }
             }
-            return best;
+            // Reacquisition only. An explicit "follow me" still sets the owner directly, so this
+            // can never override a crewmate who actually asked for Buddy.
+            return BuddySocialIntelligence.ChooseAttentionTarget(data, best);
         }
 
         private static bool HasLineOfSightTo(MaskedPlayerEnemy enemy, PlayerControllerB player)

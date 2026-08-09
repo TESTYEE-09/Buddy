@@ -76,6 +76,20 @@ By default, Buddy now has a slow-burn horror arc. He starts completely ordinary 
 
 The arc stores only numeric progress and its quota baseline in the current Lethal Company save—never chat, transcripts or personal facts. It changes presentation only: Buddy remains neutralized, useful and host-authoritative, and never attacks, sabotages, fabricates sensor events or encourages a lethal decision. Set `[Character] SlowBurnHorror = false` to keep the ordinary coworker personality throughout. Set `ResetSlowBurnProgress = true` once to restart the current save's story; it automatically returns to false.
 
+A long enough campaign eventually reaches a final stage where the performance stops being convincing. On its own this is still dialogue and presentation. If — and only if — you set `[Character] FinalStageHostileSpawns = true`, that final stage also lets Buddy occasionally release one of the current moon's own creatures near a crewmate who is out working. It is **off by default**, host-only, capped at two per round with a seven-minute gap and a delay after landing, never targets anyone standing in the ship, and cannot be requested by chat, a command, the model, or any remote player. Turn it on only with your crew's agreement.
+
+`[Character] DynamicPacing = true` lets the horror director coordinate silence, follow spacing, occasional staged watching beats and how much Buddy talks, based on the current stage and live tension. Confirmed danger always wins: real threat callouts are never delayed by it.
+
+## Knowing the crew
+
+`[Character] PlayerRelationships = true` lets Buddy treat each crewmate differently based on what he has actually seen them do — commands honoured or rejected, whether they ask politely, danger shared with him, deaths he witnessed, and who keeps leaving him behind. It shows up as warmth, patience and how much he volunteers, never as a score he recites.
+
+It stores at most eight sets of three small numbers per save, keyed by a non-reversible digest. No names, IDs, chat or transcripts are written to disk.
+
+`[Crewmate] SocialAwareness = true` makes Buddy behave in a room with several people talking: he waits his turn instead of talking over an exchange, answers whoever actually addressed him, and re-acquires whoever currently needs him rather than whoever happens to be closest. An explicit "follow me" still overrides everything.
+
+`[Crewmate] EnvironmentAwareness = true` adds confirmed exits, closed and locked doors, placed turrets and live landmines, weather and its practical consequence, and genuinely unusual entity situations — such as something behind a crewmate who is facing the other way. Unprompted reactions carry long cooldowns so this adds detail, not chatter.
+
 ## Voice
 
 **Every modded player** can hold **B** by default to talk to Buddy.
@@ -135,6 +149,8 @@ Enabled = true
 ChatHearRange = 0
 ChatTriggerRange = 60
 ObservationIntervalSeconds = 0
+EnvironmentAwareness = true
+SocialAwareness = true
 
 [Voice]
 Enabled = true
@@ -144,7 +160,10 @@ PushToTalkKey = B
 AlternatePushToTalkKey = V
 MaxRecordSeconds = 8
 InputDevice =
+KeepGameVoiceDuringPushToTalk = true
 ```
+
+`KeepGameVoiceDuringPushToTalk = true` restores Lethal Company's own microphone capture after Buddy releases the shared device, so the rest of the crew keep hearing each other while somebody is talking to Buddy. It never changes your own mute state. Turn it off only if it conflicts with another voice mod.
 
 ```ini
 [Security]
@@ -158,6 +177,9 @@ SaveResponses = false
 [Character]
 SlowBurnHorror = true
 ResetSlowBurnProgress = false
+DynamicPacing = true
+PlayerRelationships = true
+FinalStageHostileSpawns = false
 ```
 
 `AllowRemoteVoice = true` permits the relay, but remote PTT is accepted by default only when Steam visibility is positively identified as friends/invite-only. Public, missing, unknown or failed visibility checks are blocked unless `RemoteVoiceInPublicLobbies = true`. Remote purchases, routes, item spawning and ship/facility changes use the same fail-closed rule unless `RemoteGameActionsInPublicLobbies = true`; read-only status/store/moon queries remain available. Menu keys are saved in Windows Credential Manager.

@@ -28,6 +28,8 @@ namespace LethalAICrewmate
         private static string _lastRequestKey = "";
         private static float _lastRequestAt = -999f;
         internal static float LastPlayerInteractionAt { get; private set; } = -999f;
+        /// <summary>When Buddy last actually said something out loud. Used by the pacing director.</summary>
+        internal static float LastBuddyLineAt { get; private set; } = -999f;
 
         public static void ResetSession()
         {
@@ -48,6 +50,7 @@ namespace LethalAICrewmate
                 _lastRequestKey = "";
                 _lastRequestAt = -999f;
                 LastPlayerInteractionAt = -999f;
+                LastBuddyLineAt = -999f;
             }
             catch (Exception ex)
             {
@@ -594,6 +597,7 @@ namespace LethalAICrewmate
             NetMessenger.BroadcastCrewmateChat(name, display, pos, netId);
             ProximityChat.TryShowLocal(name, display, pos);
             BuddyTts.Speak(display, pos + Vector3.up * 1.6f);
+            LastBuddyLineAt = Time.unscaledTime;
             ResponseJournal.RecordReply(journalId, display);
         }
 
@@ -607,6 +611,7 @@ namespace LethalAICrewmate
             NetMessenger.BroadcastCrewmateChat(name, display, pos, netId);
             ProximityChat.TryShowLocal(name, display, pos);
             BuddyTts.Speak(display, pos + Vector3.up * 1.6f);
+            LastBuddyLineAt = Time.unscaledTime;
             ResponseJournal.RecordDirect("character", "system", evidence, display);
         }
 

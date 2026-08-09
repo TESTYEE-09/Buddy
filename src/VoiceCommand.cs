@@ -98,10 +98,13 @@ namespace LethalAICrewmate
                 catch { /* ignore */ }
 
                 _micDevice = MicrophoneCapture.ResolveConfiguredDevice();
+                // Talking to Buddy must not take the crew's voice chat away from this player.
+                VoiceCoexistence.BeginBuddyCapture(_micDevice);
                 int len = Mathf.Clamp(Mathf.CeilToInt(maxSec) + 1, 2, 13);
                 _clip = Microphone.Start(_micDevice, false, len, SampleRate);
                 if (_clip == null)
                 {
+                    VoiceCoexistence.EndBuddyCapture();
                     MaybeHint("Microphone failed to start.");
                     return;
                 }
@@ -137,6 +140,7 @@ namespace LethalAICrewmate
 
                 pos = Microphone.GetPosition(_micDevice);
                 Microphone.End(_micDevice);
+                VoiceCoexistence.EndBuddyCapture();
 
                 float duration = Time.unscaledTime - _startedAt;
                 if (_clip == null || pos < SampleRate / 5 || duration < 0.35f)

@@ -139,12 +139,35 @@ namespace LethalAICrewmate
                 return;
 
             PendingEvent current = _pending;
+
+            // The pacing director owns how quiet Buddy currently is, and the social layer owns
+            // whether the humans still have the floor. Safety-relevant events bypass neither
+            // check silently: they simply carry a higher-priority speech reason.
+            BuddySpeechReason reason = SpeechReason(current.Kind);
+            if (reason != BuddySpeechReason.Danger)
+            {
+                if (BuddyPacingDirector.SuppressSmallTalk && BuddyAutonomyPolicy.Importance(current.Kind) < 70)
+                    return;
+                if (now - _lastSpokeAt < BuddyAutonomyPolicy.GlobalCooldown + BuddyPacingDirector.ExtraSilenceSeconds)
+                    return;
+            }
+            if (BuddySocialIntelligence.ShouldWaitForTurn(reason)) return;
+
             if (!LlmClient.TryEnqueueObservation(
                 current.Evidence + " Initiate at most one short, natural line grounded only in this evidence and live context. Silence is acceptable if danger or player speech has priority."))
                 return;
             _pending = null;
             _lastSpokeAt = now;
             LastEventAt[current.Kind] = now;
+        }
+
+        private static BuddySpeechReason SpeechReason(BuddyContextEvent kind)
+        {
+            if (kind == BuddyContextEvent.WitnessedDeathReport || kind == BuddyContextEvent.UnusualEnemy)
+                return BuddySpeechReason.Danger;
+            if (kind == BuddyContextEvent.HazardNearby || kind == BuddyContextEvent.Separated)
+                return BuddySpeechReason.OpenQuestion;
+            return BuddySpeechReason.Unprompted;
         }
 
         internal static void ResetSession()

@@ -89,6 +89,13 @@ namespace LethalAICrewmate
 
             string restLower = rest.ToLowerInvariant();
 
+            // Conversational bookkeeping. The speaker is resolved from the host's own player list,
+            // never from anything the message itself claims.
+            string speakerName = GetPlayerName(playerId);
+            BuddySocialIntelligence.NoteSpeech(playerId, speakerName, addressed);
+            if (addressed) BuddyRelationships.NoteAddressing(speakerName);
+            bool polite = restLower.Contains("please") || restLower.Contains("thank");
+
             // Explicit terminal/orbit actions are deterministic player commands. The LLM is never
             // allowed to execute these side effects, and they only run when Buddy is addressed
             // (or when the message is an explicitly pleaded spawn request, which stays sandboxed
@@ -100,6 +107,10 @@ namespace LethalAICrewmate
                 if (!string.IsNullOrEmpty(termResult))
                 {
                     Plugin.Log?.LogInfo($"Terminal cmd: {termResult}");
+                    BuddyRelationships.Note(speakerName,
+                        termResult.StartsWith("Rejected", StringComparison.OrdinalIgnoreCase)
+                            ? BuddyRelationEvent.CommandRejected
+                            : polite ? BuddyRelationEvent.PoliteRequest : BuddyRelationEvent.CommandHonoured);
                     // Replicate deterministic ship/terminal feedback to every matching player and
                     // speak it once. Do not ask the LLM to paraphrase or repeat a side effect.
                     long journalId = ResponseJournal.NoteInput("command", GetPlayerName(playerId), msg);
@@ -116,9 +127,14 @@ namespace LethalAICrewmate
                 isCommand = true;
                 Plugin.Log?.LogInfo($"Command parsed from chat: '{rest}'");
                 if (CrewmateAI.ApplyCommandFromChat(rest, playerId, out string failure))
+                {
                     deterministicCommand = CommandName(movement.Kind);
+                    BuddyRelationships.Note(speakerName,
+                        polite ? BuddyRelationEvent.PoliteRequest : BuddyRelationEvent.CommandHonoured);
+                }
                 else if (!string.IsNullOrWhiteSpace(failure))
                 {
+                    BuddyRelationships.Note(speakerName, BuddyRelationEvent.CommandRejected);
                     long journalId = ResponseJournal.NoteInput("command", GetPlayerName(playerId), msg);
                     LlmClient.PublishLocalReply(failure, journalId);
                     return;

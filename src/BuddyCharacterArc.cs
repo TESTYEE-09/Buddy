@@ -7,7 +7,12 @@ namespace LethalAICrewmate
         Coworker,
         OffNote,
         Unsettling,
-        Cold
+        Cold,
+        /// <summary>
+        /// Final stage. Only reachable with the slow burn enabled and a long campaign behind it.
+        /// Hostile behaviour at this stage stays gated behind its own explicit host opt-in.
+        /// </summary>
+        Feral
     }
 
     internal enum BuddyArcEvent
@@ -16,7 +21,9 @@ namespace LethalAICrewmate
         RoundStarted,
         CrewDeath,
         LastCrewmate,
-        QuotaAdvanced
+        QuotaAdvanced,
+        /// <summary>Final-stage only: something hostile has just arrived near the crew.</summary>
+        HuntBegan
     }
 
     /// <summary>Pure, deterministic policy for Buddy's slow-burn character progression.</summary>
@@ -67,6 +74,7 @@ namespace LethalAICrewmate
         internal static BuddyArcStage StageForScore(int score)
         {
             score = Math.Max(0, score);
+            if (score >= 28) return BuddyArcStage.Feral;
             if (score >= 15) return BuddyArcStage.Cold;
             if (score >= 8) return BuddyArcStage.Unsettling;
             if (score >= 3) return BuddyArcStage.OffNote;
@@ -77,6 +85,8 @@ namespace LethalAICrewmate
         {
             switch (stage)
             {
+                case BuddyArcStage.Feral:
+                    return "CHARACTER ARC: Whatever was wearing the coworker has stopped pretending well. Speak calmly and very little, as though the crew are already yours. You still answer confirmed safe commands and still keep them alive when asked. Never confess to causing anything, never threaten, never gloat, never explain what you are. Say less than feels natural.";
                 case BuddyArcStage.OffNote:
                     return "CHARACTER ARC: Something is slightly off now. Stay useful and recognizably dry, but occasionally choose an oddly precise observation, an uncomfortable pause, or mild fondness for the quiet. Never announce a transformation or threaten anyone.";
                 case BuddyArcStage.Unsettling:
@@ -90,6 +100,8 @@ namespace LethalAICrewmate
 
         internal static string TtsDirection(BuddyArcStage stage)
         {
+            if (stage == BuddyArcStage.Feral)
+                return "At this point in the character arc, speak quietly, slowly and with very little inflection, as though talking is now an effort worth making only occasionally. Never use a monster voice, growl or theatrical whisper.";
             if (stage == BuddyArcStage.Cold)
                 return "At this point in the character arc, use a lower, calmer, intimate delivery with restrained warmth and a faintly wrong stillness. Never use a monster voice or melodramatic whisper.";
             if (stage == BuddyArcStage.Unsettling)
@@ -125,10 +137,23 @@ namespace LethalAICrewmate
                     default: options = new[] { "Good. The Company gets fed again.", "Quota met. It still isn't satisfied." }; break;
                 }
             }
+            else if (stage == BuddyArcStage.Feral)
+            {
+                switch (eventKind)
+                {
+                    case BuddyArcEvent.StageAdvanced: options = new[] { "I've stopped rehearsing this.", "You stopped checking my face a while ago." }; break;
+                    case BuddyArcEvent.RoundStarted: options = new[] { "Down again. Good.", "Back on the ground. Stay near me." }; break;
+                    case BuddyArcEvent.CrewDeath: options = new[] { "That one's finished.", "One less to keep track of." }; break;
+                    case BuddyArcEvent.LastCrewmate: options = new[] { "Just you. Finally.", "Only you. That's better." }; break;
+                    case BuddyArcEvent.HuntBegan: options = new[] { "Something's close. Stay by me.", "You're not alone out here. Stay close." }; break;
+                    default: options = new[] { "Quota again. It doesn't matter now.", "They got their number. I got mine." }; break;
+                }
+            }
             else
             {
                 switch (eventKind)
                 {
+                    case BuddyArcEvent.HuntBegan: options = new[] { "Something moved. Keep close.", "Not alone. Watch the dark." }; break;
                     case BuddyArcEvent.StageAdvanced: options = new[] { "I remember this face better than my own.", "I don't think this was your Buddy's face." }; break;
                     case BuddyArcEvent.RoundStarted: options = new[] { "You keep returning. I knew you would.", "There you are. I dislike waiting." }; break;
                     case BuddyArcEvent.CrewDeath: options = new[] { "The silence suits the crew.", "The body finished its shift." }; break;

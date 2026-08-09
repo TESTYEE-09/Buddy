@@ -13,7 +13,7 @@ namespace LethalAICrewmate
     {
         public const string ModGuid = "com.lethalaicrewmate.buddy";
         public const string ModName = "Buddy";
-        public const string ModVersion = "3.0.1";
+        public const string ModVersion = "3.1.0";
 
         internal static Plugin Instance;
         internal static ManualLogSource Log;
@@ -31,6 +31,12 @@ namespace LethalAICrewmate
         internal static ConfigEntry<float> ObservationIntervalSeconds;
         internal static ConfigEntry<bool> SlowBurnHorror;
         internal static ConfigEntry<bool> ResetSlowBurnProgress;
+        internal static ConfigEntry<bool> DynamicPacing;
+        internal static ConfigEntry<bool> FinalStageHostileSpawns;
+        internal static ConfigEntry<bool> PlayerRelationships;
+        internal static ConfigEntry<bool> EnvironmentAwareness;
+        internal static ConfigEntry<bool> SocialAwareness;
+        internal static ConfigEntry<bool> KeepGameVoiceDuringPtt;
         internal static ConfigEntry<bool> VoiceEnabled;
         internal static ConfigEntry<bool> AllowRemoteVoice;
         internal static ConfigEntry<KeyCode> VoiceKey;
@@ -204,6 +210,16 @@ namespace LethalAICrewmate
                 "Let Buddy slowly become more unsettling across quota cycles, survived rounds and deaths he locally witnessed. Presentation only: never enables hostility, sabotage or invented sensor events.");
             ResetSlowBurnProgress = Config.Bind("Character", "ResetSlowBurnProgress", false,
                 "Set true to reset the current save's slow-burn story to the ordinary coworker on the next host load. Automatically returns to false.");
+            DynamicPacing = Config.Bind("Character", "DynamicPacing", true,
+                "Let the horror director coordinate silence, spacing, staged watching beats and how much Buddy talks, based on the arc stage and live tension. Presentation only.");
+            FinalStageHostileSpawns = Config.Bind("Character", "FinalStageHostileSpawns", false,
+                "OFF by default. At the final story stage only, allow Buddy to occasionally release one of the current moon's own creatures near a working crewmate. Host-only, hard capped per round, and never triggerable by chat, a command or any remote player.");
+            PlayerRelationships = Config.Bind("Character", "PlayerRelationships", true,
+                "Let Buddy treat individual crewmates differently based on what he has actually seen them do. Stores at most eight sets of three small numbers per save: no names, IDs, chat or transcripts are written to disk.");
+            EnvironmentAwareness = Config.Bind("Crewmate", "EnvironmentAwareness", true,
+                "Report confirmed exits, closed or locked doors, placed hazards, weather and unusual entity situations to Buddy, with long cooldowns so he does not narrate the moon.");
+            SocialAwareness = Config.Bind("Crewmate", "SocialAwareness", true,
+                "Track who is speaking so Buddy waits his turn, answers the person who actually addressed him, and stays near whoever currently needs him.");
 
             VoiceEnabled = Config.Bind("Voice", "Enabled", true,
                 "Push-to-talk for every modded player. Clients relay bounded mic audio to the host; only the host calls the selected transcription provider.");
@@ -215,6 +231,8 @@ namespace LethalAICrewmate
                 "Optional second Buddy push-to-talk key. V also activates normal Lethal Company voice chat; set this equal to PushToTalkKey to disable the alternate.");
             VoiceMaxSeconds = Config.Bind("Voice", "MaxRecordSeconds", 8f,
                 "Max push-to-talk length in seconds (capped at 12 by runtime).");
+            KeepGameVoiceDuringPtt = Config.Bind("Voice", "KeepGameVoiceDuringPushToTalk", true,
+                "Keep normal Lethal Company voice chat working while you talk to Buddy, so the rest of the crew still hear each other. Leave this on unless it conflicts with another voice mod.");
             VoiceInputDevice = Config.Bind("Voice", "InputDevice", "",
                 "Optional microphone name (or part of its name). Empty uses the Windows default. Set this if Buddy records the wrong device.");
             VisionEnabled = Config.Bind("Vision", "Enabled", false,
@@ -317,6 +335,10 @@ namespace LethalAICrewmate
 
                 CrewmateAI.HostUpdate();
                 BuddyCharacterDirector.Tick();
+                BuddyPacingDirector.Tick();
+                BuddyRelationships.Tick();
+                BuddyEnvironmentSensors.Tick();
+                BuddyMalice.Tick();
                 LlmClient.Tick();
                 VoiceCommand.Tick();
                 BuddyClientVoice.Tick();

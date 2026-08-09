@@ -9,14 +9,13 @@ For the strongest practical setup, set the host machine environment variable
 before starting the game. The mod reads it in memory and never writes that value to its
 config or logs.
 
-Keys entered in the main-menu panel are session-only by default. Set `[Security] PersistApiKey = true`
-only if you explicitly accept plaintext local storage in:
+Keys entered in the main-menu panel are stored in Windows Credential Manager, never in the config
+file. The old `[Security] PersistApiKey` setting and its plaintext config storage were removed.
 
-`BepInEx/config/com.lethalaicrewmate.buddy.cfg`
-
-Pre-existing keys in that config remain supported as a legacy fallback. Move them to the environment
-variable and clear the config entry after confirming the game starts successfully. Multiplayer clients
-do not need and do not receive the host key.
+Any key found in a pre-3.0.1 config is imported into Credential Manager on first load and the
+plaintext entry is deleted, including when secure storage fails — in that case the key stays usable
+for the session only and a warning is logged. Multiplayer clients do not need and do not receive the
+host key.
 
 Historical private builds contained a shared Groq credential. Any credential that has ever been committed or shared must be considered exposed and revoked/rotated at the provider. Removing it from the current source tree is not credential revocation.
 
@@ -49,6 +48,47 @@ Buddy's spoken output is AI-generated.
   It stores no dialogue, transcript, player name or personal fact. Arc stages affect dialogue/voice presentation
   only and cannot grant movement, terminal, spawn, combat or network authority.
 - LLM text cannot directly buy items, route moons or change Buddy movement state; those actions require deterministic player-command parsing.
+
+## Player relationships and social tracking
+
+`[Character] PlayerRelationships` lets Buddy treat individual crewmates differently. What it stores is
+deliberately minimal:
+
+- at most eight entries per save, each three small bounded integers (trust, familiarity, friction),
+- keyed by a 16-bit non-reversible digest of the lowercased player name,
+- no names, Steam IDs, chat text, transcripts or timestamps are written to disk,
+- nothing is replicated to clients or sent anywhere except the host's own save file.
+
+The player's in-game display name — which every crewmate can already see — is included in the prompt
+sent to the configured AI provider, exactly as chat messages already are. It is truncated before it
+reaches the prompt. Relationship state affects tone, who Buddy answers first and who he re-acquires
+when following; it grants no authority and cannot change what a command is allowed to do.
+
+`[Crewmate] SocialAwareness` tracks at most four recent speakers in memory only. Speaker identity is
+resolved from the host's own player list. Note that vanilla Lethal Company chat is unauthenticated,
+so a modded client can already make a chat line appear to come from another player; with social
+awareness on, that can mislead Buddy about *who* to answer or walk toward. It cannot grant command
+authority — restricted actions still go through the fail-closed remote-action boundary above.
+
+## Final story stage
+
+`[Character] FinalStageHostileSpawns` is **off by default**. When a host turns it on, and only at the
+final story stage with the slow burn enabled, Buddy may occasionally release one of the current
+moon's own creatures near a working crewmate. Enable it only with the crew's agreement.
+
+The gate is host-only and cannot be reached from outside the host's own director:
+
+- no chat command, terminal command, model tool call or network message can request a hunt,
+- capped at two per round, with a seven-minute minimum interval and a delay after landing,
+- never targets a player standing in the ship,
+- only uses entities already present in the current moon's own spawn table,
+- never spawns another Masked, which would collide with Buddy's identification handshake.
+
+## Voice device sharing
+
+Buddy's push-to-talk shares Unity's global microphone with the game's own voice chat. Buddy restores
+the game's capture when it releases the device so the crew keep hearing each other, and it never
+changes a player's own mute state.
 
 ## Release protections
 

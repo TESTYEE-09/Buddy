@@ -285,6 +285,7 @@ namespace LethalAICrewmate
                         {
                             if (turn.JournalId == 0) turn.JournalId = ResponseJournal.NoteInput("voice", turn.PlayerName, transcript);
                             QueueInputTranscript(turn.PlayerName, transcript);
+                            QueueSpeakerNote(turn.PlayerId, turn.PlayerName);
                         }
                     }
                     else if (type == "response.output_audio.delta")
@@ -469,6 +470,20 @@ namespace LethalAICrewmate
             {
                 Plugin.Log?.LogInfo("Realtime voice transcript " + playerName + ": " + transcript);
                 HUDManager.Instance?.AddChatMessage(transcript, playerName + " (voice)");
+            });
+        }
+
+        /// <summary>
+        /// Voice push-to-talk is always a direct address. The speaker was resolved from the host
+        /// player list when the turn was queued, never from anything the client sent. This runs on
+        /// the socket thread, so the bookkeeping is marshalled back to the main thread.
+        /// </summary>
+        private static void QueueSpeakerNote(int playerId, string playerName)
+        {
+            MainThread.Enqueue(() =>
+            {
+                BuddySocialIntelligence.NoteSpeech(playerId, playerName, true);
+                BuddyRelationships.NoteAddressing(playerName);
             });
         }
 
