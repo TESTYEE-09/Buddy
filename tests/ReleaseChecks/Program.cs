@@ -30,6 +30,12 @@ static class Program
               "teleport recovery requires repeated failed path rebuilds");
         Check(BuddyMovementPolicy.ShouldEmergencyRecover(25f, 4, 80f, 0f),
               "persistent extreme separation permits emergency recovery");
+        Check(!BuddyMovementPolicy.ShouldEmergencyRecover(25f, 4, 20f, 19f),
+              "area mismatch cannot recover before the full transition delay");
+        Check(BuddyMovementPolicy.ShouldEmergencyRecover(25f, 3, 20f, 20f),
+              "persistent area mismatch recovers only after three rebuilds and twenty seconds");
+        Check(BuddyMovementPolicy.AreaRecoveryDelay >= BuddyMovementPolicy.EmergencyStallDelay,
+              "area transition recovery is never faster than ordinary emergency recovery");
         Check(BuddyMovementPolicy.CouldWitnessDeath(12f, true, true) &&
               !BuddyMovementPolicy.CouldWitnessDeath(40f, true, true) &&
               !BuddyMovementPolicy.CouldWitnessDeath(5f, false, true) &&
