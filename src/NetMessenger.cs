@@ -112,12 +112,12 @@ namespace LethalAICrewmate
                 {
                     UpdateHostPeerTracking(nm);
 
-                    // A new unmodded/mismatched client joining an active round is unsafe: on that
-                    // client Buddy can fall back to hostile vanilla Masked behaviour. Remove Buddy
-                    // immediately and let the spawn gate restore him once every peer is compatible.
-                    if (!IsHostSessionReadyForBuddy() && CrewmateRegistry.GetPrimary() != null)
+                    // Keep the existing authoritative body stable while a normal late join loads
+                    // and handshakes. Only a confirmed mismatch, or a peer that misses the grace
+                    // window entirely, requires the safety despawn.
+                    if (HasConfirmedUnsafePeer(nm) && CrewmateRegistry.GetPrimary() != null)
                     {
-                        Plugin.Log?.LogWarning("Multiplayer compatibility changed; despawning Buddy until every client matches.");
+                        Plugin.Log?.LogWarning("Multiplayer compatibility failed after the late-join grace window; despawning Buddy for safety.");
                         CrewmateSpawner.DespawnAll();
                     }
                 }
@@ -322,6 +322,21 @@ namespace LethalAICrewmate
             {
                 return false;
             }
+        }
+
+        private static bool HasConfirmedUnsafePeer(NetworkManager nm)
+        {
+            if (nm == null || !nm.IsServer) return false;
+            UpdateHostPeerTracking(nm);
+            foreach (ulong id in nm.ConnectedClientsIds)
+            {
+                if (id == NetworkManager.ServerClientId) continue;
+                if (!Peers.TryGetValue(id, out var peer) || peer == null) continue;
+                if (peer.HelloReceived && !peer.Compatible) return true;
+                if (!peer.HelloReceived && Time.unscaledTime - peer.FirstSeenAt >= MissingModGraceSeconds)
+                    return true;
+            }
+            return false;
         }
 
         private static bool IsConnectedRemoteClient(NetworkManager nm, ulong clientId)
