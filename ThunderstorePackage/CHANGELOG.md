@@ -1,5 +1,23 @@
 # Changelog
 
+## 2.8.0
+
+- Added believable crewmate fetch routines: Buddy now weighs scrap value against travel distance instead of blindly taking the closest object.
+- Personal requests such as `bring me scrap` return the item to the requesting player; ordinary fetch commands keep the established safe ship-delivery behaviour.
+- Buddy briefly waits at a nearby closed door when regrouping instead of repeatedly pressing into it. This does not grant him authority to unlock doors or operate protected systems.
+- Kept all routine decisions host-authoritative and reused the existing bounded item attach/drop replication.
+- Added release-policy coverage for scrap selection, personal handoffs and door-wait boundaries.
+
+## 2.7.0
+
+- Rebuilt follow movement around NavMesh-safe walking, distance-based catch-up speed and slower turning. Raw-transform flight is removed.
+- Path recovery now rebuilds repeatedly and waits for a persistent failure before any emergency teleport. Facility transitions hesitate before a last-resort recovery.
+- A followed player's death no longer causes an instant target switch or teleport. Buddy pauses, only treats a nearby same-area death as witnessed, walks to another crewmate, and may report what he actually saw.
+- Compatible late joins keep the existing Buddy body. The host waits through the handshake grace period and continues pose sync to already-compatible peers; confirmed mismatches still fail closed.
+- Added rate-limited, model-generated contextual conversation for facility transitions, returning to ship, long travel, separation, valuable scrap and quiet downtime. Recent player speech always takes priority.
+- Horror progression can change intentional idle gaze and spacing, but never uses broken navigation as a scare. Global death counts no longer give Buddy knowledge of unwitnessed deaths.
+- Release checks cover emergency recovery thresholds, witnessed-death evidence, catch-up speed and autonomous-speech priority.
+
 ## 2.6.0
 
 - Makes OpenAI Realtime the clear recommended/default Buddy experience in a redesigned, compact main-menu setup card; Groq is presented separately as the free/budget option.
