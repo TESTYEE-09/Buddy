@@ -71,6 +71,8 @@ namespace LethalAICrewmate
                 lower.Contains("was kicked") || playerId < 0)
                 return;
 
+            // Any real player chat means the crew is already talking; optional Buddy chatter waits.
+            LlmClient.NotePlayerInteraction();
             Plugin.Log?.LogInfo($"Chat observed: '{msg}' (playerId={playerId})");
 
             bool addressed =
