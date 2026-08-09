@@ -1,12 +1,12 @@
-# HANDOFF — Buddy v2.8.0
+# HANDOFF — Buddy v3.0.0
 
 ## Current status
 
 Buddy is a BepInEx 5 mod for **Lethal Company v81** adding a friendly AI crewmate named Buddy. Public source: `https://github.com/TESTYEE-09/Buddy`.
 
-Release target: **v2.8.0** (wire protocol **7**, unchanged because no wire format changed).
+Release target: **v3.0.0** (wire protocol **7**, unchanged because no wire format changed).
 
-v2.8.0 keeps the v2.7 movement, death-reaction and autonomy reliability pass, then adds a conservative ordinary-crewmate routine layer. Fetch selection balances value and walking distance, personal fetch phrasing returns loot to the requester, and Buddy waits briefly at nearby closed doors while regrouping without gaining unlock or terminal authority. The existing ship-delivery path remains the default, and item movement remains host-authoritative and replicated through the established bounded attach/drop messages.
+v3.0.0 is the stable gameplay baseline for real host-and-client testing before system-prompt refinement. It keeps the v2.7/v2.8 movement, death-response, autonomy and crewmate-routine work, and closes the remaining premature area-transition recovery path: facility/exterior mismatch now receives three spaced path rebuild attempts and must persist for at least 20 seconds before a sampled-NavMesh emergency recovery. The wire protocol remains 7 because no message format changed.
 
 Automated release requirements:
 
@@ -105,7 +105,7 @@ When doing a real in-game multi-PC test:
 24. Exercise ship, exterior and facility transitions; verify Buddy waits/rebuilds paths and only uses recovery after a persistent failure, never floats or transform-flies.
 25. Leave the crew quiet, travel, find valuable scrap and cross facility boundaries; verify contextual lines are sparse, grounded, non-repeating and suppressed by recent player speech.
 
-No live host-plus-friend v2.8.0 test has been performed yet; the package remains a release candidate until the checklist is smoke-tested, including both provider paths, late joining, transitions, witnessed deaths, fetch handoffs, closed-door regrouping and multi-day arc progression.
+No live host-plus-friend v3.0.0 test has been performed yet; the package remains a release candidate until the checklist is smoke-tested, including both provider paths, late joining, transitions, witnessed deaths, fetch handoffs, closed-door regrouping and multi-day arc progression.
 
 ## Security note
 
