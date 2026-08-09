@@ -17,7 +17,7 @@ plaintext entry is deleted, including when secure storage fails — in that case
 for the session only and a warning is logged. Multiplayer clients do not need and do not receive the
 host key.
 
-Historical private builds contained a shared Groq credential. Any credential that has ever been committed or shared must be considered exposed and revoked/rotated at the provider. Removing it from the current source tree is not credential revocation.
+Any credential that has ever been committed or shared must be considered exposed and revoked/rotated at the provider. Removing it from the current source tree is not credential revocation.
 
 ## Multiplayer trust boundary
 

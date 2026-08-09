@@ -237,8 +237,6 @@ A shipping ZIP contains exactly `LethalAICrewmate.dll`, `manifest.json`, `README
 
 ---
 
-## Security note
+## Reporting a security issue
 
-Older private builds contained a shared Groq key. Any credential that has ever been committed or shared must be considered exposed and revoked at the provider — removing it from the source tree is not revocation. Current release source and packages contain no default API key, and CI rejects any build that would ship one.
-
-To report a vulnerability, avoid posting credentials or logs publicly. See [SECURITY.md](SECURITY.md).
+Release source and packages contain no API key, and CI rejects any build that would ship one. To report a vulnerability, avoid posting credentials or logs publicly. See [SECURITY.md](SECURITY.md).
