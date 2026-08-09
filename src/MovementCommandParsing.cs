@@ -15,14 +15,16 @@ namespace LethalAICrewmate
 
     internal readonly struct MovementCommand
     {
-        internal MovementCommand(MovementCommandKind kind, float scoutDistance = 0f)
+        internal MovementCommand(MovementCommandKind kind, float scoutDistance = 0f, bool deliverToRequester = false)
         {
             Kind = kind;
             ScoutDistance = scoutDistance;
+            DeliverToRequester = deliverToRequester;
         }
 
         internal MovementCommandKind Kind { get; }
         internal float ScoutDistance { get; }
+        internal bool DeliverToRequester { get; }
     }
 
     internal static class MovementCommandParsing
@@ -39,6 +41,9 @@ namespace LethalAICrewmate
             if (lower == "ship" || lower == "home" ||
                 ContainsAny(lower, "go to ship", "go to the ship", "return to ship", "back to ship", "go home", "head home"))
                 return new MovementCommand(MovementCommandKind.ReturnToShip);
+
+            if (ContainsAny(lower, "bring me scrap", "bring scrap to me", "get me scrap", "grab me scrap", "fetch me scrap"))
+                return new MovementCommand(MovementCommandKind.FetchScrap, deliverToRequester: true);
 
             if (lower == "fetch" || lower == "loot" || lower == "scrap" ||
                 ContainsAny(lower, "fetch scrap", "collect scrap", "get scrap", "grab scrap", "find scrap", "bring scrap", "fetch loot", "collect loot"))
