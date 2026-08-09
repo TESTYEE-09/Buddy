@@ -15,9 +15,7 @@ namespace LethalAICrewmate
     {
         private const float SampleInterval = 0.75f;
         private const float MinProgress = 0.35f;
-        private const float PathRecoveryAfter = 3.0f;
-        private const float TeleportRecoveryAfter = 6.5f;
-        private const float RecoveryCooldown = 1.75f;
+        private const float RecoveryCooldown = 4.0f;
 
         private sealed class Track
         {
@@ -104,10 +102,12 @@ namespace LethalAICrewmate
             }
 
             float stalledFor = now - track.LastProgressAt;
-            if (stalledFor < PathRecoveryAfter || now - track.LastRecoveryAt < RecoveryCooldown)
+            if (stalledFor < BuddyMovementPolicy.PathRebuildDelay || now - track.LastRecoveryAt < RecoveryCooldown)
                 return;
 
-            if (stalledFor >= TeleportRecoveryAfter)
+            float separation = destinationDistance;
+            float areaMismatch = data.AreaMismatchStartedAt > 0f ? Time.time - data.AreaMismatchStartedAt : 0f;
+            if (BuddyMovementPolicy.ShouldEmergencyRecover(stalledFor, track.Recoveries, separation, areaMismatch))
             {
                 try
                 {
@@ -169,7 +169,7 @@ namespace LethalAICrewmate
                 {
                     enemy.agent.isStopped = true;
                     enemy.agent.ResetPath();
-                    enemy.agent.speed = 5.0f;
+                    enemy.agent.speed = BuddyMovementPolicy.FollowSpeed(Vector3.Distance(enemy.transform.position, destination));
                     enemy.agent.stoppingDistance = 2.2f;
                     enemy.agent.isStopped = false;
                     enemy.agent.SetDestination(destination);
