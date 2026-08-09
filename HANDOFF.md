@@ -1,12 +1,12 @@
-# HANDOFF — Buddy v2.6.0
+# HANDOFF — Buddy v2.8.0
 
 ## Current status
 
 Buddy is a BepInEx 5 mod for **Lethal Company v81** adding a friendly AI crewmate named Buddy. Public source: `https://github.com/TESTYEE-09/Buddy`.
 
-Release target: **v2.6.0** (wire protocol **7**, unchanged because no wire format changed).
+Release target: **v2.8.0** (wire protocol **7**, unchanged because no wire format changed).
 
-v2.6.0 makes OpenAI Realtime the complete recommended experience and keeps Groq as a separate Qwen/Whisper/Orpheus alternative. The compact main-menu card now explains that choice directly. The v2.5 slow-burn arc, multiplayer wire format, tool authority, security limits and sync behavior are unchanged.
+v2.8.0 keeps the v2.7 movement, death-reaction and autonomy reliability pass, then adds a conservative ordinary-crewmate routine layer. Fetch selection balances value and walking distance, personal fetch phrasing returns loot to the requester, and Buddy waits briefly at nearby closed doors while regrouping without gaining unlock or terminal authority. The existing ship-delivery path remains the default, and item movement remains host-authoritative and replicated through the established bounded attach/drop messages.
 
 Automated release requirements:
 
@@ -100,8 +100,12 @@ When doing a real in-game multi-PC test:
 19. Play through multiple landed rounds and a fulfilled quota; verify the arc advances gradually, survives a save reload, and never emits a character beat without the corresponding round/quota/death evidence.
 20. Set `[Character] SlowBurnHorror=false`; verify Buddy immediately uses the ordinary coworker prompt/voice and emits no further arc beats.
 21. Set `ResetSlowBurnProgress=true`, reload as host, verify the log reports `Coworker progress=0`, and confirm the switch automatically returns to false.
+22. Join late while Buddy is active; verify his network ID/body stays stable, existing peers keep receiving poses, and the new peer binds after its hello.
+23. Kill Buddy's followed player nearby and out of sight/far away in separate runs; verify only the nearby same-area death is remembered/reported and neither case teleports to the next player.
+24. Exercise ship, exterior and facility transitions; verify Buddy waits/rebuilds paths and only uses recovery after a persistent failure, never floats or transform-flies.
+25. Leave the crew quiet, travel, find valuable scrap and cross facility boundaries; verify contextual lines are sparse, grounded, non-repeating and suppressed by recent player speech.
 
-No live host-plus-friend v2.6.0 test has been performed yet; the package remains a release candidate until the checklist is smoke-tested, including both provider paths and multi-day arc progression.
+No live host-plus-friend v2.8.0 test has been performed yet; the package remains a release candidate until the checklist is smoke-tested, including both provider paths, late joining, transitions, witnessed deaths, fetch handoffs, closed-door regrouping and multi-day arc progression.
 
 ## Security note
 
