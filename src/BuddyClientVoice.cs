@@ -487,6 +487,7 @@ namespace LethalAICrewmate
             if (request?.Wav == null || request.Wav.Length < 1000)
                 return;
 
+            LlmClient.NotePlayerInteraction();
             _hostBusy = true;
             Plugin.Host.StartCoroutine(TranscribeRemote(request));
         }
