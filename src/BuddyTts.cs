@@ -45,6 +45,11 @@ namespace LethalAICrewmate
             }
         }
 
+        internal static void DropQueuedSpeech()
+        {
+            Pending.Clear();
+        }
+
         public static void Speak(string text, Vector3 worldPos)
         {
             try

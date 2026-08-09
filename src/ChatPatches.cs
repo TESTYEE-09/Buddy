@@ -47,11 +47,12 @@ namespace LethalAICrewmate
         private static int _lastPlayerId = int.MinValue;
         private static float _lastMessageTime;
 
-        public static void OnServerChat(string chatMessage, int playerId)
+        public static void OnServerChat(string chatMessage, int playerId, bool authenticatedCommandSource = false)
         {
             if (!CrewmateSpawner.IsHost()) return;
             if (string.IsNullOrWhiteSpace(chatMessage)) return;
             if (Plugin.Enabled != null && !Plugin.Enabled.Value) return;
+            if (!CrewmateSpawner.CanTalkToBuddy) return;
 
             // Both Harmony hooks can see the same server chat event. De-dupe only the same
             // player's same message, so two people saying "buddy follow" together are not merged.
@@ -103,7 +104,9 @@ namespace LethalAICrewmate
             // "route titan" must never spend credits or move the ship by itself.
             if (addressed)
             {
-                string termResult = TerminalBuddy.HandleChatCommand(msg, playerId);
+                bool unauthenticatedStateChange = !authenticatedCommandSource &&
+                    ShipCommandParsing.IsStateChangingRequest(restLower);
+                string termResult = unauthenticatedStateChange ? null : TerminalBuddy.HandleChatCommand(msg, playerId);
                 if (!string.IsNullOrEmpty(termResult))
                 {
                     Plugin.Log?.LogInfo($"Terminal cmd: {termResult}");
@@ -124,29 +127,29 @@ namespace LethalAICrewmate
             string deterministicCommand = null;
             if (movement.Kind != MovementCommandKind.None && (addressed || MovementCommandParsing.IsDirectDirective(restLower)))
             {
-                if (!RemoteActionAuthorization.AllowsStateChangingRequest(
-                        LobbySafety.GetVisibility(),
-                        Plugin.RemoteGameActionsInPublicLobbies?.Value == true,
-                        trustedInternalHostRequest: false))
+                if (!authenticatedCommandSource)
                 {
-                    long blockedJournalId = ResponseJournal.NoteInput("command", GetPlayerName(playerId), msg);
-                    LlmClient.PublishLocalReply("Remote movement commands are disabled unless this is a verified friends/invite-only lobby.", blockedJournalId);
-                    return;
+                    // Vanilla chat carries a client-controlled player id. Keep conversation working,
+                    // but never let it grant movement or other state-changing authority.
+                    movement = default;
                 }
-                isCommand = true;
-                Plugin.Log?.LogInfo("Movement command parsed from player chat.");
-                if (CrewmateAI.ApplyCommandFromChat(rest, playerId, out string failure))
+                else
                 {
-                    deterministicCommand = CommandName(movement.Kind);
-                    BuddyRelationships.Note(speakerName,
-                        polite ? BuddyRelationEvent.PoliteRequest : BuddyRelationEvent.CommandHonoured);
-                }
-                else if (!string.IsNullOrWhiteSpace(failure))
-                {
-                    BuddyRelationships.Note(speakerName, BuddyRelationEvent.CommandRejected);
-                    long journalId = ResponseJournal.NoteInput("command", GetPlayerName(playerId), msg);
-                    LlmClient.PublishLocalReply(failure, journalId);
-                    return;
+                    isCommand = true;
+                    Plugin.Log?.LogInfo("Movement command parsed from authenticated voice input.");
+                    if (CrewmateAI.ApplyCommandFromChat(rest, playerId, out string failure))
+                    {
+                        deterministicCommand = CommandName(movement.Kind);
+                        BuddyRelationships.Note(speakerName,
+                            polite ? BuddyRelationEvent.PoliteRequest : BuddyRelationEvent.CommandHonoured);
+                    }
+                    else if (!string.IsNullOrWhiteSpace(failure))
+                    {
+                        BuddyRelationships.Note(speakerName, BuddyRelationEvent.CommandRejected);
+                        long journalId = ResponseJournal.NoteInput("command", GetPlayerName(playerId), msg);
+                        LlmClient.PublishLocalReply(failure, journalId);
+                        return;
+                    }
                 }
             }
 
@@ -180,12 +183,6 @@ namespace LethalAICrewmate
                 }
                 string playerName = GetPlayerName(playerId);
                 long journalId = ResponseJournal.NoteInput("chat", playerName, msg);
-                if (!LobbySafety.AllowsRestrictedRemoteFeaturesByDefault() &&
-                    Plugin.RemoteAiInPublicLobbies?.Value != true)
-                {
-                    LlmClient.PublishLocalReply("AI conversation is disabled unless this is a verified friends/invite-only lobby.", journalId);
-                    return;
-                }
                 if (!LlmClient.EnqueuePlayerMessage(playerName, playerId, msg, isCommand, journalId))
                     ResponseJournal.Discard(journalId);
             }

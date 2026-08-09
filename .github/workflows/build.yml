@@ -45,6 +45,7 @@ jobs:
           if ([string]::IsNullOrWhiteSpace([string]$manifest.description)) { throw 'Manifest description is empty' }
           if ([string]$manifest.website_url -notmatch '^https://') { throw 'Manifest website_url must use HTTPS' }
           if (@($manifest.dependencies) -notcontains 'BepInEx-BepInExPack-5.4.2100') { throw 'Required BepInEx dependency missing from manifest' }
+          if (@($manifest.dependencies) -notcontains 'willis81808-LethalSettings-1.4.1') { throw 'Required LethalSettings dependency missing from manifest' }
 
           [xml]$project = Get-Content 'src/LethalAICrewmate.csproj' -Raw
           $projectVersion = [string]($project.Project.PropertyGroup | Where-Object { $_.Version } | Select-Object -First 1).Version

@@ -7,7 +7,7 @@ namespace LethalAICrewmate
     {
         private const float HearRange = 70f;
         private const float TriggerRange = 60f;
-        private const float TargetRms = 0.16f;
+        private const float TargetRms = 0.20f;
 
         internal static void NormalizeHostClip(AudioClip clip)
         {
@@ -20,7 +20,8 @@ namespace LethalAICrewmate
                 double sumSquares = 0d;
                 for (int i = 0; i < samples.Length; i++) sumSquares += samples[i] * samples[i];
                 float rms = (float)Math.Sqrt(sumSquares / Math.Max(1, samples.Length));
-                float gain = rms > 0.0001f ? Mathf.Clamp(TargetRms / rms, 0.75f, 2.4f) : 1f;
+                float loudness = Mathf.Clamp(Plugin.TtsVolume?.Value ?? 1.25f, 0f, 2f);
+                float gain = rms > 0.0001f ? Mathf.Clamp((TargetRms * Mathf.Max(1f, loudness)) / rms, 0.75f, 3.2f) : 1f;
                 const double drive = 1.15;
                 double divisor = Math.Tanh(drive);
                 for (int i = 0; i < samples.Length; i++)
@@ -37,7 +38,7 @@ namespace LethalAICrewmate
         internal static void ConfigureSource(AudioSource source)
         {
             if (source == null) return;
-            source.volume = Mathf.Clamp01(Plugin.TtsVolume?.Value ?? 1f);
+            source.volume = Mathf.Clamp01(Plugin.TtsVolume?.Value ?? 1.25f);
             // Preserve the generated voice exactly. Latency is handled by faster API models and
             // processing tiers rather than making Buddy talk unnaturally fast.
             source.pitch = 1f;

@@ -32,6 +32,8 @@ namespace LethalAICrewmate
         internal static void Queue(BuddyContextEvent kind, string evidence)
         {
             if (string.IsNullOrWhiteSpace(evidence)) return;
+            if (kind != BuddyContextEvent.WitnessedDeathReport && kind != BuddyContextEvent.HazardNearby)
+                return;
             int importance = BuddyAutonomyPolicy.Importance(kind);
             if (_pending != null && _pending.Importance > importance) return;
             _pending = new PendingEvent { Kind = kind, Evidence = evidence.Trim(), Importance = importance };

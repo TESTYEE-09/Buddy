@@ -16,6 +16,7 @@ if ([string]$manifest.name -ne "Buddy") { throw "Unexpected manifest name" }
 if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "Manifest version must be x.y.z: $version" }
 if ([string]::IsNullOrWhiteSpace([string]$manifest.description)) { throw "Manifest description is empty" }
 if (@($manifest.dependencies) -notcontains "BepInEx-BepInExPack-5.4.2100") { throw "Required BepInEx dependency missing" }
+if (@($manifest.dependencies) -notcontains "willis81808-LethalSettings-1.4.1") { throw "Required LethalSettings dependency missing" }
 
 [xml]$projectXml = Get-Content $project -Raw
 $projectVersion = [string]($projectXml.Project.PropertyGroup | Where-Object { $_.Version } | Select-Object -First 1).Version

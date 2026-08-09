@@ -1,9 +1,21 @@
 # Changelog
 
-## 3.6.0
+## 3.6.1
 
-- Closes the v3.5.1 security review: model game-action tools are removed, OpenAI turns use isolated sessions, player chat cannot capture screenshots, and public/unknown-lobby AI spend and movement commands fail closed.
-- Changes the alternate Buddy push-to-talk key from the game's normal `V` voice key to `None` and displays a recording notice before audio is sent.
+- Replaces the cut-off custom overlay with a native LethalSettings page in the main and pause menus, including provider, secure API key, microphone, volume, story and response-journal controls. The editable personality box is removed.
+- Completely rewrites Buddy's shared system prompt from real saved-session failures: direct answers, no exit/safety fixation, ordinary conversational repair, harmless banter, useful game knowledge, player-centred sensor facts, and no robotic capability lectures.
+- Adds live crew alive/dead status and Buddy area/distance to context, and centres nearby-entity distances on the player who asked instead of always on Buddy.
+- Stops long context from replaying Buddy's own bad prior replies; it retains up to 40 crewmate inputs for references and continuity.
+- OpenAI Realtime now transcribes before responding, executes sender-authenticated voice commands on the Unity thread, feeds the confirmed result into the reply, and raises the audio-inclusive output ceiling from 256 to 1024 tokens to prevent mid-sentence cutoffs.
+- Keeps Buddy voice-only in orbit, silent during descent, and spawns his physical body on exterior NavMesh only after the ship has fully landed and stopped.
+- Removes unreliable Steam lobby-visibility gating so exact-version friends can speak and use sender-bound deterministic voice commands; remote voice retains handshake, range, rate, size and audio validation and remains host-disableable. Spoofable vanilla typed chat cannot authorize state changes.
+- Fixes facility/ship area synchronization, drives available walk/run animator parameters, increases voice loudness, prevents the beginning of Realtime speech being clipped, and plays each Realtime reply as one continuous clip.
+- Preserves bounded in-memory conversation context across moon trips, while never writing it to disk unless the response journal is explicitly enabled.
+- Makes replies shorter and more natural, permits rare situational swearing, suppresses ordinary wildlife/random chatter, and applies a two-minute per-monster danger-callout cooldown.
+- Removes the hold-B overlay and exact-command lecturing; Groq turns discard stale queued speech when a new player turn begins.
+- Enables the bounded final-stage hostile-spawn story feature for new installs and adds its toggle to native Buddy settings; existing configs retain their saved choice.
+- Closes the v3.5.1 security review: model game-action tools are removed, OpenAI turns use isolated sessions, and player chat cannot capture screenshots.
+- Changes the alternate Buddy push-to-talk key from the game's normal `V` voice key to `None`.
 - Removes raw player chat, names, transcripts and provider bodies from ordinary logs; response/prompt journaling remains explicit opt-in with immediate deletion when disabled.
 - Rate-limits and sanitizes compatibility hellos, caps remote identity/pose/audio queues, uses direct spawned-object lookup, range-gates remote voice before allocation, and rejects unexpected model tool-call events.
 - Removes arbitrary terminal fallbacks, fixes `mine` substring matching and empty-name matching, sanitizes prompt/HUD text, validates spawn-intent vectors after handshake, and closes RIFF integer-overflow and journal UTF-8 trimming gaps.

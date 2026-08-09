@@ -17,6 +17,35 @@ namespace LethalAICrewmate
         private static float _lastPollLog;
         private static int _pollAttempts;
         private static float _nextSpawnAllowedAt;
+        private static float _landedObservedAt = -1f;
+        private const float LandingSettleSeconds = 1.25f;
+
+        internal static bool IsBuddyPresent => CrewmateRegistry.GetPrimary()?.Enemy != null;
+        internal static bool CanTalkToBuddy
+        {
+            get
+            {
+                if (IsBuddyPresent) return true;
+                try { return StartOfRound.Instance?.inShipPhase == true; }
+                catch { return false; }
+            }
+        }
+
+        internal static bool IsLandingSettled()
+        {
+            try
+            {
+                var sor = StartOfRound.Instance;
+                if (sor == null || sor.inShipPhase || !sor.shipHasLanded || sor.shipIsLeaving)
+                {
+                    _landedObservedAt = -1f;
+                    return false;
+                }
+                if (_landedObservedAt < 0f) _landedObservedAt = Time.unscaledTime;
+                return Time.unscaledTime - _landedObservedAt >= LandingSettleSeconds;
+            }
+            catch { return false; }
+        }
 
         /// <summary>Called from lifecycle patches and the periodic host poll.</summary>
         public static void SpawnCrewmateIfNeeded(string reason = "unknown")
@@ -31,6 +60,11 @@ namespace LethalAICrewmate
                 if (!IsHost())
                 {
                     LogOnce($"skip spawn ({reason}): not host");
+                    return;
+                }
+                if (!IsLandingSettled())
+                {
+                    LogOnce($"skip spawn ({reason}): ship is not fully landed and settled");
                     return;
                 }
                 if (_spawnedThisLanding)
@@ -84,6 +118,7 @@ namespace LethalAICrewmate
                 if (Plugin.Enabled == null || !Plugin.Enabled.Value) return;
                 if (!IsHost()) return;
                 if (Time.unscaledTime < _nextSpawnAllowedAt) return;
+                if (!IsLandingSettled()) return;
 
                 var sor = StartOfRound.Instance;
                 if (sor == null) return;
@@ -236,26 +271,19 @@ namespace LethalAICrewmate
 
                 var owner = FindPreferredOwner();
 
-                // Force position beside player inside the ship (spawn APIs often drop outside)
+                // Spawn APIs may reposition a Masked. Re-assert the validated exterior anchor.
                 try
                 {
-                    Vector3 shipSide = GetSpawnPosition();
-                    if (shipSide == Vector3.zero && owner != null)
-                        shipSide = owner.transform.position + owner.transform.right * 1.15f;
-
-                    if (!TrySnapToNavMesh(shipSide, 8f, out shipSide))
-                        shipSide = spawnPos; // already validated before spawning
-                    masked.transform.position = shipSide;
-
-                    // Mark as inside ship so pathing / exterior AI doesn't yank him out
-                    try { masked.SetEnemyOutside(false); } catch { /* optional */ }
-                    try { masked.isOutside = false; } catch { /* field may not exist */ }
+                    Vector3 exterior = spawnPos;
+                    masked.transform.position = exterior;
+                    try { masked.SetEnemyOutside(true); } catch { /* optional */ }
+                    masked.isOutside = true;
 
                     if (masked.agent != null)
                     {
                         masked.agent.enabled = true;
-                        masked.agent.Warp(shipSide);
-                        masked.transform.position = shipSide;
+                        masked.agent.Warp(exterior);
+                        masked.transform.position = exterior;
                     }
 
                     // Face the player
@@ -267,11 +295,11 @@ namespace LethalAICrewmate
                             masked.transform.rotation = Quaternion.LookRotation(look.normalized);
                     }
 
-                    Plugin.Log?.LogInfo($"Post-spawn placed beside player in ship at {masked.transform.position}");
+                    Plugin.Log?.LogInfo($"Post-spawn anchored Buddy outside the ship at {masked.transform.position}");
                 }
                 catch (Exception ex)
                 {
-                    Plugin.Log?.LogWarning($"Post-spawn ship place: {ex.Message}");
+                    Plugin.Log?.LogWarning($"Post-spawn exterior placement: {ex.Message}");
                 }
 
                 var data = CrewmateRegistry.Register(masked, owner);
@@ -360,12 +388,13 @@ namespace LethalAICrewmate
             finally
             {
                 CrewmateRegistry.UnregisterAll();
-                LlmClient.ResetSession();
+                LlmClient.CancelPendingRequests();
                 _spawnedThisLanding = false;
                 _spawnAttemptInProgress = false;
                 _spawnRoutine = null;
                 _pollAttempts = 0;
                 _nextSpawnAllowedAt = Time.unscaledTime + 4f;
+                _landedObservedAt = -1f;
             }
         }
 
@@ -426,6 +455,41 @@ namespace LethalAICrewmate
             {
                 var sor = StartOfRound.Instance;
 
+                // Buddy must appear on the moon, never inside or on top of the descending ship.
+                // Exterior AI nodes are already baked onto the correct outside NavMesh.
+                if (RoundManager.Instance != null)
+                {
+                    Vector3 ship = sor?.shipBounds != null
+                        ? sor.shipBounds.bounds.center
+                        : sor?.middleOfShipNode != null ? sor.middleOfShipNode.position : Vector3.zero;
+                    GameObject bestExterior = null;
+                    float bestDistance = float.MaxValue;
+                    GameObject[] nodes = RoundManager.Instance.outsideAINodes;
+                    if (nodes != null)
+                    {
+                        foreach (GameObject node in nodes)
+                        {
+                            if (node == null) continue;
+                            Vector3 position = node.transform.position;
+                            if (sor?.shipInnerRoomBounds != null && sor.shipInnerRoomBounds.bounds.Contains(position)) continue;
+                            if (sor?.shipBounds != null && sor.shipBounds.bounds.Contains(position)) continue;
+                            float distance = Vector3.Distance(ship, position);
+                            if (distance < bestDistance)
+                            {
+                                bestDistance = distance;
+                                bestExterior = node;
+                            }
+                        }
+                    }
+                    if (bestExterior != null && TrySnapToNavMesh(bestExterior.transform.position, 8f, out Vector3 exterior))
+                    {
+                        Plugin.Log?.LogInfo($"Spawn at exterior AI node {bestExterior.name}, {bestDistance:F1}m from ship");
+                        return exterior;
+                    }
+                    Plugin.Log?.LogWarning("No exterior AI node is ready; Buddy will wait instead of spawning in the ship.");
+                    return new Vector3(float.NaN, float.NaN, float.NaN);
+                }
+
                 // 1) Beside the host/local player (inside ship after land)
                 var owner = FindPreferredOwner();
                 if (owner != null)
@@ -483,7 +547,7 @@ namespace LethalAICrewmate
             {
                 Plugin.Log?.LogWarning($"GetSpawnPosition: {ex.Message}");
             }
-            return Vector3.zero;
+            return new Vector3(float.NaN, float.NaN, float.NaN);
         }
 
         private static PlayerControllerB FindPreferredOwner()
@@ -635,9 +699,7 @@ namespace LethalAICrewmate
         {
             try
             {
-                Plugin.Log?.LogInfo("Hook: OpenShipDoors");
                 NetMessenger.TryRegisterHandlers();
-                CrewmateSpawner.SpawnCrewmateIfNeeded("event:OpenShipDoors");
             }
             catch (Exception ex)
             {

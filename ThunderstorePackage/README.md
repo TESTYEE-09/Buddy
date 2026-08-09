@@ -67,7 +67,7 @@ A long campaign eventually reaches a stage where the act stops being convincing.
 
 By itself that is still just dialogue. But if you turn on `FinalStageHostileSpawns`, that stage also lets Buddy occasionally set one of the moon's own creatures loose near someone who is out working.
 
-**It is off by default. Only turn it on if your whole crew agrees.** Even then it is capped at twice per round with a long gap, never goes after anyone standing in the ship, and can never be triggered by chat, a command, the AI, or another player.
+**It is enabled for new installs; turn it off in Buddy settings unless your whole crew agrees.** Existing configs keep their saved choice. It is capped at twice per round with a long gap, never goes after anyone standing in the ship, and can never be triggered by chat, a command, the AI, or another player.
 
 Prefer the ordinary coworker forever? Set `SlowBurnHorror = false`.
 
@@ -76,9 +76,11 @@ Prefer the ordinary coworker forever? Set `SlowBurnHorror = false`.
 - Buddy is host-authoritative. Clients trust only the host.
 - Everyone must match on version — an unmodded or mismatched player blocks the spawn, on purpose.
 - His movement, chat and voice are synced to everyone. Late joiners recover his state.
-- **Public lobbies fail closed.** Remote push-to-talk and remote buying, routing or ship changes are allowed only in a confirmed friends/invite-only lobby. If visibility cannot be verified, they are blocked unless the host explicitly opts in. Read-only questions still work for everyone.
+- Buddy uses LethalSettings in the real main/pause settings UI for provider, secure API-key management, microphone, volume, story and response-saving controls.
+- In orbit Buddy is a voice-only terminal with no physical body. He stays silent during descent, then spawns outside after the ship has fully landed and stopped.
+- `AllowRemoteVoice` lets exact-version compatible crewmates talk to Buddy without relying on unreliable Steam lobby-visibility detection. Audio remains sender-bound, range/rate/size limited and validated by the host.
 - Provider keys are never sent over multiplayer, written to the config file, or logged.
-- The main-menu **Buddy settings** panel selects OpenAI or Groq, securely saves/tests/clears that provider's key, and provides separate opt-in response and prompt/context saving controls.
+- The native **Buddy settings** page selects OpenAI or Groq, securely saves/tests/clears that provider's key, and provides separate opt-in response and prompt/context saving controls.
 
 ## Which AI should I use?
 

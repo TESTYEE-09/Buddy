@@ -31,6 +31,7 @@ namespace LethalAICrewmate
             {
                 if (Plugin.VoiceEnabled == null || !Plugin.VoiceEnabled.Value) return;
                 if (!CrewmateSpawner.IsHost()) return;
+                if (!CrewmateSpawner.CanTalkToBuddy) return;
                 if (!GroqSecrets.HasKey) return;
                 if (_busy) return;
 
@@ -323,7 +324,7 @@ namespace LethalAICrewmate
             }
             catch { /* ignore */ }
 
-            ChatObserver.OnServerChat(msg, playerId);
+            ChatObserver.OnServerChat(msg, playerId, authenticatedCommandSource: true);
         }
 
         private static string ParseTranscription(string json)
@@ -394,6 +395,7 @@ namespace LethalAICrewmate
 
         private static void MaybeHint(string msg)
         {
+            if (!string.IsNullOrEmpty(msg) && msg.StartsWith("Recording for Buddy", StringComparison.Ordinal)) return;
             if (Time.unscaledTime < _hintCooldown) return;
             _hintCooldown = Time.unscaledTime + 3f;
             try

@@ -56,6 +56,15 @@ namespace LethalAICrewmate
             if (enemy == null) return;
             EnsureAgent(enemy);
 
+            bool visiblyMoving = enemy.moveTowardsDestination;
+            try
+            {
+                visiblyMoving = visiblyMoving && enemy.agent != null && enemy.agent.enabled &&
+                                  enemy.agent.isOnNavMesh && enemy.agent.velocity.sqrMagnitude > 0.04f;
+            }
+            catch { }
+            BuddyAnimation.Apply(enemy, visiblyMoving);
+
             if (enemy.agent != null && enemy.agent.enabled && enemy.agent.isOnNavMesh)
             {
                 if (enemy.moveTowardsDestination && !enemy.agent.isStopped)
@@ -259,7 +268,9 @@ namespace LethalAICrewmate
                 var enemy = data.Enemy;
                 bool ownerInFactory = owner.isInsideFactory;
                 bool buddyOutside = enemy.isOutside;
-                bool mismatch = (ownerInFactory && buddyOutside) ||
+                bool buddyInShip = IsInsideShip(enemy.transform.position);
+                bool mismatch = (ownerInFactory && (buddyOutside || buddyInShip)) ||
+                                (owner.isInHangarShipRoom && !buddyInShip) ||
                                 (!ownerInFactory && !owner.isInHangarShipRoom && !buddyOutside);
 
                 if (!mismatch)
@@ -331,6 +342,18 @@ namespace LethalAICrewmate
             data.AreaMismatchStartedAt = 0f;
             data.AreaPathRebuildAttempts = 0;
             data.NextAreaPathRebuildAt = 0f;
+        }
+
+        private static bool IsInsideShip(Vector3 position)
+        {
+            try
+            {
+                var sor = StartOfRound.Instance;
+                if (sor?.shipInnerRoomBounds != null) return sor.shipInnerRoomBounds.bounds.Contains(position);
+                if (sor?.shipBounds != null) return sor.shipBounds.bounds.Contains(position);
+            }
+            catch { }
+            return false;
         }
 
         private static bool TeleportBesidePlayer(MaskedPlayerEnemy enemy, PlayerControllerB owner, bool setOutside)

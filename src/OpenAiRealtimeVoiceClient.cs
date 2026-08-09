@@ -42,6 +42,7 @@ namespace LethalAICrewmate
             public long JournalId;
             public bool SuppressChat;
             public bool AllowTools;
+            public string MemoryInput;
         }
 
         internal static bool Enabled => GroqSecrets.IsOpenAi;
@@ -61,7 +62,7 @@ namespace LethalAICrewmate
             string safeName = PromptSafety.SanitizePlayerName(playerName);
             string livePrompt = BuddyConversationPrompt.Build() +
                 "\n\nCURRENT VOICE TURN\nSpeaker: " + safeName +
-                ".\n" + GameSensors.BuildLiveContext() +
+                ".\n" + GameSensors.BuildLiveContext(playerId) +
                 "\nThe model has no game-action authority. Commands are handled only by deterministic player-input code.";
             lock (Gate)
             {
@@ -73,6 +74,7 @@ namespace LethalAICrewmate
                     PlayerId = playerId,
                     PlayerName = safeName,
                     Instructions = livePrompt,
+                    MemoryInput = null,
                     AllowTools = false
                 });
                 if (!_workerRunning)
@@ -99,6 +101,7 @@ namespace LethalAICrewmate
                 PlayerName = PromptSafety.SanitizePlayerName(playerName),
                 Instructions = instructions,
                 JournalId = journalId,
+                MemoryInput = LlmClient.BuildHistoryContent(text, false),
                 AllowTools = false
             });
         }
@@ -136,6 +139,7 @@ namespace LethalAICrewmate
         private static string BuildTurnInstructions(string playerName, int playerId) =>
             BuddyConversationPrompt.Build() +
             "\n\nCURRENT TURN\nSpeaker: " + PromptSafety.SanitizePlayerName(playerName) + ".\n" +
+            GameSensors.BuildLiveContext(playerId) + "\n" +
             "The model has no game-action authority. Commands are handled only by deterministic player-input code.";
 
         internal static void ResetSession()
@@ -229,6 +233,7 @@ namespace LethalAICrewmate
         private static async Task ProcessTurnAsync(VoiceTurn turn)
         {
             string toolResult = null;
+            string inputTranscript = turn.MemoryInput;
             bool expectAudio = Plugin.TtsEnabled?.Value == true;
             await EnsureConnectedAsync().ConfigureAwait(false);
             string update = BuildSessionUpdate(turn.Instructions, expectAudio, allowTools: false);
@@ -247,6 +252,15 @@ namespace LethalAICrewmate
                         .ConfigureAwait(false);
                 }
                 await SendAsync("{\"type\":\"input_audio_buffer.commit\"}", _sessionCancel.Token).ConfigureAwait(false);
+                string transcript = await WaitForInputTranscriptionAsync(10).ConfigureAwait(false);
+                if (!string.IsNullOrWhiteSpace(transcript))
+                {
+                    inputTranscript = transcript.Trim();
+                    if (turn.JournalId == 0) turn.JournalId = ResponseJournal.NoteInput("voice", turn.PlayerName, inputTranscript);
+                    QueueInputTranscript(turn.PlayerName, inputTranscript);
+                    QueueSpeakerNote(turn.PlayerId, turn.PlayerName);
+                    toolResult = await ExecuteAuthenticatedVoiceCommandAsync(inputTranscript, turn.PlayerId).ConfigureAwait(false);
+                }
             }
             else if (!turn.SuppressChat)
             {
@@ -265,7 +279,18 @@ namespace LethalAICrewmate
             }
             else
             {
-                await CreateResponseAsync().ConfigureAwait(false);
+                if (!string.IsNullOrWhiteSpace(toolResult))
+                {
+                    string responseInstructions = turn.Instructions +
+                        "\n\nCOMMAND RESULT (confirmed by game code): " + toolResult +
+                        "\nAcknowledge this naturally. Do not deny the confirmed action or explain command syntax.";
+                    await CreateResponseAsync("{\"type\":\"response.create\",\"response\":{\"instructions\":\"" +
+                        LlmClient.Escape(responseInstructions) + "\"}}").ConfigureAwait(false);
+                }
+                else
+                {
+                    await CreateResponseAsync().ConfigureAwait(false);
+                }
             }
 
             using (var audio = new MemoryStream())
@@ -288,6 +313,7 @@ namespace LethalAICrewmate
                         string transcript = ReadJsonString(message, "transcript");
                         if (!string.IsNullOrWhiteSpace(transcript))
                         {
+                            inputTranscript = transcript.Trim();
                             if (turn.JournalId == 0) turn.JournalId = ResponseJournal.NoteInput("voice", turn.PlayerName, transcript);
                             QueueInputTranscript(turn.PlayerName, transcript);
                             QueueSpeakerNote(turn.PlayerId, turn.PlayerName);
@@ -338,11 +364,14 @@ namespace LethalAICrewmate
                     }
                 }
 
-                byte[] pcm = audio.ToArray();
-                foreach (byte[] chunk in completedAudioChunks)
+                byte[] pcm;
+                using (var complete = new MemoryStream())
                 {
-                    QueueAudioChunk(chunk);
-                    queuedAnyAudio = true;
+                    foreach (byte[] chunk in completedAudioChunks)
+                        complete.Write(chunk, 0, chunk.Length);
+                    byte[] tail = audio.ToArray();
+                    if (tail.Length > 0) complete.Write(tail, 0, tail.Length);
+                    pcm = complete.ToArray();
                 }
                 if (pcm.Length > 1)
                 {
@@ -351,6 +380,7 @@ namespace LethalAICrewmate
                 }
                 if (!turn.SuppressChat && !string.IsNullOrWhiteSpace(assistantTranscript))
                 {
+                    QueueConversationMemory(turn.PlayerName, inputTranscript, assistantTranscript);
                     QueueAssistantChat(assistantTranscript, turn.JournalId, toolResult);
                     turn.JournalId = 0;
                 }
@@ -424,7 +454,49 @@ namespace LethalAICrewmate
                    "\"noise_reduction\":{\"type\":\"far_field\"}," +
                    "\"transcription\":{\"model\":\"" + BuddyAiArchitecture.OpenAiTranscriptionModel + "\"},\"turn_detection\":null}," +
                    "\"output\":{\"format\":{\"type\":\"audio/pcm\",\"rate\":24000},\"voice\":\"ash\"}}," +
-                   "\"reasoning\":{\"effort\":\"low\"},\"max_output_tokens\":256," + tools + "}}";
+                   "\"reasoning\":{\"effort\":\"low\"},\"max_output_tokens\":1024," + tools + "}}";
+        }
+
+        private static async Task<string> WaitForInputTranscriptionAsync(int timeoutSeconds)
+        {
+            using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(_sessionCancel.Token))
+            {
+                timeout.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
+                byte[] buffer = new byte[32768];
+                while (true)
+                {
+                    string message = await ReceiveMessageAsync(buffer, timeout.Token).ConfigureAwait(false);
+                    if (message == null) throw new IOException("Realtime socket closed before transcription.");
+                    string type = ReadJsonString(message, "type");
+                    if (type == "conversation.item.input_audio_transcription.completed")
+                        return ReadJsonString(message, "transcript");
+                    if (type == "conversation.item.input_audio_transcription.failed")
+                        return null;
+                    if (type == "error") throw new InvalidOperationException(ReadNestedErrorMessage(message) ?? message);
+                }
+            }
+        }
+
+        private static async Task<string> ExecuteAuthenticatedVoiceCommandAsync(string transcript, int playerId)
+        {
+            if (string.IsNullOrWhiteSpace(transcript)) return null;
+            var completion = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+            MainThread.Enqueue(() =>
+            {
+                try
+                {
+                    string result = ChatObserver.ExecuteDeterministicOnly(transcript, playerId);
+                    if (result != null && result.StartsWith("No supported deterministic", StringComparison.Ordinal)) result = null;
+                    completion.TrySetResult(result);
+                }
+                catch (Exception ex)
+                {
+                    Plugin.Log?.LogWarning("Realtime voice command: " + ex.Message);
+                    completion.TrySetResult(null);
+                }
+            });
+            Task finished = await Task.WhenAny(completion.Task, Task.Delay(2000)).ConfigureAwait(false);
+            return finished == completion.Task ? await completion.Task.ConfigureAwait(false) : null;
         }
 
         private static void QueueInputTranscript(string playerName, string transcript)
@@ -448,6 +520,12 @@ namespace LethalAICrewmate
                 BuddySocialIntelligence.NoteSpeech(playerId, playerName, true);
                 BuddyRelationships.NoteAddressing(playerName);
             });
+        }
+
+        private static void QueueConversationMemory(string playerName, string input, string reply)
+        {
+            if (string.IsNullOrWhiteSpace(input) || string.IsNullOrWhiteSpace(reply)) return;
+            MainThread.Enqueue(() => BuddyConversationMemory.Remember(playerName, input, reply));
         }
 
         private static void QueueAudioChunk(byte[] pcm)

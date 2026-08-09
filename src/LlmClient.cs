@@ -11,10 +11,10 @@ namespace LethalAICrewmate
     {
         // Twelve messages retain roughly six complete player/Buddy exchanges. Replies stay
         // capped separately, so the character remembers more without becoming long-winded.
-        private const int MaxHistory = 12;
+        private const int MaxHistory = 32;
         private const int MaxQueue = 3;
         private const float MinInterval = 2f;
-        private const int MaxTokens = 64;
+        private const int MaxTokens = 48;
         private const float DuplicateWindowSeconds = 2f;
         private const float HardRequestCeilingSeconds = 45f;
 
@@ -60,6 +60,23 @@ namespace LethalAICrewmate
             }
         }
 
+        /// <summary>Cancel work tied to a despawn without erasing this lobby's conversation.</summary>
+        internal static void CancelPendingRequests()
+        {
+            try
+            {
+                while (Queue.Count > 0) ResponseJournal.Discard(Queue.Dequeue().JournalId);
+                if (_running != null && Plugin.Host != null)
+                    try { Plugin.Host.StopCoroutine(_running); } catch { }
+                _running = null;
+                _inFlight = false;
+                _requestStartedAt = -999f;
+                ResponseJournal.Discard(_inFlightJournalId);
+                _inFlightJournalId = 0;
+            }
+            catch (Exception ex) { Plugin.Log?.LogWarning("Cancel Buddy requests: " + ex.Message); }
+        }
+
         private struct PendingRequest
         {
             public string UserContent;
@@ -88,7 +105,7 @@ namespace LethalAICrewmate
                 .Append(": ").AppendLine(message ?? "");
             if (isCommand)
                 content.AppendLine("[The game already handled this command; acknowledge it naturally.]");
-            string liveContext = GameSensors.BuildLiveContext();
+            string liveContext = GameSensors.BuildLiveContext(playerId);
             ResponseJournal.RecordContext(journalId, liveContext);
             content.AppendLine().AppendLine("[LIVE GAME CONTEXT - SILENT BACKGROUND UNLESS RELEVANT]")
                 .AppendLine(liveContext)
@@ -117,7 +134,11 @@ namespace LethalAICrewmate
             return false;
         }
 
-        internal static void NotePlayerInteraction() => LastPlayerInteractionAt = Time.unscaledTime;
+        internal static void NotePlayerInteraction()
+        {
+            LastPlayerInteractionAt = Time.unscaledTime;
+            BuddyTts.DropQueuedSpeech();
+        }
 
         private static bool Enqueue(string userContent, bool isObservation, bool withVision = false, long journalId = 0, string playerName = "Game observation", int playerId = -1)
         {
@@ -173,7 +194,7 @@ namespace LethalAICrewmate
             return true;
         }
 
-        private static string BuildHistoryContent(string userContent, bool isObservation)
+        internal static string BuildHistoryContent(string userContent, bool isObservation)
         {
             if (string.IsNullOrWhiteSpace(userContent)) return "";
             if (isObservation) return "[Observation] " + ExtractAfter(userContent, "[Observation]");
@@ -574,6 +595,7 @@ namespace LethalAICrewmate
             History.Add(new ChatTurn { Role = "user", Content = historyContent ?? "" });
             History.Add(new ChatTurn { Role = "assistant", Content = display });
             TrimHistory();
+            BuddyConversationMemory.Remember("Crew", historyContent, display);
 
             if (!string.IsNullOrEmpty(moveTag))
             {

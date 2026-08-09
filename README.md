@@ -76,7 +76,7 @@ A long enough campaign reaches a stage where the performance stops being convinc
 
 On its own that is still dialogue and presentation. But if you set `FinalStageHostileSpawns = true`, that stage also lets Buddy occasionally release one of the current moon's own creatures near a crewmate who is out working.
 
-**It is off by default. Turn it on only with your crew's agreement.** It is host-only, capped at two per round with a seven-minute gap and a delay after landing, never targets anyone standing in the ship, never spawns another Masked, and cannot be requested by chat, a command, the AI, or any other player.
+**It is enabled for new installs; turn it off in Buddy settings unless your crew agrees.** Existing configs keep their saved choice. It is host-only, capped at two per round with a seven-minute gap and a delay after landing, never targets anyone standing in the ship, never spawns another Masked, and cannot be requested by chat, a command, the AI, or any other player.
 
 To keep the ordinary coworker forever: `SlowBurnHorror = false`.
 To restart the current save's story: `ResetSlowBurnProgress = true` once — it flips itself back.
@@ -155,12 +155,12 @@ SlowBurnHorror = true
 ResetSlowBurnProgress = false
 DynamicPacing = true
 PlayerRelationships = true
-FinalStageHostileSpawns = false   ; see "The final stage" above
+FinalStageHostileSpawns = true    ; new-install default; see "The final stage" above
 
 [Voice]
 Enabled = true
 SpokenReplies = true
-Volume = 1
+Volume = 1.25
 PushToTalkKey = B
 AlternatePushToTalkKey = None
 MaxRecordSeconds = 8
@@ -169,9 +169,6 @@ KeepGameVoiceDuringPushToTalk = true
 
 [Security]
 AllowRemoteVoice = true
-RemoteVoiceInPublicLobbies = false
-RemoteGameActionsInPublicLobbies = false
-RemoteAiInPublicLobbies = false
 
 [Logging]
 SaveResponses = false
@@ -181,7 +178,9 @@ SavePromptContext = false
 Enabled = false
 ```
 
-**Public lobbies fail closed.** Remote voice, AI-provider chat spending and state-changing commands are accepted only when Steam lobby visibility is positively confirmed as friends or invite-only. Their explicit opt-ins are `RemoteVoiceInPublicLobbies`, `RemoteAiInPublicLobbies` and `RemoteGameActionsInPublicLobbies`. Read-only deterministic status, store and moon queries stay available.
+Use **Settings > Mod Settings > Buddy** in the main menu or pause menu to choose the provider, securely save/test/clear its API key, select the microphone, change Buddy's volume, control the story feature, and control response saving. The settings use LethalSettings rather than a custom overlay.
+
+`AllowRemoteVoice` controls whether compatible remote crewmates can relay push-to-talk audio to the host. Lobby visibility is not used as an authorization signal; remote transfers still require the exact Buddy protocol/version and remain sender-bound, range-gated, rate-limited, size-limited and audio-validated.
 
 **The response journal is opt-in.** `SaveResponses = true` writes every input and reply — chat, voice transcripts, Buddy's answers, observations and tool results — to `BepInEx/LethalAICrewmate-responses.log` on the host, capped at 8 MB. `SavePromptContext = true` also records the exact system prompt whenever it changes and the live sensor context behind each turn. When response saving is off, Buddy removes an existing journal during startup.
 
@@ -193,7 +192,7 @@ Enabled = false
 
 ## Troubleshooting
 
-**Buddy never appears.** Every connected player needs the same Buddy version. Check the BepInEx console for a handshake mismatch warning naming the player. Unmodded players block the spawn entirely.
+**Buddy never appears.** In orbit Buddy is intentionally voice-only, and during descent he is silent. His body appears on exterior NavMesh only after the ship has fully landed and stopped. Every connected player also needs the same Buddy version; check the BepInEx console for a handshake mismatch warning.
 
 **"Buddy heard silence."** Windows picked the wrong microphone. Set `[Voice] InputDevice` to your device name or part of it.
 
@@ -203,7 +202,7 @@ Enabled = false
 
 **He answers the wrong person.** `SocialAwareness = true` improves this. Note that Lethal Company chat is unauthenticated, so a modded client can make a line appear to come from someone else — this can mislead him about who to answer, but it can never grant command authority.
 
-**Remote players can't buy or route anything.** Working as intended in a public or unverifiable lobby. Use a friends/invite-only lobby, or set `RemoteGameActionsInPublicLobbies = true` if you trust everyone present.
+**A friend can type but Buddy cannot hear their microphone.** Confirm both players have the exact same Buddy version, `AllowRemoteVoice = true`, and the friend's microphone device is selected in Buddy's native settings.
 
 **He says he can't confirm something obvious.** He is only allowed to claim what the sensors actually reported. That is deliberate.
 

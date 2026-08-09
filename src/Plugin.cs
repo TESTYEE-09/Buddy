@@ -9,11 +9,12 @@ using UnityEngine;
 namespace LethalAICrewmate
 {
     [BepInPlugin(ModGuid, ModName, ModVersion)]
+    [BepInDependency("com.willis.lc.lethalsettings", BepInDependency.DependencyFlags.HardDependency)]
     public class Plugin : BaseUnityPlugin
     {
         public const string ModGuid = "com.lethalaicrewmate.buddy";
         public const string ModName = "Buddy";
-        public const string ModVersion = "3.6.0";
+        public const string ModVersion = "3.6.1";
 
         internal static Plugin Instance;
         internal static ManualLogSource Log;
@@ -46,9 +47,6 @@ namespace LethalAICrewmate
         internal static ConfigEntry<bool> VisionEnabled;
         internal static ConfigEntry<bool> SaveResponses;
         internal static ConfigEntry<bool> SavePromptContext;
-        internal static ConfigEntry<bool> RemoteVoiceInPublicLobbies;
-        internal static ConfigEntry<bool> RemoteGameActionsInPublicLobbies;
-        internal static ConfigEntry<bool> RemoteAiInPublicLobbies;
         internal static ConfigEntry<int> ConfigRevision;
 
         private Harmony _harmony;
@@ -173,7 +171,7 @@ namespace LethalAICrewmate
             TtsDirection = Config.Bind("Groq", "TtsDirection", "friendly",
                 "Optional Orpheus vocal direction (no brackets). Stock Buddy uses friendly for a lighter conversational delivery; empty = fully natural.");
             TtsVolume = Config.Bind("Voice", "Volume", legacyVolume,
-                "Buddy voice volume 0–1. Speech is normalized once with a soft limiter before playback and replication.");
+                "Buddy voice volume 0–2. Speech is normalized once with a soft limiter before playback and replication.");
 
             // Very old private builds stored a provider key under [OpenRouter]. Read it without
             // binding legacy controls into the current config UI.
@@ -214,8 +212,8 @@ namespace LethalAICrewmate
                 "Set true to reset the current save's slow-burn story to the ordinary coworker on the next host load. Automatically returns to false.");
             DynamicPacing = Config.Bind("Character", "DynamicPacing", true,
                 "Let the horror director coordinate silence, spacing, staged watching beats and how much Buddy talks, based on the arc stage and live tension. Presentation only.");
-            FinalStageHostileSpawns = Config.Bind("Character", "FinalStageHostileSpawns", false,
-                "OFF by default. At the final story stage only, allow Buddy to occasionally release one of the current moon's own creatures near a working crewmate. Host-only, hard capped per round, and never triggerable by chat, a command or any remote player.");
+            FinalStageHostileSpawns = Config.Bind("Character", "FinalStageHostileSpawns", true,
+                "At the final story stage only, allow Buddy to occasionally release one of the current moon's own creatures near a working crewmate. Host-only, hard capped per round, and never triggerable by chat, a command or any remote player.");
             PlayerRelationships = Config.Bind("Character", "PlayerRelationships", true,
                 "Let Buddy treat individual crewmates differently based on what he has actually seen them do. Stores at most eight sets of three small numbers per save: no names, IDs, chat or transcripts are written to disk.");
             EnvironmentAwareness = Config.Bind("Crewmate", "EnvironmentAwareness", true,
@@ -226,7 +224,7 @@ namespace LethalAICrewmate
             VoiceEnabled = Config.Bind("Voice", "Enabled", true,
                 "Push-to-talk for every modded player. Clients relay bounded mic audio to the host; only the host calls the selected transcription provider.");
             AllowRemoteVoice = Config.Bind("Security", "AllowRemoteVoice", true,
-                "Allow matching remote players to upload bounded push-to-talk audio to the host for transcription. Disable this in public lobbies.");
+                "Allow matching modded players to upload bounded push-to-talk audio to the host for transcription.");
             VoiceKey = Config.Bind("Voice", "PushToTalkKey", KeyCode.B,
                 "Hold this key to record mic audio for Buddy. B avoids the game's common V push-to-talk binding; on clients the clip is relayed to the host.");
             VoiceAlternateKey = Config.Bind("Voice", "AlternatePushToTalkKey", KeyCode.None,
@@ -243,12 +241,6 @@ namespace LethalAICrewmate
                 "Opt-in host-only journal of player chat, voice transcripts, Buddy replies, observations and tool results at BepInEx/LethalAICrewmate-responses.log. Enable only with the crew's informed consent.");
             SavePromptContext = Config.Bind("Logging", "SavePromptContext", false,
                 "When response journaling is explicitly enabled, also record the system prompt and live sensor context. This may contain sensitive game and player data.");
-            RemoteVoiceInPublicLobbies = Config.Bind("Security", "RemoteVoiceInPublicLobbies", false,
-                "Allow remote push-to-talk when the Steam lobby is public or its visibility cannot be verified. Off by default; known friends/invite-only lobbies remain allowed.");
-            RemoteGameActionsInPublicLobbies = Config.Bind("Security", "RemoteGameActionsInPublicLobbies", false,
-                "Allow remote players to route, buy, spawn or change ship/facility state when the lobby is public or its visibility cannot be verified. Off by default.");
-            RemoteAiInPublicLobbies = Config.Bind("Security", "RemoteAiInPublicLobbies", false,
-                "Allow player chat to spend the host's AI-provider budget when the lobby is public or its visibility cannot be verified. Off by default.");
             ConfigRevision = Config.Bind("Internal", "ConfigRevision", 0,
                 "Internal migration marker. Do not edit.");
 
@@ -258,7 +250,6 @@ namespace LethalAICrewmate
                 DontDestroyOnLoad(hostGo);
                 hostGo.hideFlags = HideFlags.HideAndDontSave;
                 Host = hostGo.AddComponent<PluginHost>();
-                hostGo.AddComponent<BuddySetupMenu>();
 
                 _harmony = new Harmony(ModGuid);
                 _harmony.PatchAll(typeof(Plugin).Assembly);
@@ -307,6 +298,7 @@ namespace LethalAICrewmate
 
                 BuddyAudioTuning.MigrateLegacyConfig();
                 ConfigSafety.NormalizeOnce();
+                BuddySettingsMenu.Register();
                 RemoveObsoleteConfigEntries(removeLegacyGroqKey: true, removeLegacyOpenAiKey: true);
                 Config.Save();
 

@@ -85,10 +85,6 @@ namespace LethalAICrewmate
 
                 if (nm.IsServer)
                 {
-                    // Tell the host once they are in a public lobby that remote voice is off,
-                    // even before any stranger tries to speak.
-                    if (Plugin.RemoteVoiceInPublicLobbies?.Value == false && LobbySafety.IsPublicLobby())
-                        WarnRestrictedVoiceOnce();
                     ExpireHostTransfers();
                     StartNextHostTranscription();
                 }
@@ -113,7 +109,6 @@ namespace LethalAICrewmate
             _hostBusy = false;
             _clientRecording = false;
             _clientSending = false;
-            _restrictedVoiceWarned = false;
             if (_clientClip != null)
             {
                 AudioClip old = _clientClip;
@@ -157,6 +152,8 @@ namespace LethalAICrewmate
         private static void TickClientCapture()
         {
             if (Plugin.VoiceEnabled == null || !Plugin.VoiceEnabled.Value)
+                return;
+            if (!CrewmateSpawner.CanTalkToBuddy)
                 return;
             if (_clientSending)
                 return;
@@ -338,22 +335,6 @@ namespace LethalAICrewmate
             }
         }
 
-        private static bool _restrictedVoiceWarned;
-
-        private static void WarnRestrictedVoiceOnce()
-        {
-            if (_restrictedVoiceWarned) return;
-            _restrictedVoiceWarned = true;
-            Plugin.Log?.LogWarning("Remote Buddy push-to-talk is disabled because the lobby is public or its visibility cannot be verified (Security.RemoteVoiceInPublicLobbies=false).");
-            try
-            {
-                HUDManager.Instance?.DisplayTip("Buddy",
-                    "Remote Buddy voice is disabled unless this is a verified friends/invite-only lobby. The host can explicitly opt in under [Security].",
-                    false, false, "BuddyPublicVoiceTip");
-            }
-            catch { /* optional */ }
-        }
-
         private static void OnVoiceStart(ulong senderId, FastBufferReader reader)
         {
             try
@@ -364,15 +345,7 @@ namespace LethalAICrewmate
                     return;
                 if (!NetMessenger.IsCompatibleClient(senderId))
                     return;
-                // Public-lobby hardening: remote push-to-talk costs the host API budget and
-                // processes strangers' audio, so it is rejected in public lobbies unless the
-                // host explicitly opts in. Friends/invite-only lobbies are unaffected.
-                if (Plugin.RemoteVoiceInPublicLobbies?.Value == false && !LobbySafety.AllowsRestrictedRemoteFeaturesByDefault())
-                {
-                    WarnRestrictedVoiceOnce();
-                    SendClientHint(senderId, "Remote Buddy voice is disabled unless the host can verify a friends/invite-only lobby.");
-                    return;
-                }
+                if (!CrewmateSpawner.CanTalkToBuddy) return;
                 if (!IsSenderInBuddyRange(senderId))
                 {
                     SendClientHint(senderId, "Move closer to Buddy before using push-to-talk.");
@@ -414,11 +387,6 @@ namespace LethalAICrewmate
                 if (nm == null || !nm.IsServer || Plugin.AllowRemoteVoice?.Value != true || senderId == NetworkManager.ServerClientId ||
                     !IsConnectedRemote(nm, senderId) || !NetMessenger.IsCompatibleClient(senderId))
                     return;
-                if (Plugin.RemoteVoiceInPublicLobbies?.Value == false && !LobbySafety.AllowsRestrictedRemoteFeaturesByDefault())
-                {
-                    IncomingBySender.Remove(senderId);
-                    return;
-                }
                 if (!IncomingBySender.TryGetValue(senderId, out var incoming) || incoming == null)
                     return;
 
@@ -478,12 +446,6 @@ namespace LethalAICrewmate
 
         private static void StartNextHostTranscription()
         {
-            if (Plugin.RemoteVoiceInPublicLobbies?.Value == false && !LobbySafety.AllowsRestrictedRemoteFeaturesByDefault())
-            {
-                HostQueue.Clear();
-                QueuedSenders.Clear();
-                return;
-            }
             if (_hostBusy || HostQueue.Count == 0 || Plugin.Host == null)
                 return;
             if (!GroqSecrets.HasKey)
@@ -617,7 +579,7 @@ namespace LethalAICrewmate
                     message = buddyName + " " + text;
 
                 Plugin.Log?.LogInfo($"Remote transcript delivered client={senderId} chars={text.Length}.");
-                ChatObserver.OnServerChat(message, (int)player.playerClientId);
+                ChatObserver.OnServerChat(message, (int)player.playerClientId, authenticatedCommandSource: true);
                 return true;
             }
             catch (Exception ex)
@@ -664,6 +626,8 @@ namespace LethalAICrewmate
             try
             {
                 var player = ResolveRemotePlayer(senderId);
+                // In orbit Buddy is a ship-wide voice terminal and intentionally has no body.
+                if (StartOfRound.Instance?.inShipPhase == true) return player != null;
                 var buddy = CrewmateRegistry.GetPrimary()?.Enemy;
                 if (player == null || buddy == null) return false;
                 float configured = Plugin.ChatTriggerRange?.Value ?? 60f;
@@ -768,6 +732,7 @@ namespace LethalAICrewmate
 
         private static void ClientHint(string message)
         {
+            if (!string.IsNullOrEmpty(message) && message.StartsWith("Recording for Buddy", StringComparison.Ordinal)) return;
             if (Time.unscaledTime < _clientHintCooldown)
                 return;
             _clientHintCooldown = Time.unscaledTime + 3f;

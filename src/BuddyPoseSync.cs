@@ -295,6 +295,7 @@ namespace LethalAICrewmate
                 enemy.transform.rotation = hardSnap
                     ? targetRot
                     : Quaternion.Slerp(enemy.transform.rotation, targetRot, Mathf.Clamp01(Time.unscaledDeltaTime * 10f));
+                BuddyAnimation.Apply(enemy, pose.Moving);
 
                 if (hardSnap)
                 {

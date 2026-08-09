@@ -9,7 +9,7 @@ For the strongest practical setup, set the host machine environment variable
 before starting the game. The mod reads it in memory and never writes that value to its
 config or logs.
 
-Keys entered in the main-menu panel are stored in Windows Credential Manager, never in the config
+Keys entered in Buddy's native LethalSettings page are stored in Windows Credential Manager, never in the config
 file. The old `[Security] PersistApiKey` setting and its plaintext config storage were removed.
 
 Any key found in a pre-3.0.1 config is imported into Credential Manager on first load and the
@@ -22,14 +22,16 @@ Any credential that has ever been committed or shared must be considered exposed
 ## Multiplayer trust boundary
 
 - The host is authoritative for Buddy spawning, AI, item actions and all provider API calls.
-- `AllowRemoteVoice` permits matching clients to use the relay, but `RemoteVoiceInPublicLobbies = false`
-  accepts remote audio only after Steam visibility is positively identified as friends/invite-only.
-  Public, missing, unknown and failed visibility checks are blocked. Set it to `true` only if the host
-  explicitly accepts remote audio and provider cost in untrusted/unknown lobbies.
-- Remote purchases, routes, polite item spawning and ship/facility changes follow the same fail-closed
-  boundary through `RemoteGameActionsInPublicLobbies = false`. The host and read-only status/store/moon
-  queries remain available. Arbitrary terminal sentence passthrough is not exposed.
-- Player chat cannot spend the host's AI-provider budget in public, missing or unknown-visibility lobbies unless the host explicitly enables `RemoteAiInPublicLobbies`.
+- `AllowRemoteVoice` is the host's explicit switch for compatible clients to use the relay. Steam lobby
+  visibility is deliberately not treated as an identity or authorization signal because it can be absent
+  or misreported. Hosts of public sessions should disable this switch if they do not accept remote audio
+  and provider cost from the connected players.
+- Purchases, routing, bounded item spawning and ship/facility changes are parsed deterministically on the
+  host; model output has no authority to initiate them. Arbitrary terminal sentence passthrough is not exposed.
+- Vanilla chat's player identifier is client-controlled, so typed chat can converse and request read-only
+  information but cannot authorize movement or any other state change. Sender-bound push-to-talk may do so.
+- Addressed player chat may spend the host's AI-provider budget. The host can disable Buddy or remote voice,
+  and should only run the mod with players they trust not to deliberately consume that budget.
 - When enabled, remote voice is transport-sender-bound, exact-version-gated, Buddy-range-gated before allocation,
   rate-limited, size-limited, transfer-capped and WAV/RMS-validated before it reaches the provider.
 - Clients send only a compatibility hello and, when explicitly enabled, bounded voice transfers through the mod's custom networking path.
@@ -71,14 +73,14 @@ when following; it grants no authority and cannot change what a command is allow
 `[Crewmate] SocialAwareness` tracks at most four recent speakers in memory only. Speaker identity is
 resolved from the host's own player list. Note that vanilla Lethal Company chat is unauthenticated,
 so a modded client can already make a chat line appear to come from another player; with social
-awareness on, that can mislead Buddy about *who* to answer or walk toward. It cannot grant command
-authority — restricted actions still go through the fail-closed remote-action boundary above.
+awareness on, that can mislead Buddy about *who* to answer or walk toward. It cannot grant model output
+authority; state changes still go through bounded deterministic host-side parsing.
 
 ## Final story stage
 
-`[Character] FinalStageHostileSpawns` is **off by default**. When a host turns it on, and only at the
+`[Character] FinalStageHostileSpawns` is enabled for new installs; existing configs keep their saved choice. Only at the
 final story stage with the slow burn enabled, Buddy may occasionally release one of the current
-moon's own creatures near a working crewmate. Enable it only with the crew's agreement.
+moon's own creatures near a working crewmate. Disable it in Buddy settings unless the crew agrees.
 
 The gate is host-only and cannot be reached from outside the host's own director:
 

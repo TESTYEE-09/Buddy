@@ -8,25 +8,6 @@ internal static class SecurityRegressionChecks
     [ModuleInitializer]
     internal static void Run()
     {
-        Require(RemoteActionAuthorization.ShouldBlockUnauthenticatedTextRequest(
-                    "buy 3 flashlights", LobbyVisibility.Public, publicLobbyOptIn: false),
-                "public lobby must block unauthenticated state-changing text");
-        Require(RemoteActionAuthorization.ShouldBlockUnauthenticatedTextRequest(
-                    "route titan", LobbyVisibility.Unknown, publicLobbyOptIn: false),
-                "unknown lobby must fail closed for unauthenticated state-changing text");
-        Require(!RemoteActionAuthorization.ShouldBlockUnauthenticatedTextRequest(
-                    "status", LobbyVisibility.Public, publicLobbyOptIn: false),
-                "read-only status requests remain available in public lobbies");
-        Require(!RemoteActionAuthorization.ShouldBlockUnauthenticatedTextRequest(
-                    "buy 1 flashlight", LobbyVisibility.Friends, publicLobbyOptIn: false),
-                "verified friends lobby keeps intended remote actions");
-        Require(!RemoteActionAuthorization.ShouldBlockUnauthenticatedTextRequest(
-                    "buy 1 flashlight", LobbyVisibility.Public, publicLobbyOptIn: true),
-                "explicit public-lobby opt-in permits remote actions");
-        Require(RemoteActionAuthorization.AllowsStateChangingRequest(
-                    LobbyVisibility.Public, publicLobbyOptIn: false, trustedInternalHostRequest: true),
-                "trusted internal host requests remain authoritative");
-
         RunFinalStageGateChecks();
         RunRelationshipStorageChecks();
         RunSocialAndPacingChecks();
@@ -47,6 +28,10 @@ internal static class SecurityRegressionChecks
             Require(plugin.Contains("SaveResponses\", false", StringComparison.Ordinal) &&
                     plugin.Contains("SavePromptContext\", false", StringComparison.Ordinal),
                     "raw response and prompt-context persistence must remain opt-in");
+            Require(plugin.Contains("FinalStageHostileSpawns\", true", StringComparison.Ordinal),
+                    "new installs must enable the requested final-stage hostile spawning feature");
+            Require(plugin.Contains("BuddySettingsMenu.Register();", StringComparison.Ordinal),
+                    "Buddy settings must be registered through the native LethalSettings menu");
         }
 
         string realtimePath = Path.Combine(root, "src", "OpenAiRealtimeVoiceClient.cs");
@@ -58,12 +43,63 @@ internal static class SecurityRegressionChecks
                 "Realtime model output must have no game-action tool authority");
         Require(realtime.Contains("CloseSocket();", StringComparison.Ordinal),
                 "Realtime turns must close their session to isolate speakers");
+        Require(realtime.Contains("WaitForInputTranscriptionAsync", StringComparison.Ordinal) &&
+                realtime.Contains("ExecuteAuthenticatedVoiceCommandAsync", StringComparison.Ordinal) &&
+                realtime.Contains("max_output_tokens\\\":1024", StringComparison.Ordinal),
+                "Realtime must execute authenticated voice commands before replying and retain enough audio output budget");
+
+        string promptPath = Path.Combine(root, "src", "BuddyConversationPrompt.cs");
+        string prompt = File.ReadAllText(promptPath);
+        Require(prompt.Contains("Never recommend an exit", StringComparison.Ordinal) &&
+                prompt.Contains("normal Lethal Company knowledge", StringComparison.Ordinal) &&
+                prompt.Contains("Say bazinga", StringComparison.Ordinal),
+                "the rewritten prompt must lock direct, useful and natural behavior from the saved-session regressions");
+
+        string settingsPath = Path.Combine(root, "src", "BuddySettingsMenu.cs");
+        string settings = File.ReadAllText(settingsPath);
+        Require(!settings.Contains("Buddy personality prompt", StringComparison.Ordinal),
+                "the personality textbox must stay out of native settings");
+
+        string memoryPath = Path.Combine(root, "src", "BuddyConversationMemory.cs");
+        string memory = File.ReadAllText(memoryPath);
+        Require(!memory.Contains("sb.Append(\"Buddy: \")", StringComparison.Ordinal),
+                "long-term prompt context must not teach Buddy from its own prior bad replies");
 
         string chatPath = Path.Combine(root, "src", "ChatPatches.cs");
         Require(File.Exists(chatPath), "release checks must locate ChatPatches.cs");
         string chat = File.ReadAllText(chatPath);
         Require(!chat.Contains("Chat observed: '", StringComparison.Ordinal),
                 "ordinary logs must not contain raw player chat");
+        Require(chat.Contains("authenticatedCommandSource = false", StringComparison.Ordinal) &&
+                chat.Contains("!authenticatedCommandSource", StringComparison.Ordinal),
+                "spoofable vanilla chat must not authorize state-changing commands");
+
+        string setupMenuPath = Path.Combine(root, "src", "BuddySetupMenu.cs");
+        Require(!File.Exists(setupMenuPath), "the old custom overlay must stay removed");
+
+        string manifestPath = Path.Combine(root, "ThunderstorePackage", "manifest.json");
+        string manifest = File.ReadAllText(manifestPath);
+        Require(manifest.Contains("willis81808-LethalSettings-1.4.1", StringComparison.Ordinal),
+                "Thunderstore package must declare the native settings dependency");
+
+        string spawnerPath = Path.Combine(root, "src", "CrewmateSpawner.cs");
+        string spawner = File.ReadAllText(spawnerPath);
+        Require(spawner.Contains("IsLandingSettled()", StringComparison.Ordinal) &&
+                spawner.Contains("outsideAINodes", StringComparison.Ordinal) &&
+                spawner.Contains("CanTalkToBuddy", StringComparison.Ordinal),
+                "Buddy must be voice-only in orbit and physically spawn outside after landing settles");
+
+        string clientVoicePath = Path.Combine(root, "src", "BuddyClientVoice.cs");
+        string clientVoice = File.ReadAllText(clientVoicePath);
+        Require(clientVoice.Contains("inShipPhase == true) return player != null", StringComparison.Ordinal),
+                "remote crewmates must be able to use the voice terminal while Buddy has no orbit body");
+
+        string dangerPath = Path.Combine(root, "src", "BuddyDangerCallout.cs");
+        string danger = File.ReadAllText(dangerPath);
+        Require(danger.Contains("ThreatSeverity", StringComparison.Ordinal) &&
+                danger.Contains("ClassifyThreat", StringComparison.Ordinal) &&
+                danger.Contains("severity >= ThreatSeverity.High", StringComparison.Ordinal),
+                "danger dialogue must scale fear and urgency from the confirmed enemy threat level");
 
         string workflowPath = Path.Combine(root, ".github", "workflows", "build.yml");
         Require(File.Exists(workflowPath), "release checks must locate the release workflow");

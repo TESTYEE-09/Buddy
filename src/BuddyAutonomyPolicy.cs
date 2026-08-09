@@ -17,8 +17,8 @@ namespace LethalAICrewmate
 
     internal static class BuddyAutonomyPolicy
     {
-        internal const float GlobalCooldown = 55f;
-        internal const float PlayerPriorityWindow = 12f;
+        internal const float GlobalCooldown = 110f;
+        internal const float PlayerPriorityWindow = 20f;
 
         internal static int Importance(BuddyContextEvent kind)
         {

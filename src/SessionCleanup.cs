@@ -35,6 +35,8 @@ namespace LethalAICrewmate
                     BuddyRelationships.ResetSession();
                     BuddyEnvironmentSensors.ResetSession();
                     BuddySocialIntelligence.ResetSession();
+                    BuddyConversationMemory.ResetSession();
+                    BuddyDangerCallout.ResetSession();
                     BuddyMalice.ResetSession();
                     VoiceCoexistence.ResetSession();
                     CrewmateSpawner.DespawnAll();

@@ -12,7 +12,8 @@ namespace LethalAICrewmate
     {
         private const int NetworkSampleRate = 16000;
         private const int MaxNetworkSeconds = 15;
-        private const float RealtimeVoiceGain = 1.12f;
+        private const float RealtimeVoiceGain = 1.38f;
+        private const float LeadingSilenceSeconds = 0.12f;
         private const int MaxQueuedClips = 3;
 
         private static GameObject _audioGo;
@@ -66,6 +67,7 @@ namespace LethalAICrewmate
             if (clip == null) return;
 
             StopPlayback();
+            clip = AddLeadingSilence(clip);
             BuddyAudioTuning.NormalizeHostClip(clip);
             PlayClip(clip, worldPos);
 
@@ -113,14 +115,17 @@ namespace LethalAICrewmate
         {
             if (!CrewmateSpawner.IsHost() || pcm16 == null || pcm16.Length < 2 || (pcm16.Length & 1) != 0) return;
             if (sampleRate < 8000 || sampleRate > 48000) return;
-            int sampleCount = pcm16.Length / 2;
+            int sourceSampleCount = pcm16.Length / 2;
+            int leadingSamples = Mathf.RoundToInt(sampleRate * LeadingSilenceSeconds);
+            int sampleCount = sourceSampleCount + leadingSamples;
             float[] samples = new float[sampleCount];
-            for (int i = 0; i < sampleCount; i++)
+            for (int i = 0; i < sourceSampleCount; i++)
             {
                 float sample = BitConverter.ToInt16(pcm16, i * 2) / 32768f;
                 // Native Realtime output bypasses the normal TTS clip normalizer. Add a small
                 // transparent boost with a soft ceiling so Ash is easier to hear, not harsher.
-                samples[i] = Mathf.Clamp(sample * RealtimeVoiceGain, -0.98f, 0.98f);
+                float loudness = Mathf.Max(1f, Mathf.Clamp(Plugin.TtsVolume?.Value ?? 1.25f, 0f, 2f));
+                samples[i + leadingSamples] = Mathf.Clamp(sample * RealtimeVoiceGain * loudness, -0.98f, 0.98f);
             }
             AudioClip clip = AudioClip.Create("BuddyRealtimeChunk", sampleCount, 1, sampleRate, false);
             clip.SetData(samples, 0);
@@ -140,6 +145,21 @@ namespace LethalAICrewmate
                 if (dropped != null) UnityEngine.Object.Destroy(dropped);
             }
             PlaybackQueue.Enqueue(new QueuedClip { Clip = clip, Position = worldPos });
+        }
+
+        private static AudioClip AddLeadingSilence(AudioClip source)
+        {
+            if (source == null || source.samples <= 0 || source.channels <= 0 || source.frequency <= 0) return source;
+            int leadingFrames = Mathf.RoundToInt(source.frequency * LeadingSilenceSeconds);
+            float[] original = new float[source.samples * source.channels];
+            if (!source.GetData(original, 0)) return source;
+            float[] padded = new float[(source.samples + leadingFrames) * source.channels];
+            Array.Copy(original, 0, padded, leadingFrames * source.channels, original.Length);
+            AudioClip result = AudioClip.Create(source.name + "Buffered", source.samples + leadingFrames,
+                source.channels, source.frequency, false);
+            result.SetData(padded, 0);
+            UnityEngine.Object.Destroy(source);
+            return result;
         }
 
         private static byte[] BuildNetworkPcm16(AudioClip clip)

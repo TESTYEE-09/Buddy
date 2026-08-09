@@ -55,8 +55,6 @@ namespace LethalAICrewmate
                     return ListMoons();
                 if (lower == "store" || lower == "terminal store")
                     return ShowCreditsAndStoreHint();
-                if (ShipCommandParsing.IsStateChangingRequest(lower) && !CanRunRemoteGameAction(requestingPlayerId))
-                    return "Remote ship and terminal actions are disabled unless this is a verified friends/invite-only lobby.";
 
                 if (ShipCommandParsing.TryParsePoliteSpawn(lower, out string spawnItem, out int spawnQuantity))
                     return SpawnItemInFront(spawnItem, spawnQuantity, requestingPlayerId);
@@ -101,8 +99,8 @@ namespace LethalAICrewmate
                     (lower.Contains("turn on") || lower.Contains("turn off") || lower.Contains("lights on") || lower.Contains("lights off")))
                     return SetShipLights(!lower.Contains("off"));
 
-                if (ShipCommandParsing.IsGenericTerminalPassthrough(lower))
-                    return "Use a supported explicit command: status, moons, store, route, buy, door code, turret, mine, ship door, or lights.";
+                // Unmatched language is conversation, not an error lecture. Let the model answer
+                // naturally instead of repeating a list of exact command syntax.
             }
             catch (Exception ex)
             {
@@ -191,16 +189,6 @@ namespace LethalAICrewmate
             foreach (var player in players)
                 if (player != null && (int)player.playerClientId == playerId) return player;
             return playerId >= 0 && playerId < players.Length ? players[playerId] : null;
-        }
-
-        private static bool CanRunRemoteGameAction(int requestingPlayerId)
-        {
-            if (requestingPlayerId < 0 || Plugin.RemoteGameActionsInPublicLobbies?.Value == true)
-                return true;
-            var nm = NetworkManager.Singleton;
-            if (nm == null || !nm.IsServer) return false;
-            // Vanilla chat player ids are client-controlled and never confer host authority.
-            return LobbySafety.AllowsRestrictedRemoteFeaturesByDefault();
         }
 
         private static string NormalizeItemName(string value)

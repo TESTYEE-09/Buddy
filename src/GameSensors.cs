@@ -11,7 +11,7 @@ namespace LethalAICrewmate
     /// </summary>
     public static class GameSensors
     {
-        public static string BuildLiveContext()
+        public static string BuildLiveContext(int perspectivePlayerId = -1)
         {
             var sb = new StringBuilder(512);
             sb.AppendLine("[SENSOR — ONLY REAL DATA. Do NOT invent anything not listed here.]");
@@ -79,10 +79,43 @@ namespace LethalAICrewmate
                 // Nearby enemies around Buddy or host player
                 Vector3 origin = Vector3.zero;
                 var buddy = CrewmateRegistry.GetPrimary();
-                if (buddy?.Enemy != null)
+                PlayerControllerB perspective = FindPlayer(perspectivePlayerId, sor.allPlayerScripts);
+                if (perspective != null)
+                    origin = perspective.transform.position;
+                else if (buddy?.Enemy != null)
                     origin = buddy.Enemy.transform.position;
                 else if (sor.localPlayerController != null)
                     origin = sor.localPlayerController.transform.position;
+
+                string perspectiveName = perspective != null
+                    ? PromptSafety.SanitizePlayerName(perspective.playerUsername)
+                    : buddy?.Enemy != null ? "Buddy" : "host";
+                sb.Append("Sensor origin: ").Append(perspectiveName).AppendLine(". Distances below are from this position.");
+
+                var crew = new List<string>();
+                if (sor.allPlayerScripts != null)
+                {
+                    foreach (PlayerControllerB player in sor.allPlayerScripts)
+                    {
+                        if (player == null || string.IsNullOrWhiteSpace(player.playerUsername)) continue;
+                        string playerName = PromptSafety.SanitizePlayerName(player.playerUsername);
+                        crew.Add(playerName + "=" + (player.isPlayerDead ? "DEAD" : player.isPlayerControlled ? "alive" : "not active"));
+                    }
+                }
+                sb.Append("Crew status: ").Append(crew.Count == 0 ? "unknown" : string.Join(", ", crew)).AppendLine(".");
+
+                if (buddy?.Enemy != null)
+                {
+                    string area = buddy.Enemy.isOutside ? "outside" : IsInsideShip(buddy.Enemy.transform.position, sor) ? "ship" : "facility";
+                    sb.Append("Buddy location: ").Append(area);
+                    if (perspective != null)
+                        sb.Append(", ").Append(Vector3.Distance(perspective.transform.position, buddy.Enemy.transform.position).ToString("F0")).Append("m from ").Append(perspectiveName);
+                    sb.AppendLine(".");
+                }
+                else if (inSpace)
+                {
+                    sb.AppendLine("Buddy location: voice terminal in the ship; no physical body in orbit.");
+                }
 
                 var nearby = new List<string>();
                 try
@@ -136,6 +169,25 @@ namespace LethalAICrewmate
 
             sb.AppendLine("[END SENSOR]");
             return sb.ToString();
+        }
+
+        private static PlayerControllerB FindPlayer(int playerId, PlayerControllerB[] players)
+        {
+            if (playerId < 0 || players == null) return null;
+            foreach (PlayerControllerB player in players)
+                if (player != null && (int)player.playerClientId == playerId) return player;
+            return playerId < players.Length ? players[playerId] : null;
+        }
+
+        private static bool IsInsideShip(Vector3 position, StartOfRound sor)
+        {
+            try
+            {
+                if (sor?.shipInnerRoomBounds != null) return sor.shipInnerRoomBounds.bounds.Contains(position);
+                if (sor?.shipBounds != null) return sor.shipBounds.bounds.Contains(position);
+            }
+            catch { }
+            return false;
         }
     }
 }
