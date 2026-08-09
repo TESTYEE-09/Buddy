@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using LethalSettings.UI;
 using LethalSettings.UI.Components;
 using TMPro;
@@ -15,6 +16,18 @@ namespace LethalAICrewmate
         private static string _keyBuffer = "";
         private static LabelComponent _status;
         private static InputComponent _keyInput;
+
+        private static readonly List<TMP_Dropdown.OptionData> VoiceOptions =
+            new List<TMP_Dropdown.OptionData>(Array.ConvertAll(
+                BuddyAiArchitecture.RealtimeVoices, v => new TMP_Dropdown.OptionData(v)));
+
+        private static TMP_Dropdown.OptionData VoiceOptionFor(string value)
+        {
+            string match = BuddyAiArchitecture.SanitizeRealtimeVoice(value);
+            foreach (TMP_Dropdown.OptionData option in VoiceOptions)
+                if (option.text == match) return option;
+            return VoiceOptions[0];
+        }
 
         internal static void Register()
         {
@@ -82,6 +95,18 @@ namespace LethalAICrewmate
                     Text = "Spoken replies",
                     Value = Plugin.TtsEnabled?.Value == true,
                     OnValueChanged = (_, value) => Set(Plugin.TtsEnabled, value)
+                },
+                new DropdownComponent
+                {
+                    Text = "Realtime voice",
+                    Options = VoiceOptions,
+                    Value = VoiceOptionFor(Plugin.RealtimeVoiceName?.Value),
+                    OnValueChanged = (_, value) =>
+                    {
+                        if (Plugin.RealtimeVoiceName == null || value == null) return;
+                        Plugin.RealtimeVoiceName.Value = value.text;
+                        Plugin.SaveConfiguration();
+                    }
                 },
                 new SliderComponent
                 {

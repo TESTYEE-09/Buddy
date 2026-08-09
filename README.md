@@ -126,7 +126,7 @@ Upgrading from the old `LethalAICrewmate` package? Remove that mod-manager entry
 
 ## AI model
 
-Buddy uses one model only: **OpenAI `gpt-realtime-2.1-mini`**. The same persistent Realtime session hears voice, reads typed chat, reasons, chooses supported in-game tools and speaks with the native Ash voice. No separate transcription, chat or text-to-speech model is required.
+Buddy uses one model only: **OpenAI `gpt-realtime-2.1-mini`**. The same persistent Realtime session hears voice, reads typed chat, reasons, chooses supported in-game tools and speaks with a native Realtime voice (Ash by default; pick any of the model's voices in Buddy settings). No separate transcription, chat or text-to-speech model is required.
 
 The session remains connected during play so recent conversation survives moon trips and later references instead of resetting every turn. A compact in-memory text history supplements it; neither is cross-session storage, and neither reaches disk unless response saving is explicitly enabled.
 
@@ -170,6 +170,7 @@ AlternatePushToTalkKey = None
 MaxRecordSeconds = 8
 InputDevice =
 KeepGameVoiceDuringPushToTalk = true
+RealtimeVoiceName = ash
 
 [Security]
 AllowRemoteVoice = true

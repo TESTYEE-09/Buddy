@@ -28,7 +28,7 @@ Automated release requirements:
 - Buddy spawn is compatibility-gated. An unmodded/mismatched client disables Buddy rather than allowing a hostile/desynced Masked on that client.
 - Late joins recover Buddy + held-item state.
 - Buddy text and generated TTS audio are replicated to compatible clients.
-- Native OpenAI Realtime voice (hold-to-talk, Ash voice) runs over an authenticated host WebSocket with a deterministic `execute_game_command` tool.
+- Native OpenAI Realtime voice (hold-to-talk, selectable Realtime voice, Ash by default) runs over an authenticated host WebSocket with a deterministic `execute_game_command` tool.
 - Optional response journaling records paired raw player input/replies to `BepInEx/LethalAICrewmate-responses.log` on the host (`[Logging] SaveResponses=false` by default).
 - The slow-burn arc persists only `LethalAICrewmate_CharacterArcProgress` and `LethalAICrewmate_CharacterArcQuotaCycles` as integers in the current game save.
 
@@ -38,7 +38,7 @@ The host selects the provider (`OpenAI` default, `Groq` optional) and configures
 
 OpenAI recommended path:
 
-- One persistent `gpt-realtime-2.1-mini` session owns typed conversation, PTT, native Ash voice, image questions and `execute_game_command` tool calls.
+- One persistent `gpt-realtime-2.1-mini` session owns typed conversation, PTT, native Realtime voice (selectable, Ash default), image questions and `execute_game_command` tool calls.
 - `gpt-live-transcribe` is used only for live input transcription inside the Realtime session.
 - No separate OpenAI chat or TTS endpoint is part of the current architecture.
 - Vision is disabled by default.

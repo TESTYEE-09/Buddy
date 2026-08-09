@@ -14,7 +14,7 @@ namespace LethalAICrewmate
     {
         public const string ModGuid = "com.lethalaicrewmate.buddy";
         public const string ModName = "Buddy";
-        public const string ModVersion = "3.7.2";
+        public const string ModVersion = "3.7.3";
 
         internal static Plugin Instance;
         internal static ManualLogSource Log;
@@ -41,6 +41,7 @@ namespace LethalAICrewmate
         internal static ConfigEntry<KeyCode> VoiceAlternateKey;
         internal static ConfigEntry<float> VoiceMaxSeconds;
         internal static ConfigEntry<string> VoiceInputDevice;
+        internal static ConfigEntry<string> RealtimeVoiceName;
         internal static ConfigEntry<bool> VisionEnabled;
         internal static ConfigEntry<bool> SaveResponses;
         internal static ConfigEntry<bool> SavePromptContext;
@@ -183,6 +184,9 @@ namespace LethalAICrewmate
 
             VoiceEnabled = Config.Bind("Voice", "Enabled", true,
                 "Push-to-talk for every modded player. Clients relay bounded mic audio to the host; only the host calls OpenAI Realtime.");
+            RealtimeVoiceName = Config.Bind("Voice", "RealtimeVoiceName", BuddyAiArchitecture.DefaultRealtimeVoice,
+                "Buddy's OpenAI Realtime voice. Valid values: " + string.Join(", ", BuddyAiArchitecture.RealtimeVoices) +
+                ". The change applies from the next spoken reply.");
             AllowRemoteVoice = Config.Bind("Security", "AllowRemoteVoice", true,
                 "Allow matching modded players to upload bounded push-to-talk audio to the host for the Realtime turn.");
             VoiceKey = Config.Bind("Voice", "PushToTalkKey", KeyCode.B,

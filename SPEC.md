@@ -110,7 +110,7 @@ the actual short line from live sensor context; deterministic danger warnings re
 ## AI providers
 
 OpenAI is the recommended provider. A fresh `gpt-realtime-2.1-mini` session handles each typed or PTT
-turn with native Ash speech and no game-action tools. Host screenshot input is disabled.
+turn with native Realtime speech (voice selectable in Buddy settings, Ash by default) and no game-action tools. Host screenshot input is disabled.
 `gpt-live-transcribe` is the session's live input transcription model. There is no separate OpenAI
 chat or request-based TTS path. Groq remains a fully functional secondary/free option.
 

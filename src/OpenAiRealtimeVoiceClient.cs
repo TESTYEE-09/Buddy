@@ -451,7 +451,8 @@ namespace LethalAICrewmate
                    "\"instructions\":\"" + LlmClient.Escape(instructions) + "\"," +
                    "\"audio\":{\"input\":{\"format\":{\"type\":\"audio/pcm\",\"rate\":24000}," +
                    "\"noise_reduction\":{\"type\":\"far_field\"},\"turn_detection\":null}," +
-                   "\"output\":{\"format\":{\"type\":\"audio/pcm\",\"rate\":24000},\"voice\":\"ash\"}}," +
+                   "\"output\":{\"format\":{\"type\":\"audio/pcm\",\"rate\":24000},\"voice\":\"" +
+                   BuddyAiArchitecture.SanitizeRealtimeVoice(Plugin.RealtimeVoiceName?.Value) + "\"}}," +
                    "\"reasoning\":{\"effort\":\"low\"},\"max_output_tokens\":1024," + tools + "}}";
         }
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.7.3
+
+- Adds a selectable OpenAI Realtime voice to Buddy settings: Ash is the default, and alloy, ballad, coral, echo, sage, shimmer and verse are also available. The host picks the voice; clients hear it, and a change applies from the next spoken reply.
+- Replaces the mod icon with the new BUDDY artwork.
+
 ## 3.7.2
 
 - Rewrites the system prompt around a real coworker: default 2-8 word replies, a hard ban on canned filler and helper-speak, no offers/menus/"what next?" closers, no therapist mode, and short fun out-of-game banter that stays pointed at the game. Relationship warmth no longer scales how much Buddy volunteers.
