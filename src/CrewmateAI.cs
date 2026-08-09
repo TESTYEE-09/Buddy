@@ -261,40 +261,57 @@ namespace LethalAICrewmate
 
                 if (!mismatch)
                 {
-                    data.AreaMismatchStartedAt = 0f;
+                    ResetAreaMismatch(data);
                     return false;
                 }
-                if (data.AreaMismatchStartedAt <= 0f)
-                    data.AreaMismatchStartedAt = Time.time;
-                float waiting = Time.time - data.AreaMismatchStartedAt;
 
-                // Pause first. Entrances and elevators often settle over several frames, and a
-                // player-like teammate should hesitate rather than instantly reveal the transition.
-                if (waiting < BuddyMovementPolicy.AreaRecoveryDelay)
+                if (data.AreaMismatchStartedAt <= 0f)
                 {
+                    data.AreaMismatchStartedAt = Time.time;
+                    data.AreaPathRebuildAttempts = 0;
+                    data.NextAreaPathRebuildAt = Time.time + BuddyMovementPolicy.PathRebuildDelay;
                     StopMoving(enemy);
                     return true;
                 }
-                if (Time.time < data.NextAreaTeleportAt) return true;
 
-                // Owner entered complex — Buddy still outside
-                if (ownerInFactory && buddyOutside)
+                float waiting = Time.time - data.AreaMismatchStartedAt;
+                if (data.AreaPathRebuildAttempts < BuddyMovementPolicy.RebuildsBeforeEmergency &&
+                    Time.time >= data.NextAreaPathRebuildAt)
                 {
-                    Plugin.Log?.LogWarning("Buddy emergency-recovering through a facility entrance after navigation failed.");
-                    TeleportBesidePlayer(enemy, owner, setOutside: false);
-                    data.NextAreaTeleportAt = Time.time + 10f;
-                    data.AreaMismatchStartedAt = 0f;
+                    data.AreaPathRebuildAttempts++;
+                    data.NextAreaPathRebuildAt = Time.time + BuddyMovementPolicy.PathRebuildDelay;
+                    MoveTo(enemy, owner.transform.position);
+                    Plugin.Log?.LogWarning(
+                        $"Buddy area transition path rebuild {data.AreaPathRebuildAttempts}/{BuddyMovementPolicy.RebuildsBeforeEmergency} " +
+                        $"after {waiting:F1}s of mismatch.");
                     return true;
                 }
 
-                // Owner left complex to exterior — Buddy still inside
-                if (!ownerInFactory && !buddyOutside && !owner.isInHangarShipRoom)
-                {
-                    Plugin.Log?.LogWarning("Buddy emergency-recovering to the exterior after entrance navigation failed.");
-                    TeleportBesidePlayer(enemy, owner, setOutside: true);
-                    data.NextAreaTeleportAt = Time.time + 10f;
-                    data.AreaMismatchStartedAt = 0f;
+                float separation = Vector3.Distance(enemy.transform.position, owner.transform.position);
+                if (!BuddyMovementPolicy.ShouldEmergencyRecover(
+                        waiting,
+                        data.AreaPathRebuildAttempts,
+                        separation,
+                        waiting))
                     return true;
+
+                if (Time.time < data.NextAreaTeleportAt)
+                    return true;
+
+                bool setOutside = !ownerInFactory && !owner.isInHangarShipRoom;
+                string direction = ownerInFactory ? "through a facility entrance" : "to the exterior";
+                Plugin.Log?.LogWarning(
+                    $"Buddy emergency-recovering {direction} after {waiting:F1}s and " +
+                    $"{data.AreaPathRebuildAttempts} path rebuilds.");
+
+                if (TeleportBesidePlayer(enemy, owner, setOutside))
+                {
+                    data.NextAreaTeleportAt = Time.time + 10f;
+                    ResetAreaMismatch(data);
+                }
+                else
+                {
+                    data.NextAreaTeleportAt = Time.time + BuddyMovementPolicy.PathRebuildDelay;
                 }
                 return true;
             }
@@ -305,9 +322,17 @@ namespace LethalAICrewmate
             }
         }
 
-        private static void TeleportBesidePlayer(MaskedPlayerEnemy enemy, PlayerControllerB owner, bool setOutside)
+        private static void ResetAreaMismatch(CrewmateData data)
         {
-            if (enemy == null || owner == null) return;
+            if (data == null) return;
+            data.AreaMismatchStartedAt = 0f;
+            data.AreaPathRebuildAttempts = 0;
+            data.NextAreaPathRebuildAt = 0f;
+        }
+
+        private static bool TeleportBesidePlayer(MaskedPlayerEnemy enemy, PlayerControllerB owner, bool setOutside)
+        {
+            if (enemy == null || owner == null) return false;
             try
             {
                 Vector3 dest = owner.transform.position
@@ -333,7 +358,7 @@ namespace LethalAICrewmate
                 if (!anchored)
                 {
                     Plugin.Log?.LogWarning($"Buddy teleport skipped: no NavMesh near owner at {owner.transform.position}.");
-                    return;
+                    return false;
                 }
 
                 // Preferred Masked API (syncs to clients)
@@ -378,10 +403,12 @@ namespace LethalAICrewmate
                 Plugin.Log?.LogInfo($"Buddy teleported beside owner (outside={setOutside}) at {dest}");
                 if (CrewmateRegistry.TryGet(enemy, out var data) && data != null)
                     BuddyPoseSync.SendImmediate(data);
+                return true;
             }
             catch (Exception ex)
             {
                 Plugin.Log?.LogError($"TeleportBesidePlayer: {ex}");
+                return false;
             }
         }
 
@@ -1050,8 +1077,7 @@ namespace LethalAICrewmate
                     var owner = GetFollowTarget(data);
                     if (owner == null) return false;
                     bool outside = !owner.isInsideFactory && !owner.isInHangarShipRoom;
-                    TeleportBesidePlayer(data.Enemy, owner, outside);
-                    return true;
+                    return TeleportBesidePlayer(data.Enemy, owner, outside);
                 }
 
                 if (data.State == CrewmateState.ReturnToShip || data.HeldItem != null)
