@@ -13,6 +13,7 @@
     <Compile Include="..\..\src\MovementCommandParsing.cs" Link="MovementCommandParsing.cs" />
     <Compile Include="..\..\src\ResponseJournal.cs" Link="ResponseJournal.cs" />
     <Compile Include="..\..\src\LobbyVisibilityPolicy.cs" Link="LobbyVisibilityPolicy.cs" />
+    <Compile Include="..\..\src\RemoteActionAuthorization.cs" Link="RemoteActionAuthorization.cs" />
     <Compile Include="..\..\src\BuddyCharacterArc.cs" Link="BuddyCharacterArc.cs" />
     <Compile Include="..\..\src\BuddyAiArchitecture.cs" Link="BuddyAiArchitecture.cs" />
     <Compile Include="..\..\src\BuddyMovementPolicy.cs" Link="BuddyMovementPolicy.cs" />
