@@ -13,7 +13,7 @@ namespace LethalAICrewmate
     {
         public const string ModGuid = "com.lethalaicrewmate.buddy";
         public const string ModName = "Buddy";
-        public const string ModVersion = "3.0.0";
+        public const string ModVersion = "3.0.1";
 
         internal static Plugin Instance;
         internal static ManualLogSource Log;
@@ -141,8 +141,20 @@ namespace LethalAICrewmate
                 "Buddy experience: OpenAI (recommended realtime voice agent) or Groq (separate free/low-cost pipeline). The host alone holds the selected key.");
             string legacyGroqKey = ReadLegacyConfigValue("Groq", "ApiKey")?.Trim() ?? "";
             string legacyOpenAiKey = ReadLegacyConfigValue("OpenAI", "ApiKey")?.Trim() ?? "";
-            bool removeLegacyGroqKey = string.IsNullOrEmpty(legacyGroqKey) || GroqSecrets.ImportLegacyKey(false, legacyGroqKey);
-            bool removeLegacyOpenAiKey = string.IsNullOrEmpty(legacyOpenAiKey) || GroqSecrets.ImportLegacyKey(true, legacyOpenAiKey);
+            if (!string.IsNullOrEmpty(legacyGroqKey))
+            {
+                bool persisted = GroqSecrets.ImportLegacyKey(false, legacyGroqKey);
+                ClearLegacyPlaintextKey(false);
+                if (!persisted)
+                    Log.LogWarning("Legacy Groq key was removed from plaintext config and is available only for this session because Windows Credential Manager storage failed.");
+            }
+            if (!string.IsNullOrEmpty(legacyOpenAiKey))
+            {
+                bool persisted = GroqSecrets.ImportLegacyKey(true, legacyOpenAiKey);
+                ClearLegacyPlaintextKey(true);
+                if (!persisted)
+                    Log.LogWarning("Legacy OpenAI key was removed from plaintext config and is available only for this session because Windows Credential Manager storage failed.");
+            }
             TtsVoice = Config.Bind("Groq", "TtsVoice", "austin",
                 "Groq Orpheus voice. OpenAI uses the native Ash voice inside its Realtime session.");
             bool legacySpokenReplies = !bool.TryParse(ReadLegacyConfigValue("Groq", "TtsEnabled"), out bool oldSpoken) || oldSpoken;
@@ -262,7 +274,7 @@ namespace LethalAICrewmate
 
                 BuddyAudioTuning.MigrateLegacyConfig();
                 ConfigSafety.NormalizeOnce();
-                RemoveObsoleteConfigEntries(removeLegacyGroqKey, removeLegacyOpenAiKey);
+                RemoveObsoleteConfigEntries(removeLegacyGroqKey: true, removeLegacyOpenAiKey: true);
                 Config.Save();
 
                 string architecture = GroqSecrets.IsOpenAi
