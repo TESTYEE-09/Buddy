@@ -86,6 +86,7 @@ namespace LethalAICrewmate
         {
             try
             {
+                LlmClient.NotePlayerInteraction();
                 if (OpenAiRealtimeVoiceClient.Enabled)
                     OpenAiRealtimeVoiceClient.BeginPushToTalk();
                 // End any leftover session first
