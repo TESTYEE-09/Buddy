@@ -19,7 +19,8 @@ When upgrading from the former `LethalAICrewmate` package listing, remove that e
 - Exact mod/protocol handshake before Buddy can spawn.
 - Physical Buddy body aboard the ship in orbit as well as during moon visits.
 - Continuous host-to-client Buddy pose sync for movement and facility transitions.
-- Long-session movement watchdog with path rebuild and safe recovery teleport.
+- NavMesh-safe human-like following with variable catch-up speed, repeated path rebuilding and emergency-only recovery.
+- Believable witnessed-death reactions and sparse contextual conversation without omniscient player knowledge.
 - Safe late-join state recovery.
 - Synced chat and synced Buddy speech for compatible clients.
 - Every modded player can use Buddy push-to-talk; client mic clips are bounded and relayed to the host for transcription.
