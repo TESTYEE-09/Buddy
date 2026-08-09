@@ -27,6 +27,7 @@ namespace LethalAICrewmate
         private static long _inFlightJournalId;
         private static string _lastRequestKey = "";
         private static float _lastRequestAt = -999f;
+        internal static float LastPlayerInteractionAt { get; private set; } = -999f;
 
         public static void ResetSession()
         {
@@ -46,6 +47,7 @@ namespace LethalAICrewmate
                 _inFlightJournalId = 0;
                 _lastRequestKey = "";
                 _lastRequestAt = -999f;
+                LastPlayerInteractionAt = -999f;
             }
             catch (Exception ex)
             {
@@ -73,6 +75,7 @@ namespace LethalAICrewmate
         public static bool EnqueuePlayerMessage(string playerName, int playerId, string message, bool isCommand, long journalId)
         {
             if (!HasApiKey) return false;
+            NotePlayerInteraction();
             var content = new StringBuilder(1400);
             content.AppendLine("[PLAYER MESSAGE - ANSWER THIS FIRST]");
             content.Append(string.IsNullOrWhiteSpace(playerName) ? "Player" : playerName)
@@ -87,10 +90,17 @@ namespace LethalAICrewmate
 
         public static void EnqueueObservation(string summary)
         {
-            if (!HasApiKey) return;
-            string sensors = GameSensors.BuildLiveContext();
-            Enqueue(sensors + "\n[Observation] " + summary, isObservation: true, withVision: false, journalId: 0);
+            TryEnqueueObservation(summary);
         }
+
+        internal static bool TryEnqueueObservation(string summary)
+        {
+            if (!HasApiKey) return false;
+            string sensors = GameSensors.BuildLiveContext();
+            return Enqueue(sensors + "\n[Observation] " + summary, isObservation: true, withVision: false, journalId: 0);
+        }
+
+        internal static void NotePlayerInteraction() => LastPlayerInteractionAt = Time.unscaledTime;
 
         private static bool Enqueue(string userContent, bool isObservation, bool withVision = false, long journalId = 0, string playerName = "Game observation", int playerId = -1)
         {
