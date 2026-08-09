@@ -175,14 +175,13 @@ namespace LethalAICrewmate
             }
         }
 
-        public static string BuyItem(string itemQuery, int quantity)
+        public static string BuyItem(string itemQuery, int quantity, int requestingPlayerId)
         {
             if (string.IsNullOrWhiteSpace(itemQuery)) return "Buy what?";
-            if (!IsInSpace() && StartOfRound.Instance != null && StartOfRound.Instance.shipHasLanded)
-            {
-                // allow buy only in orbit for safety
-                return "Can't buy now: purchases only work while the ship is in orbit.";
-            }
+
+            PlayerControllerB buyer = ResolvePlayer(requestingPlayerId);
+            if (buyer != null && buyer.isInsideFactory)
+                return "Can't buy from inside the facility - use the ship terminal.";
 
             var term = UnityEngine.Object.FindObjectOfType<Terminal>();
             if (term == null) return "No terminal.";

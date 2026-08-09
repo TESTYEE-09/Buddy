@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.7.4
+
+- Rewrites the system prompt again: refusals are one short line naming the missing thing and never escalate into lectures; contract-speak ('valid action request', 'supported mechanism', 'capability', 'unit') is banned; no offer, menu or 'say the word' closers, including during danger; brief out-of-game banter stays pointed at the game.
+- Item spawns now require genuine pleading: only explicit 'please' or begging calls the spawn tool; plain requests are refused with one line.
+- Facility door, turret and mine numbers are used as their terminal codes directly, so 'open door D6' no longer demands a separate code.
+- Store purchases now work in orbit, on the ship and on the moon surface; only buying from inside the facility is blocked.
+- Relationships build much more slowly: time-together grants every 5 minutes instead of every 90 seconds, so trust no longer spikes after one short run.
+
 ## 3.7.3
 
 - Adds a selectable OpenAI Realtime voice to Buddy settings: Ash is the default, and alloy, ballad, coral, echo, sage, shimmer and verse are also available. The host picks the voice; clients hear it, and a change applies from the next spoken reply.

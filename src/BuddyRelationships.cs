@@ -16,8 +16,8 @@ namespace LethalAICrewmate
         private const string DigestSaveKey = "LethalAICrewmate_BondDigests";
         private const string ValueSaveKey = "LethalAICrewmate_BondValues";
         private const float PollSeconds = 2f;
-        private const float TogetherGrantSeconds = 90f;
-        private const float AwayGrantSeconds = 45f;
+        private const float TogetherGrantSeconds = 300f;
+        private const float AwayGrantSeconds = 120f;
 
         private static readonly Dictionary<uint, BuddyBond> Bonds = new Dictionary<uint, BuddyBond>();
         private static readonly Dictionary<uint, float> TogetherSince = new Dictionary<uint, float>();

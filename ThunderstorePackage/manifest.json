@@ -1,6 +1,6 @@
 {
   "name": "Buddy",
-  "version_number": "3.7.3",
+  "version_number": "3.7.4",
   "website_url": "https://github.com/TESTYEE-09/Buddy",
   "description": "A useful crewmate with a memory. The longer you work together, the stranger it gets.",
   "dependencies": [

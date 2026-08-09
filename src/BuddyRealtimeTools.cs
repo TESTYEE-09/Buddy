@@ -33,7 +33,8 @@ namespace LethalAICrewmate
                     case "buy_item":
                         return TerminalBuddy.BuyItem(
                             JsonString(arguments, "item"),
-                            JsonInt(arguments, "quantity", 1));
+                            JsonInt(arguments, "quantity", 1),
+                            playerId);
                     case "control_facility_object":
                         return TerminalBuddy.SetFacilityObject(
                             JsonString(arguments, "code"),
