@@ -51,7 +51,7 @@ namespace LethalAICrewmate
             {
                 if (Plugin.TtsEnabled == null || !Plugin.TtsEnabled.Value) return;
                 if (!GroqSecrets.HasKey) return;
-                if (_blockedByModelTerms) return;
+                if (!GroqSecrets.IsOpenAi && _blockedByModelTerms) return;
                 if (string.IsNullOrWhiteSpace(text)) return;
                 if (!CrewmateSpawner.IsHost()) return;
                 if (Plugin.Host == null) return;
@@ -59,6 +59,14 @@ namespace LethalAICrewmate
                 if (string.IsNullOrEmpty(cleaned)) return;
                 if (cleaned.Length > MaxChars)
                     cleaned = cleaned.Substring(0, MaxChars - 1).TrimEnd() + ".";
+
+                // OpenAI speech is generated natively by the same Realtime model that runs
+                // Buddy's conversation and tools. The request-based TTS endpoint is Groq-only.
+                if (GroqSecrets.IsOpenAi)
+                {
+                    OpenAiRealtimeVoiceClient.EnqueueExactSpeech(cleaned);
+                    return;
+                }
 
                 if (Pending.Count >= MaxQueuedLines)
                 {
@@ -84,7 +92,9 @@ namespace LethalAICrewmate
             text = text.Replace("[FOLLOW]", "").Replace("[STAY]", "")
                 .Replace("[SHIP]", "").Replace("[FETCH]", "").Trim();
 
-            if (text.IndexOf('[') < 0)
+            // Orpheus accepts bracketed delivery directions. OpenAI native Realtime speech
+            // receives plain dialogue and must never inherit Groq-specific prompt syntax.
+            if (!GroqSecrets.IsOpenAi && text.IndexOf('[') < 0)
             {
                 string dir = Plugin.TtsDirection?.Value ?? "";
                 if (!string.IsNullOrWhiteSpace(dir))
@@ -98,24 +108,10 @@ namespace LethalAICrewmate
             return text;
         }
 
-        /// <summary>Chat/STT models must never hit /audio/speech — Orpheus only.</summary>
+        /// <summary>Groq chat/STT models must never hit /audio/speech — Orpheus only.</summary>
         private static string ResolveTtsModel()
         {
-            string m = Plugin.TtsModel?.Value;
-            if (GroqSecrets.IsOpenAi)
-                return string.IsNullOrWhiteSpace(m) ? "gpt-4o-mini-tts" : m.Trim();
-            if (string.IsNullOrWhiteSpace(m) ||
-                m.IndexOf("orpheus", StringComparison.OrdinalIgnoreCase) < 0 ||
-                m.IndexOf("canopy", StringComparison.OrdinalIgnoreCase) < 0)
-            {
-                if (!string.IsNullOrWhiteSpace(m) &&
-                    m.IndexOf("orpheus", StringComparison.OrdinalIgnoreCase) < 0)
-                {
-                    Plugin.Log?.LogWarning($"TtsModel '{m}' is not Orpheus; forcing canopylabs/orpheus-v1-english");
-                }
-                return "canopylabs/orpheus-v1-english";
-            }
-            return m.Trim();
+            return BuddyAiArchitecture.GroqSpeechModel;
         }
 
         private static IEnumerator ProcessQueue()
@@ -139,18 +135,12 @@ namespace LethalAICrewmate
         private static IEnumerator RequestAndPlayCore(string input, Vector3 worldPos)
         {
             string model = ResolveTtsModel();
-            string voice = Plugin.TtsVoice?.Value ?? (GroqSecrets.IsOpenAi ? "ash" : "troy");
-            if (string.IsNullOrWhiteSpace(voice)) voice = GroqSecrets.IsOpenAi ? "ash" : "troy";
-
-            string performanceDirection = "Perform this as a natural male Lethal Company coworker. Sound practical, a little tired, alert when danger is real, and quietly funny without internet slang, chaos-goblin jokes, or a cartoon voice. React to the line: dry amusement for banter, clear urgency for danger, relief after success, and restrained concern for bad news. Never sound like an announcer, assistant, mascot, or forced comedian. Keep the exact words and do not add a preamble. " +
-                BuddyCharacterArc.TtsDirection(Plugin.SlowBurnHorror?.Value == true ? BuddyCharacterDirector.CurrentStage : BuddyArcStage.Coworker);
+            string voice = Plugin.TtsVoice?.Value ?? "austin";
+            if (string.IsNullOrWhiteSpace(voice)) voice = "austin";
             string body = "{\"model\":\"" + LlmClient.Escape(model) +
                           "\",\"voice\":\"" + LlmClient.Escape(voice) +
                           "\",\"input\":\"" + LlmClient.Escape(input) +
-                          "\",\"response_format\":\"wav\"" +
-                          (GroqSecrets.IsOpenAi
-                              ? ",\"instructions\":\"" + LlmClient.Escape(performanceDirection) + "\""
-                              : "") + "}";
+                          "\",\"response_format\":\"wav\"}";
 
             byte[] audioBytes = null;
 

@@ -15,9 +15,6 @@ namespace LethalAICrewmate
         private const int MaxQueue = 3;
         private const float MinInterval = 0.2f;
         private const int MaxTokens = 64;
-        // The Responses path (Luna) counts reasoning tokens against the cap, so give it more
-        // headroom: 64 would truncate a multi-sentence strategy answer mid-word.
-        private const int MaxResponseTokens = 160;
         private const float DuplicateWindowSeconds = 2f;
         private const float HardRequestCeilingSeconds = 45f;
 
@@ -73,7 +70,7 @@ namespace LethalAICrewmate
 
         public static bool HasApiKey => GroqSecrets.HasKey;
 
-        public static bool EnqueuePlayerMessage(string playerName, string message, bool isCommand, long journalId)
+        public static bool EnqueuePlayerMessage(string playerName, int playerId, string message, bool isCommand, long journalId)
         {
             if (!HasApiKey) return false;
             var content = new StringBuilder(1400);
@@ -85,7 +82,7 @@ namespace LethalAICrewmate
             content.AppendLine().AppendLine("[LIVE GAME CONTEXT - SILENT BACKGROUND UNLESS RELEVANT]")
                 .AppendLine(GameSensors.BuildLiveContext())
                 .AppendLine("[Do not turn sensor entries into the topic. Harmless wildlife requires no callout.]");
-            return Enqueue(content.ToString(), isObservation: false, withVision: VisionIntent.IsVisualQuestion(message), journalId: journalId);
+            return Enqueue(content.ToString(), isObservation: false, withVision: VisionIntent.IsVisualQuestion(message), journalId: journalId, playerName: playerName, playerId: playerId);
         }
 
         public static void EnqueueObservation(string summary)
@@ -95,10 +92,20 @@ namespace LethalAICrewmate
             Enqueue(sensors + "\n[Observation] " + summary, isObservation: true, withVision: false, journalId: 0);
         }
 
-        private static bool Enqueue(string userContent, bool isObservation, bool withVision = false, long journalId = 0)
+        private static bool Enqueue(string userContent, bool isObservation, bool withVision = false, long journalId = 0, string playerName = "Game observation", int playerId = -1)
         {
             userContent = BuddyFourthWall.MaybeAnnotate(userContent, isObservation);
             string historyContent = BuildHistoryContent(userContent, isObservation);
+            if (GroqSecrets.IsOpenAi)
+            {
+                return OpenAiRealtimeVoiceClient.EnqueueText(
+                    userContent,
+                    playerName,
+                    playerId,
+                    journalId: journalId,
+                    includeScreenshot: withVision,
+                    allowTools: !isObservation);
+            }
             string requestKey = (isObservation ? "observation:" : "player:") + historyContent.Trim().ToLowerInvariant();
             float now = Time.unscaledTime;
             if (!isObservation && requestKey == _lastRequestKey && now - _lastRequestAt < DuplicateWindowSeconds)
@@ -225,16 +232,10 @@ namespace LethalAICrewmate
             if (pending.WantVision)
                 VisionCapture.TryCaptureJpegBase64(out imageB64);
 
-            string model = GroqSecrets.IsOpenAi
-                ? (Plugin.Model?.Value ?? "gpt-5.6-luna")
-                : (imageB64 != null ? (Plugin.VisionModel?.Value ?? "qwen/qwen3.6-27b") : (Plugin.Model?.Value ?? "openai/gpt-oss-120b"));
-            bool useResponses = GroqSecrets.IsOpenAi;
-            string body = useResponses
-                ? BuildResponsesRequestJson(systemPrompt, requestHistory, model, imageB64)
-                : BuildRequestJson(systemPrompt, requestHistory, imageB64, model);
-            string endpoint = useResponses ? GroqSecrets.OpenAiResponsesEndpoint : GroqSecrets.ChatEndpoint;
+            string model = BuddyAiArchitecture.GroqChatModel;
+            string body = BuildRequestJson(systemPrompt, requestHistory, imageB64, model);
 
-            using (var uwr = new UnityWebRequest(endpoint, "POST"))
+            using (var uwr = new UnityWebRequest(GroqSecrets.ChatEndpoint, "POST"))
             {
                 byte[] raw = Encoding.UTF8.GetBytes(body);
                 uwr.uploadHandler = new UploadHandlerRaw(raw);
@@ -263,9 +264,7 @@ namespace LethalAICrewmate
                     try
                     {
                         string responseText = uwr.downloadHandler?.text ?? "";
-                        string content = useResponses
-                            ? ParseResponsesContent(responseText)
-                            : ParseAssistantContent(responseText);
+                        string content = ParseAssistantContent(responseText);
                         content = StripThinking(content);
                         if (!string.IsNullOrEmpty(content))
                             HandleAssistantReply(content, pending.HistoryContent, pending.JournalId);
@@ -281,8 +280,7 @@ namespace LethalAICrewmate
                 if (needRetryNoVision)
                 {
                     Plugin.Log?.LogInfo("Retrying chat without vision…");
-                    string fallbackModel = Plugin.Model?.Value ?? (GroqSecrets.IsOpenAi ? "gpt-5.6-luna" : "openai/gpt-oss-120b");
-                    yield return SendRequestNoVision(systemPrompt, fallbackModel, requestHistory, pending.HistoryContent, pending.JournalId);
+                    yield return SendRequestNoVision(systemPrompt, BuddyAiArchitecture.GroqChatModel, requestHistory, pending.HistoryContent, pending.JournalId);
                 }
             }
 
@@ -295,12 +293,8 @@ namespace LethalAICrewmate
 
         private static IEnumerator SendRequestNoVision(string systemPrompt, string model, List<ChatTurn> requestHistory, string historyContent, long journalId)
         {
-            bool useResponses = GroqSecrets.IsOpenAi;
-            string body = useResponses
-                ? BuildResponsesRequestJson(systemPrompt, requestHistory, model, null)
-                : BuildRequestJson(systemPrompt, requestHistory, null, model);
-            string endpoint = useResponses ? GroqSecrets.OpenAiResponsesEndpoint : GroqSecrets.ChatEndpoint;
-            using (var uwr = new UnityWebRequest(endpoint, "POST"))
+            string body = BuildRequestJson(systemPrompt, requestHistory, null, model);
+            using (var uwr = new UnityWebRequest(GroqSecrets.ChatEndpoint, "POST"))
             {
                 byte[] raw = Encoding.UTF8.GetBytes(body);
                 uwr.uploadHandler = new UploadHandlerRaw(raw);
@@ -312,9 +306,7 @@ namespace LethalAICrewmate
                 if (string.IsNullOrEmpty(uwr.error) && uwr.responseCode >= 200 && uwr.responseCode < 300)
                 {
                     string responseText = uwr.downloadHandler?.text ?? "";
-                    string content = StripThinking(useResponses
-                        ? ParseResponsesContent(responseText)
-                        : ParseAssistantContent(responseText));
+                    string content = StripThinking(ParseAssistantContent(responseText));
                     if (!string.IsNullOrEmpty(content))
                         HandleAssistantReply(content, historyContent, journalId);
                 }
@@ -336,19 +328,11 @@ namespace LethalAICrewmate
 
         private static string BuildRequestJson(string systemPrompt, List<ChatTurn> history, string imageJpegBase64, string model)
         {
-            if (string.IsNullOrWhiteSpace(model)) model = GroqSecrets.IsOpenAi ? "gpt-5.6-luna" : "openai/gpt-oss-120b";
+            if (string.IsNullOrWhiteSpace(model)) model = BuddyAiArchitecture.GroqChatModel;
             var sb = new StringBuilder(Math.Max(8192, (imageJpegBase64?.Length ?? 0) + 4096));
             sb.Append("{\"model\":\"").Append(Escape(model)).Append("\",");
-            if (GroqSecrets.IsOpenAi)
-            {
-                sb.Append("\"max_completion_tokens\":").Append(MaxTokens).Append(',');
-                sb.Append("\"reasoning_effort\":\"none\",");
-            }
-            else
-            {
-                sb.Append("\"max_tokens\":").Append(MaxTokens).Append(',');
-                sb.Append("\"temperature\":0.6,");
-            }
+            sb.Append("\"max_tokens\":").Append(MaxTokens).Append(',');
+            sb.Append("\"temperature\":0.6,");
             if (model.IndexOf("qwen", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 sb.Append("\"reasoning_effort\":\"none\",");
@@ -385,32 +369,6 @@ namespace LethalAICrewmate
             return sb.ToString();
         }
 
-        private static string BuildResponsesRequestJson(string systemPrompt, List<ChatTurn> history, string model, string imageJpegBase64)
-        {
-            var sb = new StringBuilder(8192);
-            sb.Append("{\"model\":\"").Append(Escape(model)).Append("\",");
-            sb.Append("\"instructions\":\"").Append(Escape(systemPrompt)).Append("\",");
-            sb.Append("\"max_output_tokens\":").Append(MaxResponseTokens).Append(',');
-            sb.Append("\"reasoning\":{\"effort\":\"low\",\"context\":\"current_turn\"},");
-            sb.Append("\"text\":{\"verbosity\":\"low\"},\"service_tier\":\"fast\",\"store\":false,\"input\":[");
-            for (int i = 0; i < history.Count; i++)
-            {
-                if (i > 0) sb.Append(',');
-                bool lastUserWithVision = imageJpegBase64 != null && i == history.Count - 1 && history[i].Role == "user";
-                sb.Append("{\"role\":\"").Append(Escape(history[i].Role)).Append("\",\"content\":");
-                if (lastUserWithVision)
-                {
-                    sb.Append("[{\"type\":\"input_text\",\"text\":\"").Append(Escape(history[i].Content)).Append("\"},");
-                    sb.Append("{\"type\":\"input_image\",\"image_url\":\"data:image/jpeg;base64,")
-                      .Append(imageJpegBase64).Append("\",\"detail\":\"auto\"}]");
-                }
-                else
-                    sb.Append('"').Append(Escape(history[i].Content)).Append('"');
-                sb.Append('}');
-            }
-            sb.Append("]}");
-            return sb.ToString();
-        }
 
         /// <summary>Strip Qwen/OpenAI-style thinking blocks if the API still leaks them.</summary>
         internal static string StripThinking(string content)
@@ -571,56 +529,6 @@ namespace LethalAICrewmate
             return sb.ToString().Trim();
         }
 
-        internal static string ParseResponsesContent(string json)
-        {
-            if (string.IsNullOrEmpty(json)) return null;
-            int outputText = json.IndexOf("\"output_text\"", StringComparison.Ordinal);
-            if (outputText < 0) return null;
-            int textKey = json.IndexOf("\"text\"", outputText, StringComparison.Ordinal);
-            return ParseJsonStringValue(json, textKey);
-        }
-
-        private static string ParseJsonStringValue(string json, int keyIndex)
-        {
-            if (keyIndex < 0) return null;
-            int colon = json.IndexOf(':', keyIndex);
-            if (colon < 0) return null;
-            int i = colon + 1;
-            while (i < json.Length && char.IsWhiteSpace(json[i])) i++;
-            if (i >= json.Length || json[i++] != '"') return null;
-
-            var sb = new StringBuilder();
-            while (i < json.Length)
-            {
-                char c = json[i++];
-                if (c == '"') break;
-                if (c != '\\' || i >= json.Length)
-                {
-                    sb.Append(c);
-                    continue;
-                }
-
-                char n = json[i++];
-                switch (n)
-                {
-                    case '"': sb.Append('"'); break;
-                    case '\\': sb.Append('\\'); break;
-                    case '/': sb.Append('/'); break;
-                    case 'n': sb.Append('\n'); break;
-                    case 'r': sb.Append('\r'); break;
-                    case 't': sb.Append('\t'); break;
-                    case 'u':
-                        if (i + 3 < json.Length && int.TryParse(json.Substring(i, 4), System.Globalization.NumberStyles.HexNumber, null, out int code))
-                        {
-                            sb.Append((char)code);
-                            i += 4;
-                        }
-                        break;
-                    default: sb.Append(n); break;
-                }
-            }
-            return sb.ToString().Trim();
-        }
 
         private static void HandleAssistantReply(string content, string historyContent, long journalId)
         {

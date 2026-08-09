@@ -10,7 +10,7 @@ Buddy starts as a friendly AI crewmate for **Lethal Company v81**. He joins as a
 2. Install the same **Buddy** release on **every player** in the lobby.
 3. Put `LethalAICrewmate.dll` in `BepInEx/plugins/Buddy/`, or install the release ZIP with a compatible mod manager. The legacy DLL filename is retained so existing installs and configs upgrade safely.
 4. Launch Lethal Company.
-5. The host pastes an OpenAI API key into the **Buddy - OpenAI** box on the main menu, presses **Save**, then **Test**.
+5. The host leaves **OpenAI — Recommended** selected on the **Buddy AI** card, pastes an OpenAI API key, then presses **Save key** and **Test**.
 6. Host a lobby. Buddy appears physically in the ship once every connected player passes the mod compatibility handshake, including while in orbit.
 
 Only the host needs an API key. The main-menu Save button keeps it in that Windows user's Credential Manager between sessions; the key is never sent to other players.
@@ -58,7 +58,7 @@ You can also talk to Buddy normally or ask him a question near him.
 
 Ship and terminal actions are host-authoritative and use the same game state as a player. Purchases respect sales, available credits and the 12-item dropship limit. Facility codes respect their normal cooldown, and ship doors still require working controls and hydraulic power.
 
-The stock OpenAI configuration uses `gpt-5.6-luna` for conversation and keeps screenshot vision disabled by default; hosts can opt in with `[Vision] Enabled = true` to answer explicit visual questions ("what am I looking at?") with a host screenshot.
+The recommended OpenAI experience uses one `gpt-realtime-2.1-mini` session for conversation, native voice, image questions and tool calling. Screenshot vision remains disabled by default and only captures one current host screenshot for an explicit visual question.
 
 ## Personality
 
@@ -82,33 +82,30 @@ Client path:
 
 `client mic -> bounded/chunked relay to host -> GPT-Realtime-2.1 mini native speech-to-speech (Ash) -> synced Buddy voice`
 
-Clients do not need a Groq key. Remote microphone audio is captured only while the player holds the Buddy push-to-talk key, is size/rate limited, and is accepted only from connected matching clients. The stock nearby PTT range is 60m.
+Clients do not need a provider key. Remote microphone audio is captured only while the player holds the Buddy push-to-talk key, is size/rate limited, and is accepted only from connected matching clients. The stock nearby PTT range is 60m.
 
-v1.4.8 uses the same active microphone as Lethal Company's normal Dissonance voice chat, adaptively amplifies quiet speech, and shows the speaking client when Whisper could not understand a clip. If an explicit override is needed, set `[Voice] InputDevice` to the device's full name or a unique part of it.
+Buddy uses the same active microphone as Lethal Company's normal Dissonance voice chat, adaptively amplifies quiet speech, and shows the speaking client when transcription could not understand a clip. If an explicit override is needed, set `[Voice] InputDevice` to the device's full name or a unique part of it.
 
 ## AI setup
 
-New installs default to:
+The main-menu setup card defaults to **OpenAI — Recommended**. It also offers **Groq — Free / budget** as a clearly separate option. New installs use:
 
 ```ini
 [AI]
 Provider = OpenAI
 
 [Groq]
-ApiKey =
-Model = gpt-5.6-luna
-SttModel = gpt-live-transcribe
-TtsModel = gpt-4o-mini-tts
-TtsVoice = ash
-TtsEnabled = true
-TtsDirection =
-TtsVolume = 1
-
-[OpenAI]
-RealtimeVoiceModel = gpt-realtime-2.1-mini
+TtsVoice = austin
+TtsDirection = friendly
 ```
 
-The main-menu Save button persists the selected provider key in Windows Credential Manager for that Windows user. `LETHAL_AI_OPENAI_API_KEY` is still supported and takes precedence when set before launching Steam. Text chat uses `gpt-5.6-luna` through Responses with low reasoning, low verbosity and Fast service tier. Push-to-talk uses a persistent `gpt-realtime-2.1-mini` WebSocket with 24 kHz PCM input/output, Ash voice, `gpt-live-transcribe` transcription, far-field noise reduction, low reasoning and host-side function calling. PTT defines the turn boundary, so automatic VAD is disabled in the mod. The separate `gpt-live-transcribe` and `gpt-4o-mini-tts` settings remain available for non-native/fallback speech paths. The older Groq provider remains selectable with `[AI] Provider = Groq` and `LETHAL_AI_GROQ_API_KEY`.
+The main-menu Save button persists the selected provider key in Windows Credential Manager for that Windows user. `LETHAL_AI_OPENAI_API_KEY` and `LETHAL_AI_GROQ_API_KEY` still take precedence when set before launching Steam.
+
+OpenAI is one persistent `gpt-realtime-2.1-mini` WebSocket: it receives typed or 24 kHz PTT input, reasons, calls the bounded host tool when required, and produces Buddy's Ash voice. `gpt-live-transcribe` supplies live input transcripts inside that Realtime pipeline. There is no separate OpenAI chat model or request-based TTS fallback.
+
+Groq is independent: `qwen/qwen3.6-27b` handles conversation, `whisper-large-v3-turbo` handles speech recognition, and `canopylabs/orpheus-v1-english` generates speech. Switching providers never sends one provider's key or model IDs to the other.
+
+On upgrade, old model fields are ignored and disappear from the active settings UI. Buddy preserves provider choice, secure keys, voice preference, gameplay settings, security limits and character-arc progress.
 
 Screenshot capture is off by default. If the host explicitly enables it, only an explicit visual question captures one current host screenshot for the selected provider; screenshots are never sent to clients.
 
@@ -117,7 +114,6 @@ v2 also supports a bounded joke/admin command: `Buddy, please spawn 2 flashlight
 ```ini
 [Vision]
 Enabled = false
-Model = qwen/qwen3.6-27b
 ```
 
 The main-menu **Test** button validates the selected provider key before a lobby starts.
@@ -136,6 +132,8 @@ ObservationIntervalSeconds = 0
 
 [Voice]
 Enabled = true
+SpokenReplies = true
+Volume = 1
 PushToTalkKey = B
 AlternatePushToTalkKey = V
 MaxRecordSeconds = 8
@@ -144,7 +142,6 @@ InputDevice =
 
 ```ini
 [Security]
-PersistApiKey = false
 AllowRemoteVoice = true
 RemoteVoiceInPublicLobbies = false
 RemoteGameActionsInPublicLobbies = false
@@ -157,7 +154,7 @@ SlowBurnHorror = true
 ResetSlowBurnProgress = false
 ```
 
-`AllowRemoteVoice = true` permits the relay, but remote PTT is accepted by default only when Steam visibility is positively identified as friends/invite-only. Public, missing, unknown or failed visibility checks are blocked unless `RemoteVoiceInPublicLobbies = true`. Remote purchases, routes, item spawning and ship/facility changes use the same fail-closed rule unless `RemoteGameActionsInPublicLobbies = true`; read-only status/store/moon queries remain available. `PersistApiKey` is retained only for old config compatibility: menu keys are saved in Windows Credential Manager.
+`AllowRemoteVoice = true` permits the relay, but remote PTT is accepted by default only when Steam visibility is positively identified as friends/invite-only. Public, missing, unknown or failed visibility checks are blocked unless `RemoteVoiceInPublicLobbies = true`. Remote purchases, routes, item spawning and ship/facility changes use the same fail-closed rule unless `RemoteGameActionsInPublicLobbies = true`; read-only status/store/moon queries remain available. Menu keys are saved in Windows Credential Manager.
 
 `SaveResponses = false` is the privacy-safe default. Enabling it writes raw player chat, voice transcripts, Buddy replies and confirmed tool results to the host-only `BepInEx/LethalAICrewmate-responses.log`. Existing configs migrate to off; re-enable it only when players understand the log.
 
@@ -167,7 +164,7 @@ The old 70m reply default automatically migrates to global delivery. Other custo
 
 ## Privacy and API usage
 
-- `LETHAL_AI_GROQ_API_KEY` remains an optional persistent host-key source and overrides the menu-saved key. Menu keys are stored in Windows Credential Manager.
+- `LETHAL_AI_OPENAI_API_KEY` and `LETHAL_AI_GROQ_API_KEY` remain optional host-key sources and override the selected provider's menu-saved key. Menu keys are stored in Windows Credential Manager.
 - The key is never included in multiplayer messages.
 - Host push-to-talk audio goes to the selected speech provider when the host uses the Buddy voice key.
 - Client push-to-talk audio is relayed only while that client holds the Buddy voice key; the host can disable remote audio for public lobbies.

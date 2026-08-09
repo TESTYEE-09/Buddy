@@ -13,8 +13,8 @@ namespace LethalAICrewmate
     /// <summary>
     /// v1.4.3 multiplayer voice relay.
     /// Remote clients record their own push-to-talk audio locally and upload only that bounded WAV
-    /// to the host. The host validates the sender/range, performs Whisper with the host-only Groq
-    /// key, then routes the transcript through the same ChatObserver command/conversation path.
+    /// to the host. The host validates the sender/range, then uses either the host-only OpenAI
+    /// Realtime session end-to-end or the separate Groq Whisper/Qwen/Orpheus pipeline.
     /// </summary>
     internal static class BuddyClientVoice
     {
@@ -511,6 +511,8 @@ namespace LethalAICrewmate
                         Plugin.Log?.LogInfo($"Queued remote native realtime voice turn client={request.SenderId} player='{playerName}'.");
                         yield break;
                     }
+                    SendClientHint(request.SenderId, "Buddy couldn't start the OpenAI Realtime turn. Try again.");
+                    yield break;
                 }
 
                 string model = ResolveSttModel();
@@ -657,13 +659,7 @@ namespace LethalAICrewmate
 
         private static string ResolveSttModel()
         {
-            string model = Plugin.SttModel?.Value;
-            if (GroqSecrets.IsOpenAi)
-                return string.IsNullOrWhiteSpace(model) ? "gpt-live-transcribe" : model.Trim();
-            if (string.IsNullOrWhiteSpace(model) ||
-                model.IndexOf("whisper", StringComparison.OrdinalIgnoreCase) < 0)
-                return "whisper-large-v3-turbo";
-            return model.Trim();
+            return BuddyAiArchitecture.GroqTranscriptionModel;
         }
 
         private static byte[] BuildMultipart(string boundary, byte[] wav, string model)

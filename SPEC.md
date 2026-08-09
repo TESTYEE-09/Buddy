@@ -1,4 +1,4 @@
-# Buddy — v2.5.0 Design Spec
+# Buddy — v2.6.0 Design Spec
 
 BepInEx 5 plugin for **Lethal Company v81**. Adds a friendly AI-driven crewmate NPC (default name **Buddy**) backed by OpenAI (default) or Groq on the host.
 
@@ -74,7 +74,7 @@ Deterministic movement commands include:
 
 Questions can trigger a reply when addressed to Buddy, or when the player is within `ChatTriggerRange` and the message ends with `?`.
 
-Explicit terminal and ship actions (`route`, quantity-aware `buy`, coded facility doors/hazards, hangar doors and ship lights) are parsed deterministically from player chat. **LLM output is never permitted to execute side effects.** Model-produced `[ROUTE:]`, `[BUY:]` and `[TERMINAL:]` tags are stripped without running them. Deterministic status queries expose player-visible time, credits, quota/deadline, moon/weather, ship scrap and crew state. Buddy maintains a networked physical body in the ship during orbit and moon phases; follow orders transfer ownership to the requesting living player.
+Explicit terminal and ship actions (`route`, quantity-aware `buy`, coded facility doors/hazards, hangar doors and ship lights) are parsed deterministically from player chat. OpenAI Realtime can request the single bounded `execute_game_command` host tool, but the model never performs a side effect directly: the host re-parses, authorizes and executes the request through the same deterministic command layer. Model-produced `[ROUTE:]`, `[BUY:]` and `[TERMINAL:]` text tags are stripped without running them. Deterministic status queries expose player-visible time, credits, quota/deadline, moon/weather, ship scrap and crew state. Buddy maintains a networked physical body in the ship during orbit and moon phases; follow orders transfer ownership to the requesting living player.
 
 Movement orders use one deterministic parser so overlapping conversational keywords cannot accidentally change state. Scout-ahead orders choose a complete reachable path 4-18 metres along the requester's facing direction, report nearby same-area threats or scrap, pause briefly, then return to `FollowOwner`. A blocked or stalled scout cancels safely instead of teleporting forward.
 
@@ -89,35 +89,36 @@ save: `LethalAICrewmate_CharacterArcProgress` and the last counted
 no player dialogue, transcript, name, or inferred personal fact is persisted. A one-shot
 `ResetSlowBurnProgress=true` resets both values for the current save and automatically clears itself.
 
-Stage changes tune the conversation policy and OpenAI TTS performance direction. Sparse deterministic
+Stage changes tune the conversation and native voice policy. Sparse deterministic
 lines may fire after a real round/quota/death event, with a 150-second cooldown. Stage zero produces no
 forced horror beats. Arc state cannot change movement, combat, terminal, spawn, networking, visibility
 or authorization policy; Buddy remains a neutralized companion at every stage.
 
 ## AI providers
 
-OpenAI is the stock provider: `gpt-5.6-luna` through Responses (Fast tier, low reasoning,
-low verbosity), `gpt-live-transcribe`, `gpt-4o-mini-tts` with Ash, and
-`gpt-realtime-2.1-mini` for native PTT. Groq remains an optional legacy provider.
+OpenAI is the recommended provider. A single persistent `gpt-realtime-2.1-mini` session handles typed
+conversation, PTT audio, native Ash speech, image input and bounded host-side tool calls.
+`gpt-live-transcribe` is the session's live input transcription model. There is no separate OpenAI
+chat or request-based TTS path. Groq remains a fully functional secondary/free option.
 
 Groq host config section:
 
-- `Groq.ApiKey`: empty by default; saved locally.
-- `Groq.Model`: `openai/gpt-oss-120b` text default.
-- `Groq.SttModel`: `whisper-large-v3-turbo`.
-- `Groq.TtsModel`: `canopylabs/orpheus-v1-english`.
-- `Groq.TtsVoice`: `troy` by default.
+- `Groq.TtsVoice`: `austin` by default.
+- `Groq.TtsDirection`: `friendly` by default.
 
-The main-menu panel supports **Save / Test / Clear** for the selected provider.
+Provider model IDs are release-owned rather than user-facing config controls: Groq is pinned to
+`qwen/qwen3.6-27b`, `whisper-large-v3-turbo` and `canopylabs/orpheus-v1-english`.
 
-Vision is disabled by default. If the host opts in, use a Groq model that supports images, such as `qwen/qwen3.6-27b` while available.
+The main-menu panel supports **Save key / Test / Clear** for the selected provider.
+
+Vision is disabled by default. OpenAI image questions stay in its Realtime session; Groq uses Qwen 3.6.
 
 LLM rules:
 
 - live game sensor context is included,
 - the model is instructed not to invent unseen enemies/hazards,
 - replies are short,
-- model-produced movement/action tags are stripped; only deterministic host parsing changes game state,
+- model-produced movement/action tags are stripped; Realtime tool requests still pass through deterministic host parsing and authorization before game state changes,
 - one request at a time with a bounded queue,
 - no API work blocks the Unity main thread.
 
@@ -150,8 +151,8 @@ GitHub Actions and `pack.ps1` enforce:
 
 - manifest / csproj / `Plugin.ModVersion` equality,
 - warnings-as-errors compilation,
-- source scan for Groq-key-shaped secrets,
-- compiled DLL scan for Groq-key-shaped secrets,
+- source scan for Groq- and OpenAI-key-shaped secrets,
+- compiled DLL scan for Groq- and OpenAI-key-shaped secrets,
 - exact Thunderstore package file whitelist,
 - ZIP extraction/validation,
 - SHA-256 checksum generation.

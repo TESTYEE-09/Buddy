@@ -10,7 +10,10 @@ using UnityEngine;
 
 namespace LethalAICrewmate
 {
-    /// <summary>Persistent host-side OpenAI speech-to-speech session for push-to-talk turns.</summary>
+    /// <summary>
+    /// Persistent host-side OpenAI Realtime session for conversation, native voice, images and
+    /// tool calling. This is Buddy's complete OpenAI path; no REST chat or separate TTS model is used.
+    /// </summary>
     internal static class OpenAiRealtimeVoiceClient
     {
         private const int OutputRate = 24000;
@@ -31,15 +34,17 @@ namespace LethalAICrewmate
         private sealed class VoiceTurn
         {
             public byte[] Pcm24k;
+            public string Text;
+            public string ImageJpegBase64;
             public int PlayerId;
             public string PlayerName;
             public string Instructions;
             public long JournalId;
+            public bool SuppressChat;
+            public bool AllowTools;
         }
 
-        internal static bool Enabled => GroqSecrets.IsOpenAi &&
-            !string.IsNullOrWhiteSpace(Plugin.RealtimeVoiceModel?.Value) &&
-            Plugin.RealtimeVoiceModel.Value.StartsWith("gpt-realtime", StringComparison.OrdinalIgnoreCase);
+        internal static bool Enabled => GroqSecrets.IsOpenAi;
 
         internal static void Tick()
         {
@@ -59,13 +64,15 @@ namespace LethalAICrewmate
                 "\nCOMMAND RULE: if the speaker gives a command (stay/stay in place, follow, move or go forward, scout ahead, fetch scrap, go to ship, open door CODE, disable turret/mine CODE, buy items, ship controls, status, or a polite spawn plea), you MUST call execute_game_command with their exact intent — never answer a command with talk. If unsure whether it is a command, call the tool anyway; a non-command marker means answer conversationally. Never claim an action happened without its confirmed result.";
             lock (Gate)
             {
-                if (Pending.Count >= MaxQueuedTurns) Pending.Dequeue();
+                if (Pending.Count >= MaxQueuedTurns)
+                    ResponseJournal.Discard(Pending.Dequeue().JournalId);
                 Pending.Enqueue(new VoiceTurn
                 {
                     Pcm24k = pcm,
                     PlayerId = playerId,
                     PlayerName = playerName ?? "Player",
-                    Instructions = livePrompt
+                    Instructions = livePrompt,
+                    AllowTools = true
                 });
                 if (!_workerRunning)
                 {
@@ -76,11 +83,65 @@ namespace LethalAICrewmate
             return true;
         }
 
+        internal static bool EnqueueText(string text, string playerName, int playerId, long journalId, bool includeScreenshot, bool allowTools)
+        {
+            if (!Enabled || string.IsNullOrWhiteSpace(text)) return false;
+            string image = null;
+            if (includeScreenshot && Plugin.VisionEnabled?.Value == true)
+                VisionCapture.TryCaptureJpegBase64(out image);
+            string instructions = BuildTurnInstructions(playerName, playerId);
+            return EnqueueTurn(new VoiceTurn
+            {
+                Text = text.Trim(),
+                ImageJpegBase64 = image,
+                PlayerId = playerId,
+                PlayerName = playerName ?? "Player",
+                Instructions = instructions,
+                JournalId = journalId,
+                AllowTools = allowTools
+            });
+        }
+
+        internal static bool EnqueueExactSpeech(string text)
+        {
+            if (!Enabled || Plugin.TtsEnabled?.Value != true || string.IsNullOrWhiteSpace(text)) return false;
+            return EnqueueTurn(new VoiceTurn
+            {
+                Text = "Read this exact Buddy line aloud without adding, removing, or changing any words: \"" + text.Trim() + "\"",
+                PlayerId = -1,
+                PlayerName = "Buddy",
+                Instructions = BuddyConversationPrompt.Build() +
+                    "\nThis is an internal voice-rendering turn. Speak the supplied line exactly. Do not call tools.",
+                SuppressChat = true
+            });
+        }
+
+        private static bool EnqueueTurn(VoiceTurn turn)
+        {
+            lock (Gate)
+            {
+                if (Pending.Count >= MaxQueuedTurns)
+                    ResponseJournal.Discard(Pending.Dequeue().JournalId);
+                Pending.Enqueue(turn);
+                if (!_workerRunning)
+                {
+                    _workerRunning = true;
+                    _ = RunWorkerAsync();
+                }
+            }
+            return true;
+        }
+
+        private static string BuildTurnInstructions(string playerName, int playerId) =>
+            BuddyConversationPrompt.Build() +
+            "\n\nCURRENT TURN\nSpeaker: " + (playerName ?? "Player") + " (player id " + playerId + ").\n" +
+            "COMMAND RULE: call execute_game_command for any explicit game command. Never claim an action happened without its confirmed result.";
+
         internal static void ResetSession()
         {
             lock (Gate)
             {
-                Pending.Clear();
+                while (Pending.Count > 0) ResponseJournal.Discard(Pending.Dequeue().JournalId);
                 _responseActive = false;
                 _responseCancelRequested = false;
             }
@@ -95,7 +156,7 @@ namespace LethalAICrewmate
             bool cancelActiveResponse;
             lock (Gate)
             {
-                Pending.Clear();
+                while (Pending.Count > 0) ResponseJournal.Discard(Pending.Dequeue().JournalId);
                 cancelActiveResponse = _responseActive;
                 if (cancelActiveResponse) _responseCancelRequested = true;
             }
@@ -161,22 +222,44 @@ namespace LethalAICrewmate
         private static async Task ProcessTurnAsync(VoiceTurn turn)
         {
             string toolResult = null;
+            bool expectAudio = Plugin.TtsEnabled?.Value == true;
             await EnsureConnectedAsync().ConfigureAwait(false);
-            string update = BuildSessionUpdate(turn.Instructions);
+            string update = BuildSessionUpdate(turn.Instructions, expectAudio, turn.AllowTools);
             await SendAsync(update, _sessionCancel.Token).ConfigureAwait(false);
             await WaitForEventAsync("session.updated", 10).ConfigureAwait(false);
 
-            await SendAsync("{\"type\":\"input_audio_buffer.clear\"}", _sessionCancel.Token).ConfigureAwait(false);
-            const int chunkBytes = 24000; // 500 ms of mono PCM16 at 24 kHz
-            for (int offset = 0; offset < turn.Pcm24k.Length; offset += chunkBytes)
+            if (turn.Pcm24k != null)
             {
-                int length = Math.Min(chunkBytes, turn.Pcm24k.Length - offset);
-                string audio = Convert.ToBase64String(turn.Pcm24k, offset, length);
-                await SendAsync("{\"type\":\"input_audio_buffer.append\",\"audio\":\"" + audio + "\"}", _sessionCancel.Token)
-                    .ConfigureAwait(false);
+                await SendAsync("{\"type\":\"input_audio_buffer.clear\"}", _sessionCancel.Token).ConfigureAwait(false);
+                const int chunkBytes = 24000; // 500 ms of mono PCM16 at 24 kHz
+                for (int offset = 0; offset < turn.Pcm24k.Length; offset += chunkBytes)
+                {
+                    int length = Math.Min(chunkBytes, turn.Pcm24k.Length - offset);
+                    string audio = Convert.ToBase64String(turn.Pcm24k, offset, length);
+                    await SendAsync("{\"type\":\"input_audio_buffer.append\",\"audio\":\"" + audio + "\"}", _sessionCancel.Token)
+                        .ConfigureAwait(false);
+                }
+                await SendAsync("{\"type\":\"input_audio_buffer.commit\"}", _sessionCancel.Token).ConfigureAwait(false);
             }
-            await SendAsync("{\"type\":\"input_audio_buffer.commit\"}", _sessionCancel.Token).ConfigureAwait(false);
-            await CreateResponseAsync().ConfigureAwait(false);
+            else if (!turn.SuppressChat)
+            {
+                string content = "[{\"type\":\"input_text\",\"text\":\"" + LlmClient.Escape(turn.Text) + "\"}";
+                if (!string.IsNullOrWhiteSpace(turn.ImageJpegBase64))
+                    content += ",{\"type\":\"input_image\",\"image_url\":\"data:image/jpeg;base64," + turn.ImageJpegBase64 + "\"}";
+                content += "]";
+                string item = "{\"type\":\"conversation.item.create\",\"item\":{\"type\":\"message\",\"role\":\"user\",\"content\":" + content + "}}";
+                await SendAsync(item, _sessionCancel.Token).ConfigureAwait(false);
+            }
+            if (turn.SuppressChat)
+            {
+                string exactInstructions = turn.Instructions + "\n" + turn.Text;
+                await CreateResponseAsync("{\"type\":\"response.create\",\"response\":{\"conversation\":\"none\",\"output_modalities\":[\"audio\"],\"instructions\":\"" +
+                    LlmClient.Escape(exactInstructions) + "\"}}").ConfigureAwait(false);
+            }
+            else
+            {
+                await CreateResponseAsync().ConfigureAwait(false);
+            }
 
             using (var audio = new MemoryStream())
             {
@@ -279,12 +362,14 @@ namespace LethalAICrewmate
                     QueueAudioChunk(pcm);
                     queuedAnyAudio = true;
                 }
-                if (!string.IsNullOrWhiteSpace(assistantTranscript))
+                if (!turn.SuppressChat && !string.IsNullOrWhiteSpace(assistantTranscript))
                 {
                     QueueAssistantChat(assistantTranscript, turn.JournalId, toolResult);
                     turn.JournalId = 0;
                 }
-                if (!queuedAnyAudio) throw new InvalidOperationException("Realtime response completed without audio.");
+                if (expectAudio && !queuedAnyAudio) throw new InvalidOperationException("Realtime response completed without audio.");
+                if (!expectAudio && !turn.SuppressChat && string.IsNullOrWhiteSpace(assistantTranscript))
+                    throw new InvalidOperationException("Realtime response completed without text.");
             }
             ResponseJournal.Discard(turn.JournalId);
             turn.JournalId = 0;
@@ -299,21 +384,21 @@ namespace LethalAICrewmate
             _sessionCancel.CancelAfter(TimeSpan.FromMinutes(55));
             _socket = new ClientWebSocket();
             _socket.Options.SetRequestHeader("Authorization", "Bearer " + GroqSecrets.CurrentKey);
-            string model = Plugin.RealtimeVoiceModel?.Value?.Trim() ?? "gpt-realtime-2.1-mini";
+            const string model = BuddyAiArchitecture.OpenAiRealtimeModel;
             await _socket.ConnectAsync(new Uri("wss://api.openai.com/v1/realtime?model=" + Uri.EscapeDataString(model)), _sessionCancel.Token)
                 .ConfigureAwait(false);
             await WaitForEventAsync("session.created", 10).ConfigureAwait(false);
             Plugin.Log?.LogInfo("OpenAI native realtime voice session connected: " + model);
         }
 
-        private static async Task CreateResponseAsync()
+        private static async Task CreateResponseAsync(string request = "{\"type\":\"response.create\"}")
         {
             lock (Gate)
             {
                 _responseActive = true;
                 _responseCancelRequested = false;
             }
-            try { await SendAsync("{\"type\":\"response.create\"}", _sessionCancel.Token).ConfigureAwait(false); }
+            try { await SendAsync(request, _sessionCancel.Token).ConfigureAwait(false); }
             catch
             {
                 FinishResponse();
@@ -341,26 +426,22 @@ namespace LethalAICrewmate
             !string.IsNullOrEmpty(message) &&
             message.IndexOf("Cancellation failed: no active response", StringComparison.OrdinalIgnoreCase) >= 0;
 
-        private static string BuildSessionUpdate(string instructions)
+        private static string BuildSessionUpdate(string instructions, bool spokenOutput, bool allowTools)
         {
+            string tools = allowTools
+                ? "\"tool_choice\":\"auto\",\"tools\":[{\"type\":\"function\",\"name\":\"execute_game_command\"," +
+                  "\"description\":\"Execute a Lethal Company game command for the speaker. Call this for ANY explicit command: movement (stay, stay in place, stay put, follow me, come here, move forward, go forward, walk forward, scout ahead N metres, check ahead, lead the way, take point, go to ship, return to ship, fetch/collect/get scrap), terminal (buy N item, route moon, moons, status), ship controls (lights on/off, ship doors), facility codes (open door CODE, disable turret CODE, disable mine CODE), or a polite spawn plea (please/begging for a real item). Do NOT call for ordinary conversation, questions about the game world, jokes, or replies that need no game action. Include the speaker's exact target, quantity, door code, distance and politeness in the command string.\"," +
+                  "\"parameters\":{\"type\":\"object\",\"properties\":{\"command\":{\"type\":\"string\",\"description\":\"The speaker's exact command including target, quantity, code and politeness.\"}},\"required\":[\"command\"]}}]"
+                : "\"tool_choice\":\"none\"";
             return "{\"type\":\"session.update\",\"session\":{" +
-                   "\"type\":\"realtime\",\"model\":\"" + LlmClient.Escape(Plugin.RealtimeVoiceModel.Value.Trim()) + "\"," +
-                   "\"output_modalities\":[\"audio\"]," +
+                   "\"type\":\"realtime\",\"model\":\"" + BuddyAiArchitecture.OpenAiRealtimeModel + "\"," +
+                   "\"output_modalities\":[\"" + (spokenOutput ? "audio" : "text") + "\"]," +
                    "\"instructions\":\"" + LlmClient.Escape(instructions) + "\"," +
                    "\"audio\":{\"input\":{\"format\":{\"type\":\"audio/pcm\",\"rate\":24000}," +
                    "\"noise_reduction\":{\"type\":\"far_field\"}," +
-                   "\"transcription\":{\"model\":\"" + LlmClient.Escape(ResolveTranscriptionModel()) + "\"},\"turn_detection\":null}," +
+                   "\"transcription\":{\"model\":\"" + BuddyAiArchitecture.OpenAiTranscriptionModel + "\"},\"turn_detection\":null}," +
                    "\"output\":{\"format\":{\"type\":\"audio/pcm\",\"rate\":24000},\"voice\":\"ash\"}}," +
-                   "\"reasoning\":{\"effort\":\"low\"},\"max_output_tokens\":256," +
-                   "\"tool_choice\":\"auto\",\"tools\":[{\"type\":\"function\",\"name\":\"execute_game_command\"," +
-                   "\"description\":\"Execute a Lethal Company game command for the speaker. Call this for ANY explicit command: movement (stay, stay in place, stay put, follow me, come here, move forward, go forward, walk forward, scout ahead N metres, check ahead, lead the way, take point, go to ship, return to ship, fetch/collect/get scrap), terminal (buy N item, route moon, moons, status), ship controls (lights on/off, ship doors), facility codes (open door CODE, disable turret CODE, disable mine CODE), or a polite spawn plea (please/begging for a real item). Do NOT call for ordinary conversation, questions about the game world, jokes, or replies that need no game action. Include the speaker's exact target, quantity, door code, distance and politeness in the command string.\"," +
-                   "\"parameters\":{\"type\":\"object\",\"properties\":{\"command\":{\"type\":\"string\",\"description\":\"The speaker's exact command including target, quantity, code and politeness.\"}},\"required\":[\"command\"]}}]}}";
-        }
-
-        private static string ResolveTranscriptionModel()
-        {
-            string model = Plugin.SttModel?.Value;
-            return string.IsNullOrWhiteSpace(model) ? "gpt-live-transcribe" : model.Trim();
+                   "\"reasoning\":{\"effort\":\"low\"},\"max_output_tokens\":256," + tools + "}}";
         }
 
         private static async Task<string> ExecuteCommandOnMainThread(int playerId, string command)

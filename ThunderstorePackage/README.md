@@ -8,7 +8,7 @@ Buddy starts as a friendly AI crewmate for **Lethal Company v81**. He follows th
 
 - Install **BepInExPack 5.4.2100**.
 - Install the **same Buddy version on every player**.
-- The host adds an OpenAI API key from the small main-menu panel and presses **Test**.
+- The host leaves **OpenAI — Recommended** selected on the compact **Buddy AI** card, adds an OpenAI API key, then presses **Save key** and **Test**.
 - Only the host needs the selected provider key.
 
 When upgrading from the former `LethalAICrewmate` package listing, remove that entry first so the plugin is not loaded twice.
@@ -71,12 +71,10 @@ Groq requires the organization owner to accept the Orpheus model terms once in i
 
 ## Defaults
 
-- Buddy brain: `gpt-5.6-luna` through Responses with low reasoning, low verbosity and Fast service tier
-- Native PTT voice: `gpt-realtime-2.1-mini` with Ash, 24 kHz PCM, far-field noise reduction, low reasoning, persistent WebSocket audio and host-side tool calls
-- Screenshot capture: disabled; stock Buddy is text-only
-- STT: `gpt-live-transcribe`
-- TTS: `gpt-4o-mini-tts`
-- Fallback TTS voice: `ash` at natural playback speed
+- OpenAI (recommended): one persistent `gpt-realtime-2.1-mini` session for chat, PTT, Ash voice, vision and host-side tool calls
+- OpenAI live transcription: `gpt-live-transcribe` inside the Realtime session
+- Groq (free / budget): `qwen/qwen3.6-27b` + `whisper-large-v3-turbo` + `canopylabs/orpheus-v1-english`
+- Screenshot capture: disabled by default
 - TTS volume: `1.0`
 - Buddy chat/voice range: global
 - Nearby question/client PTT range: `60m`

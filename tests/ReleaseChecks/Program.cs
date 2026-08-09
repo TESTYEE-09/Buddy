@@ -10,6 +10,18 @@ static class Program
 
     static int Main()
     {
+        Check(BuddyAiArchitecture.OpenAiRealtimeModel == "gpt-realtime-2.1-mini",
+              "OpenAI uses the single approved Realtime model");
+        Check(BuddyAiArchitecture.OpenAiTranscriptionModel == "gpt-live-transcribe",
+              "OpenAI Realtime transcription uses GPT Live Transcribe");
+        Check(BuddyAiArchitecture.GroqChatModel == "qwen/qwen3.6-27b" &&
+              BuddyAiArchitecture.GroqTranscriptionModel == "whisper-large-v3-turbo" &&
+              BuddyAiArchitecture.GroqSpeechModel == "canopylabs/orpheus-v1-english",
+              "Groq remains a separate Qwen, Whisper and Orpheus pipeline");
+        Check(BuddyAiArchitecture.NormalizeProvider(null) == "OpenAI" &&
+              BuddyAiArchitecture.NormalizeProvider("unknown") == "OpenAI" &&
+              BuddyAiArchitecture.NormalizeProvider(" groq ") == "Groq",
+              "OpenAI is the fail-safe default provider");
         Check(TransportValidation.IsExactChunk(15000, 7000, 0, 7000), "first chunk");
         Check(TransportValidation.IsExactChunk(15000, 7000, 14000, 1000), "final chunk");
         Check(!TransportValidation.IsExactChunk(15000, 7000, 3500, 7000), "reject overlapping offset");

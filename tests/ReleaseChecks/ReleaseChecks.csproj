@@ -14,5 +14,6 @@
     <Compile Include="..\..\src\ResponseJournal.cs" Link="ResponseJournal.cs" />
     <Compile Include="..\..\src\LobbyVisibilityPolicy.cs" Link="LobbyVisibilityPolicy.cs" />
     <Compile Include="..\..\src\BuddyCharacterArc.cs" Link="BuddyCharacterArc.cs" />
+    <Compile Include="..\..\src\BuddyAiArchitecture.cs" Link="BuddyAiArchitecture.cs" />
   </ItemGroup>
 </Project>

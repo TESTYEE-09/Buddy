@@ -8,7 +8,8 @@ using UnityEngine.Networking;
 namespace LethalAICrewmate
 {
     /// <summary>
-    /// Host push-to-talk → Groq Whisper STT → Buddy chat/commands.
+    /// Host push-to-talk enters the selected provider's isolated voice pipeline:
+    /// OpenAI Realtime end-to-end, or Groq Whisper -> Qwen -> Orpheus.
     /// Hold Voice.PushToTalkKey (default B), release to send.
     /// </summary>
     public static class VoiceCommand
@@ -74,21 +75,11 @@ namespace LethalAICrewmate
         }
 
         /// <summary>
-        /// Chat model (qwen/llama) must never hit /audio/transcriptions.
+        /// Groq's Qwen model must never hit /audio/transcriptions; use Whisper only.
         /// </summary>
         private static string ResolveSttModel()
         {
-            string m = Plugin.SttModel?.Value;
-            if (GroqSecrets.IsOpenAi)
-                return string.IsNullOrWhiteSpace(m) ? "gpt-live-transcribe" : m.Trim();
-            if (string.IsNullOrWhiteSpace(m) ||
-                m.IndexOf("whisper", StringComparison.OrdinalIgnoreCase) < 0)
-            {
-                if (!string.IsNullOrWhiteSpace(m))
-                    Plugin.Log?.LogWarning($"SttModel '{m}' is not Whisper; using whisper-large-v3-turbo");
-                return "whisper-large-v3-turbo";
-            }
-            return m.Trim();
+            return BuddyAiArchitecture.GroqTranscriptionModel;
         }
 
         private static void BeginRecord(float maxSec)
@@ -223,11 +214,14 @@ namespace LethalAICrewmate
                     _busy = false;
                     yield break;
                 }
+                MaybeHint("Buddy couldn't start the OpenAI Realtime turn. Try again.");
+                _busy = false;
+                yield break;
             }
 
             yield return null;
 
-            // NEVER use the chat model for STT — Whisper only
+            // Groq is a separate Whisper -> Qwen -> Orpheus pipeline.
             string model = ResolveSttModel();
             string boundary = "----LethalAIBuddy" + UnityEngine.Random.Range(100000, 999999);
             byte[] body = BuildMultipart(boundary, wav, model);

@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.6.0
+
+- Makes OpenAI Realtime the clear recommended/default Buddy experience in a redesigned, compact main-menu setup card; Groq is presented separately as the free/budget option.
+- Consolidates the complete OpenAI path onto `gpt-realtime-2.1-mini` for typed conversation, push-to-talk, native Ash voice, image questions and bounded host-side tool calls.
+- Uses `gpt-live-transcribe` only for live input transcription within the Realtime pipeline and removes the former separate OpenAI chat/TTS fallbacks from active code and config.
+- Updates Groq to a separate `qwen/qwen3.6-27b` + `whisper-large-v3-turbo` + `canopylabs/orpheus-v1-english` pipeline.
+- Migrates old provider model defaults without changing multiplayer, gameplay commands, security boundaries, synchronization or character-arc state.
+- Migrates legacy plaintext provider keys into Windows Credential Manager and removes their old configuration controls after a successful secure save.
+- Adds release checks that lock the provider split and make OpenAI the fail-safe default.
+
 ## 2.5.0
 
 - Renames the public mod and repository branding to **Buddy**, with a new minimalist human coworker icon and the tagline: "A useful crewmate with a memory. The longer you work together, the stranger it gets."

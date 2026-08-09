@@ -153,7 +153,7 @@ namespace LethalAICrewmate
                 }
                 string playerName = GetPlayerName(playerId);
                 long journalId = ResponseJournal.NoteInput("chat", playerName, msg);
-                if (!LlmClient.EnqueuePlayerMessage(playerName, msg, isCommand, journalId))
+                if (!LlmClient.EnqueuePlayerMessage(playerName, playerId, msg, isCommand, journalId))
                     ResponseJournal.Discard(journalId);
             }
         }

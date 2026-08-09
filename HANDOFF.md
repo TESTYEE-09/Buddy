@@ -1,12 +1,12 @@
-# HANDOFF — Buddy v2.5.0
+# HANDOFF — Buddy v2.6.0
 
 ## Current status
 
 Buddy is a BepInEx 5 mod for **Lethal Company v81** adding a friendly AI crewmate named Buddy. Public source: `https://github.com/TESTYEE-09/Buddy`.
 
-Release target: **v2.5.0** (wire protocol **7**, unchanged because no wire format changed).
+Release target: **v2.6.0** (wire protocol **7**, unchanged because no wire format changed).
 
-v2.5.0 adds the shippable slow-burn character arc after the v2.4.3 public audit hardening. Buddy begins as the trustworthy dry coworker, then progresses through OffNote, Unsettling and Cold stages using numeric progress from confirmed quota cycles, landed rounds and witnessed deaths. Progress plus a quota baseline persist per Lethal Company save; dialogue/transcripts do not, reloads cannot double-count quotas, and `ResetSlowBurnProgress=true` restarts the story. Each model turn gets only confirmed quota/session counters for subtle continuity. Sparse deterministic beats have a 150-second cooldown, conversation and OpenAI TTS direction change by stage, and `[Character] SlowBurnHorror=false` opts out. The arc is presentation-only and cannot enable hostility, sabotage, fabricated events or action authority. Release checks: 91.
+v2.6.0 makes OpenAI Realtime the complete recommended experience and keeps Groq as a separate Qwen/Whisper/Orpheus alternative. The compact main-menu card now explains that choice directly. The v2.5 slow-burn arc, multiplayer wire format, tool authority, security limits and sync behavior are unchanged.
 
 Automated release requirements:
 
@@ -34,19 +34,18 @@ Automated release requirements:
 
 ## AI providers
 
-The host selects the provider (`OpenAI` default, `Groq` optional) and configures the key from the main menu with **Save / Test / Clear**.
+The host selects the provider (`OpenAI` default, `Groq` optional) and configures the key from the main menu with **Save key / Test / Clear**.
 
-OpenAI stock defaults:
+OpenAI recommended path:
 
-- Chat: `gpt-5.6-luna` (Responses API, fast tier, low reasoning, low verbosity)
-- STT: `gpt-live-transcribe`
-- TTS: `gpt-4o-mini-tts`, voice `ash`
-- Realtime voice: `gpt-realtime-2.1-mini`
-- Vision: disabled by default
+- One persistent `gpt-realtime-2.1-mini` session owns typed conversation, PTT, native Ash voice, image questions and `execute_game_command` tool calls.
+- `gpt-live-transcribe` is used only for live input transcription inside the Realtime session.
+- No separate OpenAI chat or TTS endpoint is part of the current architecture.
+- Vision is disabled by default.
 
-Groq defaults (legacy path):
+Groq secondary/free path:
 
-- Chat: `openai/gpt-oss-120b`
+- Chat: `qwen/qwen3.6-27b`
 - STT: `whisper-large-v3-turbo`
 - TTS: `canopylabs/orpheus-v1-english`
 
@@ -102,7 +101,7 @@ When doing a real in-game multi-PC test:
 20. Set `[Character] SlowBurnHorror=false`; verify Buddy immediately uses the ordinary coworker prompt/voice and emits no further arc beats.
 21. Set `ResetSlowBurnProgress=true`, reload as host, verify the log reports `Coworker progress=0`, and confirm the switch automatically returns to false.
 
-No live host-plus-friend v2.5.0 test has been performed yet; the package remains a release candidate until this checklist is smoke-tested, including multi-day arc progression and opt-out behavior.
+No live host-plus-friend v2.6.0 test has been performed yet; the package remains a release candidate until the checklist is smoke-tested, including both provider paths and multi-day arc progression.
 
 ## Security note
 

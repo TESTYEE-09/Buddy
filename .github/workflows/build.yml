@@ -54,6 +54,27 @@ jobs:
             throw "Version mismatch: manifest=$manifestVersion csproj=$projectVersion plugin=$pluginVersion"
           }
 
+          $architecture = Get-Content 'src/BuddyAiArchitecture.cs' -Raw
+          if ($architecture -notmatch 'OpenAiRealtimeModel\s*=\s*"gpt-realtime-2\.1-mini"' -or
+              $architecture -notmatch 'OpenAiTranscriptionModel\s*=\s*"gpt-live-transcribe"' -or
+              $architecture -notmatch 'GroqChatModel\s*=\s*"qwen/qwen3\.6-27b"' -or
+              $architecture -notmatch 'GroqTranscriptionModel\s*=\s*"whisper-large-v3-turbo"' -or
+              $architecture -notmatch 'GroqSpeechModel\s*=\s*"canopylabs/orpheus-v1-english"') {
+            throw 'Buddy AI architecture constants changed without updating the release contract'
+          }
+          $activeSource = (Get-ChildItem 'src' -Filter '*.cs' | Get-Content -Raw) -join "`n"
+          if ($activeSource -match 'gpt-5\.6-luna|gpt-4o-mini-tts|OpenAiResponsesEndpoint') {
+            throw 'Retired OpenAI architecture found in active source'
+          }
+          if ($plugin -match 'Config\.Bind\("OpenAI",\s*"RealtimeVoiceModel"' -or
+              $plugin -match 'Config\.Bind\("Groq",\s*"(?:Model|SttModel|TtsModel)"' -or
+              $plugin -match 'Config\.Bind\("Vision",\s*"Model"') {
+            throw 'Release-owned model IDs must not reappear as user configuration'
+          }
+          if ($plugin -match '(?:ApiKey|OpenAiApiKey)\s*=\s*Config\.Bind') {
+            throw 'Plaintext provider keys must not reappear as active config controls'
+          }
+
           $trackedBinaries = @(git ls-files 'Buddy-*.zip' 'LethalAICrewmate-*.zip' 'ThunderstorePackage/LethalAICrewmate.dll')
           if ($trackedBinaries.Count -gt 0) {
             throw "Generated release binaries must not be tracked: $($trackedBinaries -join ', ')"

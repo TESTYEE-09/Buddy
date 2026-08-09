@@ -17,19 +17,13 @@ namespace LethalAICrewmate
         private static string _groqSessionKey = "";
         private static string _openAiStoredKey;
         private static string _groqStoredKey;
+        internal static bool LastSavePersisted { get; private set; }
 
-        internal static bool IsOpenAi => string.Equals(Plugin.Provider?.Value?.Trim(), "OpenAI", StringComparison.OrdinalIgnoreCase);
-        internal static string ProviderName => IsOpenAi ? "OpenAI" : "Groq";
-        internal static string ChatEndpoint => IsOpenAi
-            ? "https://api.openai.com/v1/chat/completions"
-            : "https://api.groq.com/openai/v1/chat/completions";
-        internal const string OpenAiResponsesEndpoint = "https://api.openai.com/v1/responses";
-        internal static string SttEndpoint => IsOpenAi
-            ? "https://api.openai.com/v1/audio/transcriptions"
-            : "https://api.groq.com/openai/v1/audio/transcriptions";
-        internal static string TtsEndpoint => IsOpenAi
-            ? "https://api.openai.com/v1/audio/speech"
-            : "https://api.groq.com/openai/v1/audio/speech";
+        internal static bool IsOpenAi => BuddyAiArchitecture.IsOpenAi(Plugin.Provider?.Value);
+        internal static string ProviderName => IsOpenAi ? BuddyAiArchitecture.OpenAiProvider : BuddyAiArchitecture.GroqProvider;
+        internal const string ChatEndpoint = "https://api.groq.com/openai/v1/chat/completions";
+        internal const string SttEndpoint = "https://api.groq.com/openai/v1/audio/transcriptions";
+        internal const string TtsEndpoint = "https://api.groq.com/openai/v1/audio/speech";
         internal static string ModelsEndpoint => IsOpenAi
             ? "https://api.openai.com/v1/models"
             : "https://api.groq.com/openai/v1/models";
@@ -45,7 +39,7 @@ namespace LethalAICrewmate
                 if (!string.IsNullOrEmpty(sessionKey)) return sessionKey;
                 string storedKey = GetStoredKey(IsOpenAi);
                 if (!string.IsNullOrEmpty(storedKey)) return storedKey;
-                return Normalize(IsOpenAi ? Plugin.OpenAiApiKey?.Value : Plugin.ApiKey?.Value);
+                return "";
             }
         }
 
@@ -59,8 +53,20 @@ namespace LethalAICrewmate
             bool openAi = IsOpenAi;
             if (openAi) _openAiSessionKey = key;
             else _groqSessionKey = key;
-            SetStoredKey(openAi, key);
+            LastSavePersisted = SetStoredKey(openAi, key);
             return true;
+        }
+
+        internal static bool ImportLegacyKey(bool openAi, string key)
+        {
+            key = Normalize(key);
+            if (string.IsNullOrEmpty(key)) return false;
+            if (openAi) _openAiSessionKey = key;
+            else _groqSessionKey = key;
+            bool stored = SetStoredKey(openAi, key);
+            if (stored)
+                Plugin.Log?.LogInfo((openAi ? "OpenAI" : "Groq") + " plaintext config key migrated to Windows Credential Manager.");
+            return stored;
         }
 
         internal static void ClearMenuKey()
@@ -69,12 +75,8 @@ namespace LethalAICrewmate
             if (openAi) _openAiSessionKey = "";
             else _groqSessionKey = "";
             ClearStoredKey(openAi);
-            var configKey = openAi ? Plugin.OpenAiApiKey : Plugin.ApiKey;
-            if (configKey != null)
-            {
-                configKey.Value = "";
-                Plugin.Instance?.Config.Save();
-            }
+            Plugin.ClearLegacyPlaintextKey(openAi);
+            LastSavePersisted = false;
         }
 
         private static string Normalize(string value)
@@ -95,7 +97,7 @@ namespace LethalAICrewmate
             return loaded;
         }
 
-        private static void SetStoredKey(bool openAi, string key)
+        private static bool SetStoredKey(bool openAi, string key)
         {
             bool stored = WindowsCredentialStore.Write(CredentialTarget(openAi), key);
             if (openAi) _openAiStoredKey = stored ? key : "";
@@ -105,6 +107,7 @@ namespace LethalAICrewmate
             {
                 Plugin.Log?.LogWarning("Could not save API key to Windows Credential Manager; it will be kept for this session.");
             }
+            return stored;
         }
 
         private static void ClearStoredKey(bool openAi)
