@@ -156,8 +156,15 @@ namespace LethalAICrewmate
                 }
 
                 var spawnPos = GetSpawnPosition();
-                spawnPos = SnapToNavMesh(spawnPos, 15f);
+                if (!TrySnapToNavMesh(spawnPos, 15f, out spawnPos))
+                {
+                    Plugin.Log?.LogWarning($"[{reason}] No valid NavMesh spawn point is ready; waiting instead of spawning a floating Buddy.");
+                    return false;
+                }
                 var yRot = 0f;
+                var preExistingMasked = new HashSet<int>();
+                foreach (var existing in UnityEngine.Object.FindObjectsOfType<MaskedPlayerEnemy>())
+                    if (existing != null) preExistingMasked.Add(existing.GetInstanceID());
 
                 Plugin.Log?.LogInfo($"[{reason}] Spawning crewmate at {spawnPos} using EnemyType '{enemyType.enemyName}' prefab='{enemyType.enemyPrefab?.name}'");
 
@@ -192,7 +199,7 @@ namespace LethalAICrewmate
                     float best = 30f;
                     foreach (var m in all)
                     {
-                        if (m == null || m.isEnemyDead) continue;
+                        if (m == null || m.isEnemyDead || preExistingMasked.Contains(m.GetInstanceID())) continue;
                         if (m.targetPlayer != null || m.movingTowardsTargetPlayer || m.inKillAnimation) continue;
                         float d = Vector3.Distance(m.transform.position, spawnPos);
                         if (d < best && !CrewmateRegistry.IsCrewmate(m))
@@ -236,7 +243,8 @@ namespace LethalAICrewmate
                     if (shipSide == Vector3.zero && owner != null)
                         shipSide = owner.transform.position + owner.transform.right * 1.15f;
 
-                    shipSide = SnapToNavMesh(shipSide, 8f);
+                    if (!TrySnapToNavMesh(shipSide, 8f, out shipSide))
+                        shipSide = spawnPos; // already validated before spawning
                     masked.transform.position = shipSide;
 
                     // Mark as inside ship so pathing / exterior AI doesn't yank him out
@@ -246,10 +254,8 @@ namespace LethalAICrewmate
                     if (masked.agent != null)
                     {
                         masked.agent.enabled = true;
-                        if (NavMesh.SamplePosition(shipSide, out var hit, 8f, NavMesh.AllAreas))
-                            masked.agent.Warp(hit.position);
-                        else
-                            masked.agent.Warp(shipSide);
+                        masked.agent.Warp(shipSide);
+                        masked.transform.position = shipSide;
                     }
 
                     // Face the player
@@ -392,6 +398,24 @@ namespace LethalAICrewmate
             }
             return pos;
         }
+
+        private static bool TrySnapToNavMesh(Vector3 pos, float maxDistance, out Vector3 snapped)
+        {
+            snapped = pos;
+            try
+            {
+                if (!IsFinite(pos)) return false;
+                if (!NavMesh.SamplePosition(pos, out var hit, maxDistance, NavMesh.AllAreas)) return false;
+                snapped = hit.position;
+                return IsFinite(snapped);
+            }
+            catch { return false; }
+        }
+
+        private static bool IsFinite(Vector3 value) =>
+            !(float.IsNaN(value.x) || float.IsInfinity(value.x) ||
+              float.IsNaN(value.y) || float.IsInfinity(value.y) ||
+              float.IsNaN(value.z) || float.IsInfinity(value.z));
 
         /// <summary>
         /// Spawn next to the host player inside the ship (not outside on the moon).
