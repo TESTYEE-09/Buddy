@@ -37,11 +37,11 @@ namespace LethalAICrewmate
                 if (IsTextInputFocused()) return;
 
                 var primary = Plugin.VoiceKey?.Value ?? KeyCode.B;
-                var alternate = Plugin.VoiceAlternateKey?.Value ?? KeyCode.V;
+                var alternate = Plugin.VoiceAlternateKey?.Value ?? KeyCode.None;
                 float maxSec = Mathf.Clamp(Plugin.VoiceMaxSeconds?.Value ?? 6f, 1f, 12f);
 
                 if (!_recording && (InputCompat.GetKeyDown(primary) ||
-                                    (alternate != primary && InputCompat.GetKeyDown(alternate))))
+                                    (alternate != KeyCode.None && alternate != primary && InputCompat.GetKeyDown(alternate))))
                 {
                     // Debounce accidental double-taps
                     if (Time.unscaledTime - _lastPttTime < 0.35f) return;
@@ -111,8 +111,8 @@ namespace LethalAICrewmate
 
                 _recording = true;
                 _startedAt = Time.unscaledTime;
-                // No DisplayTip here — it hitches the game every PTT
-                Plugin.Log?.LogInfo($"Voice PTT start device='{_micDevice ?? "default"}'");
+                MaybeHint("Recording for Buddy… release the key to send.");
+                Plugin.Log?.LogInfo("Voice PTT recording started.");
             }
             catch (Exception ex)
             {
@@ -215,7 +215,7 @@ namespace LethalAICrewmate
                 catch { }
                 if (OpenAiRealtimeVoiceClient.EnqueueWav(wav, playerId, playerName))
                 {
-                    Plugin.Log?.LogInfo($"Queued native realtime voice turn for {playerName} ({wav.Length} WAV bytes).");
+                    Plugin.Log?.LogInfo($"Queued native realtime voice turn ({wav.Length} WAV bytes).");
                     _busy = false;
                     yield break;
                 }
@@ -249,7 +249,7 @@ namespace LethalAICrewmate
                               && uwr.responseCode < 300;
                     if (!ok)
                     {
-                        Plugin.Log?.LogWarning($"Groq STT HTTP {uwr.responseCode}: {uwr.error} {uwr.downloadHandler?.text}");
+                        Plugin.Log?.LogWarning($"Groq STT failed (HTTP {uwr.responseCode}, {uwr.error}).");
                         MaybeHint("Buddy couldn't hear you (STT error).");
                     }
                     else
@@ -261,12 +261,12 @@ namespace LethalAICrewmate
                         }
                         else if (IsWhisperHallucination(text))
                         {
-                            Plugin.Log?.LogWarning($"Ignoring Whisper hallucination: '{text}'");
+                            Plugin.Log?.LogWarning("Ignoring an unusable speech transcription.");
                             MaybeHint("Didn't catch that — try again closer to mic.");
                         }
                         else
                         {
-                            Plugin.Log?.LogInfo($"STT: {text}");
+                            Plugin.Log?.LogInfo($"STT transcript received (chars={text.Length}).");
                             HandleTranscript(text.Trim());
                         }
                     }

@@ -46,6 +46,7 @@ namespace LethalAICrewmate
             public string Version = "unknown";
             public int Protocol;
             public float FirstSeenAt;
+            public float LastHelloAt;
         }
 
         private sealed class PendingItemAttach
@@ -405,9 +406,16 @@ namespace LethalAICrewmate
                 if (nm == null || !nm.IsServer || nm.CustomMessagingManager == null || !IsConnectedRemoteClient(nm, senderId))
                     return;
 
+                float now = Time.unscaledTime;
+                if (Peers.TryGetValue(senderId, out var existingPeer) && existingPeer != null &&
+                    (existingPeer.HelloReceived || now - existingPeer.LastHelloAt < HelloIntervalSeconds))
+                    return;
+
                 reader.ReadValueSafe(out int clientProtocol);
                 if (!ReadString(reader, out string clientVersion, 64))
                     clientVersion = "unknown";
+                clientVersion = PromptSafety.SanitizeSingleLine(clientVersion, 32);
+                if (string.IsNullOrEmpty(clientVersion)) clientVersion = "unknown";
 
                 bool compatible = clientProtocol == ProtocolVersion &&
                                   string.Equals(clientVersion, Plugin.ModVersion, StringComparison.OrdinalIgnoreCase);
@@ -421,6 +429,7 @@ namespace LethalAICrewmate
                 peer.Compatible = compatible;
                 peer.Version = clientVersion;
                 peer.Protocol = clientProtocol;
+                peer.LastHelloAt = now;
 
                 if (!compatible)
                     Plugin.Log?.LogWarning($"Client {senderId} LethalAICrewmate mismatch: mod={clientVersion}, protocol={clientProtocol}; host={Plugin.ModVersion}/{ProtocolVersion}.");

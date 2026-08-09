@@ -29,21 +29,25 @@ Any credential that has ever been committed or shared must be considered exposed
 - Remote purchases, routes, polite item spawning and ship/facility changes follow the same fail-closed
   boundary through `RemoteGameActionsInPublicLobbies = false`. The host and read-only status/store/moon
   queries remain available. Arbitrary terminal sentence passthrough is not exposed.
-- When enabled, remote voice is sender-bound, compatibility-gated, range-gated before allocation,
+- Player chat cannot spend the host's AI-provider budget in public, missing or unknown-visibility lobbies unless the host explicitly enables `RemoteAiInPublicLobbies`.
+- When enabled, remote voice is transport-sender-bound, exact-version-gated, Buddy-range-gated before allocation,
   rate-limited, size-limited, transfer-capped and WAV/RMS-validated before it reaches the provider.
 - Clients send only a compatibility hello and, when explicitly enabled, bounded voice transfers through the mod's custom networking path.
-- Clients accept Buddy state only from `NetworkManager.ServerClientId` after a successful exact version/protocol handshake.
+- Clients accept Buddy state only from `NetworkManager.ServerClientId` after an exact version/protocol compatibility handshake. The handshake is compatibility evidence, not authentication against a malicious host; lobby clients trust their host by design.
 - Buddy does not spawn if any connected remote player is unmodded or incompatible.
 
 ## Local response journal
 
 `[Logging] SaveResponses = false` is the default and older configs are migrated to off. Opting in stores
 raw player chat, voice transcripts, Buddy replies and confirmed tool results on the host at
-`BepInEx/LethalAICrewmate-responses.log` (bounded to 2 MB). Treat this file as sensitive player data and
+`BepInEx/LethalAICrewmate-responses.log` (bounded to 8 MB). When response saving is off, startup removes
+an existing journal left by an earlier version or opt-in session. Treat this file as sensitive player data and
 obtain the crew's informed consent before enabling or sharing it. Input/reply correlation uses explicit
 turn IDs so concurrent chat, deterministic commands and Realtime tool calls cannot cross-pair records.
 
-Buddy's spoken output is AI-generated.
+Buddy's spoken output is AI-generated. Model output has no game-action tool: purchases, routing, movement and ship/facility changes originate only from deterministic parsing of player input. OpenAI Realtime sessions are isolated per turn so one speaker's conversation cannot carry instructions into another speaker's turn.
+- Ordinary logs contain lengths and status codes, not raw chat, player names, voice transcripts or provider error bodies.
+- Host screenshots are disabled in the hardened public build. The retained Vision config key is inert for compatibility.
 - The optional slow-burn character arc persists only numeric progress and its quota-cycle baseline in the current game save.
   It stores no dialogue, transcript, player name or personal fact. Arc stages affect dialogue/voice presentation
   only and cannot grant movement, terminal, spawn, combat or network authority.
@@ -101,6 +105,8 @@ CI rejects:
 - compiler warnings or errors,
 - invalid Thunderstore package structure,
 - an invalid Thunderstore icon size.
+
+The release workflow scans every commit in the release branch. Older unrelated tags/branches may still contain a historical provider credential; that credential must remain revoked, and deleting or rewriting a public Git ref is not a substitute for rotation.
 
 Release ZIPs include a SHA-256 checksum.
 

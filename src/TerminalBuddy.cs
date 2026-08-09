@@ -83,7 +83,8 @@ namespace LethalAICrewmate
                 if (ShipCommandParsing.TryParseFacilityAction(lower, out string facilityCode, out bool enableFacility))
                     return SetFacilityObject(facilityCode, enableFacility, InferFacilityKind(lower));
 
-                if ((lower.Contains("turret") || lower.Contains("landmine") || lower.Contains("mine")) &&
+                bool mentionsMine = ShipCommandParsing.MentionsMine(lower);
+                if ((lower.Contains("turret") || mentionsMine) &&
                     (lower.Contains("disable") || lower.Contains("deactivate") || lower.Contains("turn off") ||
                      lower.Contains("enable") || lower.Contains("activate") || lower.Contains("turn on")))
                     return SetFacilityObject(null,
@@ -198,9 +199,7 @@ namespace LethalAICrewmate
                 return true;
             var nm = NetworkManager.Singleton;
             if (nm == null || !nm.IsServer) return false;
-            var player = ResolvePlayer(requestingPlayerId);
-            ulong senderId = player != null ? player.actualClientId : (ulong)requestingPlayerId;
-            if (senderId == NetworkManager.ServerClientId) return true;
+            // Vanilla chat player ids are client-controlled and never confer host authority.
             return LobbySafety.AllowsRestrictedRemoteFeaturesByDefault();
         }
 
@@ -253,7 +252,8 @@ namespace LethalAICrewmate
             {
                 var lvl = sor.levels[i];
                 if (lvl == null) continue;
-                string n = (lvl.PlanetName ?? lvl.name ?? "").ToLowerInvariant();
+                string n = (lvl.PlanetName ?? lvl.name ?? "").ToLowerInvariant().Trim();
+                if (string.IsNullOrEmpty(n)) continue;
                 if (n.Contains(moonQuery) || moonQuery.Contains(n) ||
                     n.Replace(" ", "").Contains(moonQuery.Replace(" ", "")))
                 {
@@ -284,7 +284,7 @@ namespace LethalAICrewmate
             {
                 Plugin.Log?.LogWarning($"ChangeLevel failed: {ex.Message}");
                 // fallback: try terminal sentence
-                return RunTerminalSentence("route " + moonQuery);
+                return "Routing failed safely; use the terminal manually.";
             }
         }
 
@@ -307,7 +307,7 @@ namespace LethalAICrewmate
                 // buyableItemsList is Item[] on Terminal
                 var list = term.buyableItemsList;
                 if (list == null || list.Length == 0)
-                    return RunTerminalSentence("buy " + itemQuery);
+                    return "Store data is unavailable; use the terminal manually.";
 
                 int match = -1;
                 string matchName = null;
@@ -315,7 +315,8 @@ namespace LethalAICrewmate
                 {
                     var item = list[i];
                     if (item == null) continue;
-                    string n = (item.itemName ?? "").ToLowerInvariant();
+                    string n = (item.itemName ?? "").ToLowerInvariant().Trim();
+                    if (string.IsNullOrEmpty(n)) continue;
                     if (n.Contains(itemQuery) || itemQuery.Contains(n))
                     {
                         match = i;
@@ -348,7 +349,7 @@ namespace LethalAICrewmate
             catch (Exception ex)
             {
                 Plugin.Log?.LogWarning($"BuyItem: {ex.Message}");
-                return RunTerminalSentence("buy " + itemQuery);
+                return "Purchase failed safely; use the terminal manually.";
             }
         }
 

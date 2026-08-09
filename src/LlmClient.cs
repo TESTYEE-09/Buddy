@@ -13,7 +13,7 @@ namespace LethalAICrewmate
         // capped separately, so the character remembers more without becoming long-winded.
         private const int MaxHistory = 12;
         private const int MaxQueue = 3;
-        private const float MinInterval = 0.2f;
+        private const float MinInterval = 2f;
         private const int MaxTokens = 64;
         private const float DuplicateWindowSeconds = 2f;
         private const float HardRequestCeilingSeconds = 45f;
@@ -27,6 +27,7 @@ namespace LethalAICrewmate
         private static long _inFlightJournalId;
         private static string _lastRequestKey = "";
         private static float _lastRequestAt = -999f;
+        private static float _lastEnqueueAt = -999f;
         internal static float LastPlayerInteractionAt { get; private set; } = -999f;
         /// <summary>When Buddy last actually said something out loud. Used by the pacing director.</summary>
         internal static float LastBuddyLineAt { get; private set; } = -999f;
@@ -49,6 +50,7 @@ namespace LethalAICrewmate
                 _inFlightJournalId = 0;
                 _lastRequestKey = "";
                 _lastRequestAt = -999f;
+                _lastEnqueueAt = -999f;
                 LastPlayerInteractionAt = -999f;
                 LastBuddyLineAt = -999f;
             }
@@ -81,7 +83,8 @@ namespace LethalAICrewmate
             NotePlayerInteraction();
             var content = new StringBuilder(1400);
             content.AppendLine("[PLAYER MESSAGE - ANSWER THIS FIRST]");
-            content.Append(string.IsNullOrWhiteSpace(playerName) ? "Player" : playerName)
+            playerName = PromptSafety.SanitizePlayerName(playerName);
+            content.Append(playerName)
                 .Append(": ").AppendLine(message ?? "");
             if (isCommand)
                 content.AppendLine("[The game already handled this command; acknowledge it naturally.]");
@@ -90,7 +93,9 @@ namespace LethalAICrewmate
             content.AppendLine().AppendLine("[LIVE GAME CONTEXT - SILENT BACKGROUND UNLESS RELEVANT]")
                 .AppendLine(liveContext)
                 .AppendLine("[Do not turn sensor entries into the topic. Harmless wildlife requires no callout.]");
-            return Enqueue(content.ToString(), isObservation: false, withVision: VisionIntent.IsVisualQuestion(message), journalId: journalId, playerName: playerName, playerId: playerId);
+            // Vanilla chat sender ids are self-reported, so text turns may not capture the host
+            // screen or receive model-controlled game tools.
+            return Enqueue(content.ToString(), isObservation: false, withVision: false, journalId: journalId, playerName: playerName, playerId: playerId);
         }
 
         public static void EnqueueObservation(string summary)
@@ -118,6 +123,10 @@ namespace LethalAICrewmate
         {
             userContent = BuddyFourthWall.MaybeAnnotate(userContent, isObservation);
             string historyContent = BuildHistoryContent(userContent, isObservation);
+            float now = Time.unscaledTime;
+            if (!isObservation && now - _lastEnqueueAt < MinInterval)
+                return false;
+            if (!isObservation) _lastEnqueueAt = now;
             if (GroqSecrets.IsOpenAi)
             {
                 return OpenAiRealtimeVoiceClient.EnqueueText(
@@ -125,11 +134,10 @@ namespace LethalAICrewmate
                     playerName,
                     playerId,
                     journalId: journalId,
-                    includeScreenshot: withVision,
-                    allowTools: !isObservation);
+                    includeScreenshot: false,
+                    allowTools: false);
             }
             string requestKey = (isObservation ? "observation:" : "player:") + historyContent.Trim().ToLowerInvariant();
-            float now = Time.unscaledTime;
             if (!isObservation && requestKey == _lastRequestKey && now - _lastRequestAt < DuplicateWindowSeconds)
             {
                 Plugin.Log?.LogInfo("Dropped duplicate Buddy request before Groq.");
@@ -278,7 +286,7 @@ namespace LethalAICrewmate
 
                 if (!ok)
                 {
-                    Plugin.Log?.LogWarning($"{GroqSecrets.ProviderName} chat HTTP {uwr.responseCode}: {uwr.error} {uwr.downloadHandler?.text}");
+                    Plugin.Log?.LogWarning($"{GroqSecrets.ProviderName} chat failed (HTTP {uwr.responseCode}, {uwr.error}).");
                     needRetryNoVision = imageB64 != null;
                 }
                 else

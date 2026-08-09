@@ -164,11 +164,11 @@ namespace LethalAICrewmate
                 return;
 
             var primary = Plugin.VoiceKey?.Value ?? KeyCode.B;
-            var alternate = Plugin.VoiceAlternateKey?.Value ?? KeyCode.V;
+            var alternate = Plugin.VoiceAlternateKey?.Value ?? KeyCode.None;
             float maxSec = Mathf.Clamp(Plugin.VoiceMaxSeconds?.Value ?? 8f, 1f, 12f);
 
             if (!_clientRecording && (InputCompat.GetKeyDown(primary) ||
-                                      (alternate != primary && InputCompat.GetKeyDown(alternate))))
+                                      (alternate != KeyCode.None && alternate != primary && InputCompat.GetKeyDown(alternate))))
             {
                 BuddyNetworkAudio.StopPlayback();
                 if (Time.unscaledTime - _lastClientPttAt < 0.35f)
@@ -222,7 +222,8 @@ namespace LethalAICrewmate
 
                 _clientRecording = true;
                 _clientStartedAt = Time.unscaledTime;
-                Plugin.Log?.LogInfo($"Client Buddy PTT start device='{_clientMicDevice ?? "default"}'.");
+                ClientHint("Recording for Buddy… release the key to send.");
+                Plugin.Log?.LogInfo("Client Buddy PTT recording started.");
             }
             catch (Exception ex)
             {
@@ -372,6 +373,11 @@ namespace LethalAICrewmate
                     SendClientHint(senderId, "Remote Buddy voice is disabled unless the host can verify a friends/invite-only lobby.");
                     return;
                 }
+                if (!IsSenderInBuddyRange(senderId))
+                {
+                    SendClientHint(senderId, "Move closer to Buddy before using push-to-talk.");
+                    return;
+                }
 
                 reader.ReadValueSafe(out ulong transferId);
                 reader.ReadValueSafe(out int totalBytes);
@@ -513,7 +519,7 @@ namespace LethalAICrewmate
                     string playerName = player?.playerUsername ?? ("Client " + request.SenderId);
                     if (OpenAiRealtimeVoiceClient.EnqueueWav(request.Wav, playerId, playerName))
                     {
-                        Plugin.Log?.LogInfo($"Queued remote native realtime voice turn client={request.SenderId} player='{playerName}'.");
+                        Plugin.Log?.LogInfo($"Queued remote native realtime voice turn client={request.SenderId}.");
                         yield break;
                     }
                     SendClientHint(request.SenderId, "Buddy couldn't start the OpenAI Realtime turn. Try again.");
@@ -543,7 +549,7 @@ namespace LethalAICrewmate
                         if (!ok)
                         {
                             responseFailed = true;
-                            Plugin.Log?.LogWarning($"Remote Groq STT HTTP {uwr.responseCode}: {uwr.error} {uwr.downloadHandler?.text}");
+                            Plugin.Log?.LogWarning($"Remote Groq STT failed (HTTP {uwr.responseCode}, {uwr.error}).");
                             SendClientHint(request.SenderId, "Buddy's speech service failed for that clip. Try again.");
                         }
                         else
@@ -566,7 +572,7 @@ namespace LethalAICrewmate
                     }
 
                     text = text.Trim();
-                    Plugin.Log?.LogInfo($"Remote Whisper transcript ready client={request.SenderId}: {text}");
+                    Plugin.Log?.LogInfo($"Remote transcript ready client={request.SenderId} chars={text.Length}.");
 
                     // PlayerObject can briefly be null while Lethal Company changes levels even
                     // though the peer remains connected. Keep the valid transcript for a short
@@ -610,7 +616,7 @@ namespace LethalAICrewmate
                 if (!lower.Contains(buddyName.ToLowerInvariant()) && !lower.Contains("buddy"))
                     message = buddyName + " " + text;
 
-                Plugin.Log?.LogInfo($"Remote STT client={senderId} player='{player.playerUsername}': {text}");
+                Plugin.Log?.LogInfo($"Remote transcript delivered client={senderId} chars={text.Length}.");
                 ChatObserver.OnServerChat(message, (int)player.playerClientId);
                 return true;
             }
@@ -651,6 +657,20 @@ namespace LethalAICrewmate
             {
                 return null;
             }
+        }
+
+        private static bool IsSenderInBuddyRange(ulong senderId)
+        {
+            try
+            {
+                var player = ResolveRemotePlayer(senderId);
+                var buddy = CrewmateRegistry.GetPrimary()?.Enemy;
+                if (player == null || buddy == null) return false;
+                float configured = Plugin.ChatTriggerRange?.Value ?? 60f;
+                float range = Mathf.Clamp(configured <= 0f ? 60f : configured, 5f, 80f);
+                return Vector3.Distance(player.transform.position, buddy.transform.position) <= range;
+            }
+            catch { return false; }
         }
 
         private static bool IsConnectedRemote(NetworkManager nm, ulong senderId)

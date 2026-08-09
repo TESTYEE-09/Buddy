@@ -78,10 +78,11 @@ Prefer the ordinary coworker forever? Set `SlowBurnHorror = false`.
 - His movement, chat and voice are synced to everyone. Late joiners recover his state.
 - **Public lobbies fail closed.** Remote push-to-talk and remote buying, routing or ship changes are allowed only in a confirmed friends/invite-only lobby. If visibility cannot be verified, they are blocked unless the host explicitly opts in. Read-only questions still work for everyone.
 - Provider keys are never sent over multiplayer, written to the config file, or logged.
+- The main-menu **Buddy settings** panel selects OpenAI or Groq, securely saves/tests/clears that provider's key, and provides separate opt-in response and prompt/context saving controls.
 
 ## Which AI should I use?
 
-You pick one on the **Buddy AI** card. Both work; they differ in how good he sounds and what he costs.
+You pick one in **Buddy settings**. Both work; they differ in how good he sounds and what he costs.
 
 ### OpenAI — recommended, paid
 
@@ -90,7 +91,7 @@ Your voice goes into **one live model** that listens, thinks and speaks back in 
 ```
    you speak ─┐
               ├──►  gpt-realtime-2.1-mini  ──►  Buddy's voice
-   you type ──┘      (listens · thinks · speaks · sees screenshots · runs commands)
+   you type ──┘      (isolated turns · speaks · no screenshots or model-run commands)
                                  │
                     gpt-live-transcribe
                     (writes down what you said, inside the same session)
@@ -129,7 +130,7 @@ Switching between them never sends one provider's key to the other. You can chan
 
 ## Good to know
 
-- **Buddy keeps a log.** By default the host records chat, voice transcripts and Buddy's replies to `BepInEx/LethalAICrewmate-responses.log` so you can tune his behaviour. It records what your crewmates say — set `[Logging] SaveResponses = false` if anyone in your lobby has not agreed to it.
+- **Response logging is opt-in.** Set `[Logging] SaveResponses = true` only with the crew's informed consent to record chat, voice transcripts and Buddy's replies at `BepInEx/LethalAICrewmate-responses.log`. Prompt and sensor context requires the separate `SavePromptContext = true` opt-in. When response saving is off, Buddy removes an existing journal during startup.
 - **Screenshots are off** unless you enable `[Vision] Enabled`, and are never sent to other players.
 - **Buddy's voice is AI-generated.**
 Config file: `BepInEx/config/com.lethalaicrewmate.buddy.cfg`

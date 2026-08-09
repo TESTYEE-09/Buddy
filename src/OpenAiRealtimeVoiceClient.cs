@@ -58,10 +58,11 @@ namespace LethalAICrewmate
         internal static bool EnqueueWav(byte[] wav, int playerId, string playerName)
         {
             if (!Enabled || wav == null || !TryConvertWavToPcm24k(wav, out byte[] pcm)) return false;
+            string safeName = PromptSafety.SanitizePlayerName(playerName);
             string livePrompt = BuddyConversationPrompt.Build() +
-                "\n\nCURRENT VOICE TURN\nSpeaker: " + (playerName ?? "Player") +
-                " (player id " + playerId + ").\n" + GameSensors.BuildLiveContext() +
-                "\nCOMMAND RULE: if the speaker gives a command (stay/stay in place, follow, move or go forward, scout ahead, fetch scrap, go to ship, open door CODE, disable turret/mine CODE, buy items, ship controls, status, or a polite spawn plea), you MUST call execute_game_command with their exact intent — never answer a command with talk. If unsure whether it is a command, call the tool anyway; a non-command marker means answer conversationally. Never claim an action happened without its confirmed result.";
+                "\n\nCURRENT VOICE TURN\nSpeaker: " + safeName +
+                ".\n" + GameSensors.BuildLiveContext() +
+                "\nThe model has no game-action authority. Commands are handled only by deterministic player-input code.";
             lock (Gate)
             {
                 if (Pending.Count >= MaxQueuedTurns)
@@ -70,9 +71,9 @@ namespace LethalAICrewmate
                 {
                     Pcm24k = pcm,
                     PlayerId = playerId,
-                    PlayerName = playerName ?? "Player",
+                    PlayerName = safeName,
                     Instructions = livePrompt,
-                    AllowTools = true
+                    AllowTools = false
                 });
                 if (!_workerRunning)
                 {
@@ -95,10 +96,10 @@ namespace LethalAICrewmate
                 Text = text.Trim(),
                 ImageJpegBase64 = image,
                 PlayerId = playerId,
-                PlayerName = playerName ?? "Player",
+                PlayerName = PromptSafety.SanitizePlayerName(playerName),
                 Instructions = instructions,
                 JournalId = journalId,
-                AllowTools = allowTools
+                AllowTools = false
             });
         }
 
@@ -134,8 +135,8 @@ namespace LethalAICrewmate
 
         private static string BuildTurnInstructions(string playerName, int playerId) =>
             BuddyConversationPrompt.Build() +
-            "\n\nCURRENT TURN\nSpeaker: " + (playerName ?? "Player") + " (player id " + playerId + ").\n" +
-            "COMMAND RULE: call execute_game_command for any explicit game command. Never claim an action happened without its confirmed result.";
+            "\n\nCURRENT TURN\nSpeaker: " + PromptSafety.SanitizePlayerName(playerName) + ".\n" +
+            "The model has no game-action authority. Commands are handled only by deterministic player-input code.";
 
         internal static void ResetSession()
         {
@@ -203,6 +204,12 @@ namespace LethalAICrewmate
                         if (reason.Length > 140) reason = reason.Substring(0, 140) + "...";
                         QueueHint("Realtime error: " + reason);
                     }
+                    finally
+                    {
+                        // Do not carry one speaker's instructions or transcript into another
+                        // player's turn. Each turn gets a fresh, authority-free session.
+                        CloseSocket();
+                    }
                 }
             }
             finally
@@ -224,7 +231,7 @@ namespace LethalAICrewmate
             string toolResult = null;
             bool expectAudio = Plugin.TtsEnabled?.Value == true;
             await EnsureConnectedAsync().ConfigureAwait(false);
-            string update = BuildSessionUpdate(turn.Instructions, expectAudio, turn.AllowTools);
+            string update = BuildSessionUpdate(turn.Instructions, expectAudio, allowTools: false);
             await SendAsync(update, _sessionCancel.Token).ConfigureAwait(false);
             await WaitForEventAsync("session.updated", 10).ConfigureAwait(false);
 
@@ -269,8 +276,6 @@ namespace LethalAICrewmate
                 // Do not play it yet: only confirmed, final output reaches the crew.
                 var completedAudioChunks = new List<byte[]>();
                 string assistantTranscript = "";
-                string pendingCallId = null;
-                string pendingCommand = null;
                 DateTime deadline = DateTime.UtcNow.AddSeconds(35);
                 byte[] receive = new byte[32768];
                 while (DateTime.UtcNow < deadline && _socket.State == WebSocketState.Open)
@@ -309,9 +314,7 @@ namespace LethalAICrewmate
                     }
                     else if (type == "response.function_call_arguments.done")
                     {
-                        pendingCallId = ReadJsonString(message, "call_id");
-                        string arguments = ReadJsonString(message, "arguments");
-                        pendingCommand = ReadJsonString(arguments, "command") ?? arguments;
+                        throw new InvalidOperationException("Rejected unexpected model tool call; Buddy models have no game-action authority.");
                     }
                     else if (type == "response.done")
                     {
@@ -321,23 +324,6 @@ namespace LethalAICrewmate
                             ResponseJournal.Discard(turn.JournalId);
                             turn.JournalId = 0;
                             return;
-                        }
-                        if (!string.IsNullOrEmpty(pendingCallId))
-                        {
-                            audio.SetLength(0);
-                            audio.Position = 0;
-                            completedAudioChunks.Clear();
-                            assistantTranscript = "";
-                            string result = await ExecuteCommandOnMainThread(turn.PlayerId, pendingCommand).ConfigureAwait(false);
-                            toolResult = result;
-                            string output = "{\"result\":\"" + LlmClient.Escape(result) + "\"}";
-                            string toolEvent = "{\"type\":\"conversation.item.create\",\"item\":{\"type\":\"function_call_output\",\"call_id\":\"" +
-                                               LlmClient.Escape(pendingCallId) + "\",\"output\":\"" + LlmClient.Escape(output) + "\"}}";
-                            await SendAsync(toolEvent, _sessionCancel.Token).ConfigureAwait(false);
-                            await CreateResponseAsync().ConfigureAwait(false);
-                            pendingCallId = null;
-                            pendingCommand = null;
-                            continue;
                         }
                         if (audio.Length > 0 || completedAudioChunks.Count > 0 || !string.IsNullOrWhiteSpace(assistantTranscript)) break;
                     }
@@ -429,11 +415,7 @@ namespace LethalAICrewmate
 
         private static string BuildSessionUpdate(string instructions, bool spokenOutput, bool allowTools)
         {
-            string tools = allowTools
-                ? "\"tool_choice\":\"auto\",\"tools\":[{\"type\":\"function\",\"name\":\"execute_game_command\"," +
-                  "\"description\":\"Execute a Lethal Company game command for the speaker. Call this for ANY explicit command: movement (stay, stay in place, stay put, follow me, come here, move forward, go forward, walk forward, scout ahead N metres, check ahead, lead the way, take point, go to ship, return to ship, fetch/collect/get scrap), terminal (buy N item, route moon, moons, status), ship controls (lights on/off, ship doors), facility codes (open door CODE, disable turret CODE, disable mine CODE), or a polite spawn plea (please/begging for a real item). Do NOT call for ordinary conversation, questions about the game world, jokes, or replies that need no game action. Include the speaker's exact target, quantity, door code, distance and politeness in the command string.\"," +
-                  "\"parameters\":{\"type\":\"object\",\"properties\":{\"command\":{\"type\":\"string\",\"description\":\"The speaker's exact command including target, quantity, code and politeness.\"}},\"required\":[\"command\"]}}]"
-                : "\"tool_choice\":\"none\"";
+            const string tools = "\"tool_choice\":\"none\"";
             return "{\"type\":\"session.update\",\"session\":{" +
                    "\"type\":\"realtime\",\"model\":\"" + BuddyAiArchitecture.OpenAiRealtimeModel + "\"," +
                    "\"output_modalities\":[\"" + (spokenOutput ? "audio" : "text") + "\"]," +
@@ -445,30 +427,11 @@ namespace LethalAICrewmate
                    "\"reasoning\":{\"effort\":\"low\"},\"max_output_tokens\":256," + tools + "}}";
         }
 
-        private static async Task<string> ExecuteCommandOnMainThread(int playerId, string command)
-        {
-            var done = new TaskCompletionSource<string>();
-            MainThread.Enqueue(() =>
-            {
-                try
-                {
-                    string result = ChatObserver.ExecuteDeterministicOnly(command, playerId);
-                    done.TrySetResult(result);
-                }
-                catch (Exception ex)
-                {
-                    string failure = "Command failed: " + ex.Message;
-                    done.TrySetResult(failure);
-                }
-            });
-            return await done.Task.ConfigureAwait(false);
-        }
-
         private static void QueueInputTranscript(string playerName, string transcript)
         {
             MainThread.Enqueue(() =>
             {
-                Plugin.Log?.LogInfo("Realtime voice transcript " + playerName + ": " + transcript);
+                Plugin.Log?.LogInfo("Realtime voice transcript received (chars=" + transcript.Length + ").");
                 HUDManager.Instance?.AddChatMessage(transcript, playerName + " (voice)");
             });
         }
@@ -586,7 +549,8 @@ namespace LethalAICrewmate
             {
                 string id = Encoding.ASCII.GetString(wav, at, 4);
                 int size = BitConverter.ToInt32(wav, at + 4);
-                if (size < 0 || at + 8 + size > wav.Length) return false;
+                int payloadOffset = at + 8;
+                if (size < 0 || size > wav.Length - payloadOffset) return false;
                 if (id == "data") { data = at + 8; length = size; break; }
                 at += 8 + size + (size & 1);
             }

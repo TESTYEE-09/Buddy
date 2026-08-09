@@ -13,6 +13,7 @@ namespace LethalAICrewmate
         private const int NetworkSampleRate = 16000;
         private const int MaxNetworkSeconds = 15;
         private const float RealtimeVoiceGain = 1.12f;
+        private const int MaxQueuedClips = 3;
 
         private static GameObject _audioGo;
         private static AudioSource _source;
@@ -100,7 +101,7 @@ namespace LethalAICrewmate
                 var clip = AudioClip.Create("BuddyNetworkVoice", sampleCount, 1, sampleRate, false);
                 clip.SetData(samples, 0);
                 Plugin.Log?.LogInfo($"Buddy client PCM decoded length={clip.length:F2}s samples={sampleCount} rate={sampleRate}.");
-                PlaybackQueue.Enqueue(new QueuedClip { Clip = clip, Position = worldPos });
+                EnqueueBounded(clip, worldPos);
             }
             catch (Exception ex)
             {
@@ -123,11 +124,22 @@ namespace LethalAICrewmate
             }
             AudioClip clip = AudioClip.Create("BuddyRealtimeChunk", sampleCount, 1, sampleRate, false);
             clip.SetData(samples, 0);
-            PlaybackQueue.Enqueue(new QueuedClip { Clip = clip, Position = worldPos });
+            EnqueueBounded(clip, worldPos);
 
             byte[] network = BuildNetworkPcm16(clip);
             if (network != null && network.Length > 0)
                 NetMessenger.BroadcastTtsPcm(network, NetworkSampleRate, ResolveBuddyPosition(worldPos));
+        }
+
+        private static void EnqueueBounded(AudioClip clip, Vector3 worldPos)
+        {
+            if (clip == null) return;
+            while (PlaybackQueue.Count >= MaxQueuedClips)
+            {
+                AudioClip dropped = PlaybackQueue.Dequeue().Clip;
+                if (dropped != null) UnityEngine.Object.Destroy(dropped);
+            }
+            PlaybackQueue.Enqueue(new QueuedClip { Clip = clip, Position = worldPos });
         }
 
         private static byte[] BuildNetworkPcm16(AudioClip clip)

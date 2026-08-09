@@ -29,6 +29,9 @@ namespace LethalAICrewmate
                     ? (Plugin.CrewmateName?.Value ?? "Buddy")
                     : crewmateName;
 
+                text = PromptSafety.SanitizeChatText(text);
+                name = PromptSafety.SanitizePlayerName(name);
+                if (string.IsNullOrEmpty(text)) { result = "empty after sanitization"; return false; }
                 HUDManager.Instance.AddChatMessage(text, name);
                 result = "displayed";
                 return true;

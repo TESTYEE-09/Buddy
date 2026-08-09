@@ -33,6 +33,7 @@ internal static class SecurityRegressionChecks
 
         string root = Directory.GetCurrentDirectory();
         string pluginPath = Path.Combine(root, "src", "Plugin.cs");
+        Require(File.Exists(pluginPath), "release checks must locate src/Plugin.cs");
         if (File.Exists(pluginPath))
         {
             string plugin = File.ReadAllText(pluginPath);
@@ -41,7 +42,36 @@ internal static class SecurityRegressionChecks
                     "legacy provider keys must be deleted from plaintext config after import");
             Require(plugin.Contains("RemoveObsoleteConfigEntries(removeLegacyGroqKey: true, removeLegacyOpenAiKey: true);", StringComparison.Ordinal),
                     "obsolete plaintext provider key definitions must always be removed");
+            Require(plugin.Contains("AlternatePushToTalkKey\", KeyCode.None", StringComparison.Ordinal),
+                    "the normal game voice key must not record for Buddy by default");
+            Require(plugin.Contains("SaveResponses\", false", StringComparison.Ordinal) &&
+                    plugin.Contains("SavePromptContext\", false", StringComparison.Ordinal),
+                    "raw response and prompt-context persistence must remain opt-in");
         }
+
+        string realtimePath = Path.Combine(root, "src", "OpenAiRealtimeVoiceClient.cs");
+        Require(File.Exists(realtimePath), "release checks must locate OpenAiRealtimeVoiceClient.cs");
+        string realtime = File.ReadAllText(realtimePath);
+        Require(!realtime.Contains("execute_game_command", StringComparison.Ordinal) &&
+                realtime.Contains("tool_choice", StringComparison.Ordinal) &&
+                realtime.Contains("const string tools", StringComparison.Ordinal),
+                "Realtime model output must have no game-action tool authority");
+        Require(realtime.Contains("CloseSocket();", StringComparison.Ordinal),
+                "Realtime turns must close their session to isolate speakers");
+
+        string chatPath = Path.Combine(root, "src", "ChatPatches.cs");
+        Require(File.Exists(chatPath), "release checks must locate ChatPatches.cs");
+        string chat = File.ReadAllText(chatPath);
+        Require(!chat.Contains("Chat observed: '", StringComparison.Ordinal),
+                "ordinary logs must not contain raw player chat");
+
+        string workflowPath = Path.Combine(root, ".github", "workflows", "build.yml");
+        Require(File.Exists(workflowPath), "release checks must locate the release workflow");
+        string workflow = File.ReadAllText(workflowPath);
+        Require(workflow.Contains("contents: read", StringComparison.Ordinal) &&
+                workflow.Contains("persist-credentials: false", StringComparison.Ordinal) &&
+                workflow.Contains("Scan release-branch Git history", StringComparison.Ordinal),
+                "build CI must be read-only, discard checkout credentials and scan history");
     }
 
     /// <summary>

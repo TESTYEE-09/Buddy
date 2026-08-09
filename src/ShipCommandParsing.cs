@@ -111,6 +111,9 @@ namespace LethalAICrewmate
             return lower.StartsWith("terminal ") && lower != "terminal moons" && lower != "terminal store";
         }
 
+        internal static bool MentionsMine(string value) =>
+            Regex.IsMatch(value ?? "", @"\b(?:landmine|mine)s?\b", RegexOptions.IgnoreCase);
+
         internal static bool IsStateChangingRequest(string value)
         {
             string lower = value?.Trim().ToLowerInvariant() ?? "";
@@ -122,7 +125,7 @@ namespace LethalAICrewmate
             if (lower.StartsWith("go to ") && !lower.Contains("ship") && !lower.Contains("home") &&
                 !lower.Contains("forward") && !lower.Contains("ahead")) return true;
             if (TryParseFacilityAction(lower, out _, out _)) return true;
-            if ((lower.Contains("turret") || lower.Contains("landmine") || lower.Contains("mine")) &&
+            if ((lower.Contains("turret") || MentionsMine(lower)) &&
                 (lower.Contains("disable") || lower.Contains("deactivate") || lower.Contains("turn off") ||
                  lower.Contains("enable") || lower.Contains("activate") || lower.Contains("turn on"))) return true;
             if (lower.Contains("ship door") || lower.Contains("hangar door") || lower == "open doors" || lower == "close doors") return true;

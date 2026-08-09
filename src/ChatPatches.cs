@@ -73,7 +73,7 @@ namespace LethalAICrewmate
 
             // Any real player chat means the crew is already talking; optional Buddy chatter waits.
             LlmClient.NotePlayerInteraction();
-            Plugin.Log?.LogInfo($"Chat observed: '{msg}' (playerId={playerId})");
+            Plugin.Log?.LogDebug($"Chat observed (playerId={playerId}, chars={msg.Length}).");
 
             bool addressed =
                 lower.StartsWith(nameLower) ||
@@ -101,7 +101,7 @@ namespace LethalAICrewmate
             // (or when the message is an explicitly pleaded spawn request, which stays sandboxed
             // by plea + item validation + quantity caps). Plain chat like "buy 3 flashlights" or
             // "route titan" must never spend credits or move the ship by itself.
-            if (addressed || restLower.Contains("spawn"))
+            if (addressed)
             {
                 string termResult = TerminalBuddy.HandleChatCommand(msg, playerId);
                 if (!string.IsNullOrEmpty(termResult))
@@ -124,8 +124,17 @@ namespace LethalAICrewmate
             string deterministicCommand = null;
             if (movement.Kind != MovementCommandKind.None && (addressed || MovementCommandParsing.IsDirectDirective(restLower)))
             {
+                if (!RemoteActionAuthorization.AllowsStateChangingRequest(
+                        LobbySafety.GetVisibility(),
+                        Plugin.RemoteGameActionsInPublicLobbies?.Value == true,
+                        trustedInternalHostRequest: false))
+                {
+                    long blockedJournalId = ResponseJournal.NoteInput("command", GetPlayerName(playerId), msg);
+                    LlmClient.PublishLocalReply("Remote movement commands are disabled unless this is a verified friends/invite-only lobby.", blockedJournalId);
+                    return;
+                }
                 isCommand = true;
-                Plugin.Log?.LogInfo($"Command parsed from chat: '{rest}'");
+                Plugin.Log?.LogInfo("Movement command parsed from player chat.");
                 if (CrewmateAI.ApplyCommandFromChat(rest, playerId, out string failure))
                 {
                     deterministicCommand = CommandName(movement.Kind);
@@ -171,6 +180,12 @@ namespace LethalAICrewmate
                 }
                 string playerName = GetPlayerName(playerId);
                 long journalId = ResponseJournal.NoteInput("chat", playerName, msg);
+                if (!LobbySafety.AllowsRestrictedRemoteFeaturesByDefault() &&
+                    Plugin.RemoteAiInPublicLobbies?.Value != true)
+                {
+                    LlmClient.PublishLocalReply("AI conversation is disabled unless this is a verified friends/invite-only lobby.", journalId);
+                    return;
+                }
                 if (!LlmClient.EnqueuePlayerMessage(playerName, playerId, msg, isCommand, journalId))
                     ResponseJournal.Discard(journalId);
             }

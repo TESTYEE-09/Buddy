@@ -159,7 +159,7 @@ namespace LethalAICrewmate
                 if (!string.IsNullOrEmpty(uwr.error) || uwr.responseCode < 200 || uwr.responseCode >= 300)
                 {
                     string response = uwr.downloadHandler?.text ?? "";
-                    Plugin.Log?.LogWarning($"{GroqSecrets.ProviderName} TTS HTTP {uwr.responseCode}: {uwr.error} {response}");
+                    Plugin.Log?.LogWarning($"{GroqSecrets.ProviderName} TTS failed (HTTP {uwr.responseCode}, {uwr.error}).");
                     if (!GroqSecrets.IsOpenAi && response.IndexOf("model_terms_required", StringComparison.OrdinalIgnoreCase) >= 0)
                     {
                         _blockedByModelTerms = true;
@@ -188,7 +188,7 @@ namespace LethalAICrewmate
 
             if (audioBytes[0] == (byte)'{')
             {
-                Plugin.Log?.LogWarning(GroqSecrets.ProviderName + " TTS returned JSON: " + Encoding.UTF8.GetString(audioBytes));
+                Plugin.Log?.LogWarning(GroqSecrets.ProviderName + " TTS returned an unexpected JSON error body.");
                 yield break;
             }
 

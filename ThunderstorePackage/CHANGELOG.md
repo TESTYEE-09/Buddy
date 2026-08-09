@@ -1,5 +1,25 @@
 # Changelog
 
+## 3.6.0
+
+- Closes the v3.5.1 security review: model game-action tools are removed, OpenAI turns use isolated sessions, player chat cannot capture screenshots, and public/unknown-lobby AI spend and movement commands fail closed.
+- Changes the alternate Buddy push-to-talk key from the game's normal `V` voice key to `None` and displays a recording notice before audio is sent.
+- Removes raw player chat, names, transcripts and provider bodies from ordinary logs; response/prompt journaling remains explicit opt-in with immediate deletion when disabled.
+- Rate-limits and sanitizes compatibility hellos, caps remote identity/pose/audio queues, uses direct spawned-object lookup, range-gates remote voice before allocation, and rejects unexpected model tool-call events.
+- Removes arbitrary terminal fallbacks, fixes `mine` substring matching and empty-name matching, sanitizes prompt/HUD text, validates spawn-intent vectors after handshake, and closes RIFF integer-overflow and journal UTF-8 trimming gaps.
+- Hardens CI with read-only build permissions, non-persisted checkout credentials, reachable-history secret scanning and a separate write-scoped release job.
+
+## 3.5.3
+
+- Expands the main-menu card into a proper Buddy settings panel with provider selection, secure API-key save/test/clear controls, and separate response-journal and prompt/context consent toggles.
+- Disabling response saving from the menu also disables prompt/context saving and immediately removes the existing journal.
+
+## 3.5.2
+
+- Restores raw response logging and prompt/sensor context to explicit opt-in defaults and prevents upgrades from silently enabling either setting.
+- Removes an existing host response journal on startup while response saving is disabled.
+- Neutralizes control characters and escapes quoted journal fields to prevent forged or ambiguous log entries from player-controlled text.
+
 ## 3.5.1
 
 - Rewrote the Thunderstore package description for players rather than modders: what Buddy actually does, the story and its opt-in final stage, and a plain-language comparison of the two AI providers with diagrams of OpenAI's single live model and Groq's three-model chain.

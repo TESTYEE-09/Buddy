@@ -12,11 +12,13 @@ He also remembers. Across fulfilled quotas, survived shifts and deaths he person
 
 1. Install **BepInExPack 5.4.2100**.
 2. Install **Buddy** on **every player in the lobby**. Same version, no exceptions — Buddy will not spawn otherwise.
-3. Launch the game. On the main menu, find the **Buddy AI** card.
+3. Launch the game. On the main menu, find the **Buddy settings** panel.
 4. The host leaves **OpenAI — Recommended** selected, pastes an OpenAI API key, presses **Save key**, then **Test**.
 5. Host a lobby. Buddy walks into the ship once every connected player passes the compatibility handshake.
 
 **Only the host needs an API key.** It is stored in that Windows user's Credential Manager and is never sent to other players.
+
+The panel also has separate opt-in switches for saving responses and saving the system prompt/live sensor context. Turning response saving off immediately removes the existing response journal.
 
 Talk to him in chat, or hold **B** to talk to him with your voice. Every modded player can use voice, not just the host.
 
@@ -116,7 +118,7 @@ Upgrading from the old `LethalAICrewmate` package? Remove that mod-manager entry
 
 ## AI providers
 
-**OpenAI (recommended)** — one persistent `gpt-realtime-2.1-mini` session handles typed chat, push-to-talk, the native Ash voice, image questions and bounded tool calls. `gpt-live-transcribe` supplies input transcripts inside it.
+**OpenAI (recommended)** — `gpt-realtime-2.1-mini` handles typed chat, push-to-talk and the native Ash voice. Each player turn uses a fresh session, model tool calling is disabled, and `gpt-live-transcribe` supplies voice transcripts inside the turn.
 
 **Groq (free / budget)** — a separate pipeline: `qwen/qwen3.6-27b` for conversation, `whisper-large-v3-turbo` for speech recognition, `canopylabs/orpheus-v1-english` for speech.
 
@@ -160,7 +162,7 @@ Enabled = true
 SpokenReplies = true
 Volume = 1
 PushToTalkKey = B
-AlternatePushToTalkKey = V
+AlternatePushToTalkKey = None
 MaxRecordSeconds = 8
 InputDevice =
 KeepGameVoiceDuringPushToTalk = true
@@ -169,22 +171,23 @@ KeepGameVoiceDuringPushToTalk = true
 AllowRemoteVoice = true
 RemoteVoiceInPublicLobbies = false
 RemoteGameActionsInPublicLobbies = false
+RemoteAiInPublicLobbies = false
 
 [Logging]
-SaveResponses = true
-SavePromptContext = true
+SaveResponses = false
+SavePromptContext = false
 
 [Vision]
 Enabled = false
 ```
 
-**Public lobbies fail closed.** `AllowRemoteVoice` permits the relay, but remote push-to-talk is accepted only when Steam lobby visibility is positively confirmed as friends or invite-only. Public, missing, unknown or failed checks are blocked unless you set `RemoteVoiceInPublicLobbies = true`. Remote purchases, routes, item spawning and ship or facility changes follow the same rule via `RemoteGameActionsInPublicLobbies`. Read-only status, store and moon queries stay available to everyone.
+**Public lobbies fail closed.** Remote voice, AI-provider chat spending and state-changing commands are accepted only when Steam lobby visibility is positively confirmed as friends or invite-only. Their explicit opt-ins are `RemoteVoiceInPublicLobbies`, `RemoteAiInPublicLobbies` and `RemoteGameActionsInPublicLobbies`. Read-only deterministic status, store and moon queries stay available.
 
-**The response journal is on.** `SaveResponses = true` writes every input and reply — chat, voice transcripts, Buddy's answers, observations and tool results — to `BepInEx/LethalAICrewmate-responses.log` on the host, capped at 8 MB. `SavePromptContext = true` also records the exact system prompt whenever it changes and the live sensor context behind each turn, which is what makes the log useful for tuning Buddy's behaviour.
+**The response journal is opt-in.** `SaveResponses = true` writes every input and reply — chat, voice transcripts, Buddy's answers, observations and tool results — to `BepInEx/LethalAICrewmate-responses.log` on the host, capped at 8 MB. `SavePromptContext = true` also records the exact system prompt whenever it changes and the live sensor context behind each turn. When response saving is off, Buddy removes an existing journal during startup.
 
-> This records what your crewmates say. **Set `SaveResponses = false` if anyone in your lobby has not agreed to it.**
+> This records what your crewmates say. **Enable it only after everyone in the lobby has agreed to it.**
 
-**Screenshots are off.** With `[Vision] Enabled = true`, an explicit visual question captures one current host screenshot for the provider. Screenshots are never sent to other players.
+**Screenshots are disabled.** The hardened public build does not upload the host's screen from player chat, even if an older config still contains `[Vision] Enabled = true`.
 
 ---
 
@@ -212,7 +215,7 @@ Enabled = false
 - Host push-to-talk audio goes to the speech provider when the host uses the Buddy voice key. Client audio is relayed only while that client holds the key, and the host can disable remote audio entirely.
 - Generated speech is distributed from the host as bounded PCM audio.
 - Relationship data stores at most eight sets of three small numbers per save, keyed by a non-reversible digest. No names, IDs, chat or transcripts reach disk.
-- The response journal is host-only and records what players say. See the configuration note above.
+- The opt-in response journal is host-only and records what players say. See the configuration note above.
 - Buddy's voice is AI-generated.
 
 Full threat model and trust boundaries: [SECURITY.md](SECURITY.md).

@@ -31,9 +31,9 @@ if ($trackedBinaries.Count -gt 0) { throw "Generated release binaries must not b
 
 # Block accidental key shipping before compilation.
 $secretPattern = '(gsk_|sk-(?:proj-)?)[A-Za-z0-9_-]{20,}'
-$extensions = @('.cs', '.md', '.json', '.yml', '.yaml', '.ps1', '.csproj', '.txt')
+$binaryExtensions = @('.png', '.jpg', '.jpeg', '.gif', '.dll', '.pdb', '.zip', '.7z', '.wav')
 Get-ChildItem $root -Recurse -File | Where-Object {
-    $_.FullName -notmatch '[\\/](bin|obj|\.git)[\\/]' -and $extensions -contains $_.Extension.ToLowerInvariant()
+    $_.FullName -notmatch '[\\/](bin|obj|\.git)[\\/]' -and $binaryExtensions -notcontains $_.Extension.ToLowerInvariant()
 } | ForEach-Object {
     $text = Get-Content $_.FullName -Raw -ErrorAction SilentlyContinue
     if ($text -match $secretPattern) { throw "Possible Groq API key embedded in $($_.FullName)" }

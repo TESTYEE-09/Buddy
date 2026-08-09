@@ -98,12 +98,14 @@ namespace LethalAICrewmate
             try
             {
                 var nm = NetworkManager.Singleton;
-                if (nm == null || nm.IsServer || !nm.IsClient || senderId != NetworkManager.ServerClientId)
+                if (nm == null || nm.IsServer || !nm.IsClient ||
+                    !NetMessenger.CanAcceptServerStateMessage(senderId))
                     return;
                 if (!string.IsNullOrEmpty(NetMessenger.CompatibilityWarning))
                     return;
 
                 reader.ReadValueSafe(out Vector3 pos);
+                if (!IsFinite(pos)) return;
                 _expectedPosition = pos;
                 _expiresAt = Time.unscaledTime + IntentLifetime;
             }
@@ -112,6 +114,11 @@ namespace LethalAICrewmate
                 Plugin.Log?.LogWarning($"Spawn intent receive: {ex.Message}");
             }
         }
+
+        private static bool IsFinite(Vector3 value) =>
+            !(float.IsNaN(value.x) || float.IsInfinity(value.x) ||
+              float.IsNaN(value.y) || float.IsInfinity(value.y) ||
+              float.IsNaN(value.z) || float.IsInfinity(value.z));
 
         public static bool IsPendingBuddy(MaskedPlayerEnemy enemy)
         {

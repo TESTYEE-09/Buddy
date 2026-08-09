@@ -18,6 +18,7 @@ namespace LethalAICrewmate
         private const float SendInterval = 0.125f;
         private const float SnapDistance = 7f;
         private const float PoseExpirySeconds = 3f;
+        private const int MaxRemotePoses = 4;
 
         private sealed class RemotePose
         {
@@ -193,6 +194,8 @@ namespace LethalAICrewmate
                 reader.ReadValueSafe(out byte moving);
 
                 if (netId == 0 || !IsFinite(position) || float.IsNaN(yaw) || float.IsInfinity(yaw))
+                    return;
+                if (!RemotePoses.ContainsKey(netId) && RemotePoses.Count >= MaxRemotePoses)
                     return;
 
                 if (RemotePoses.TryGetValue(netId, out var previous) && previous != null &&

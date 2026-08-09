@@ -6,11 +6,11 @@ using UnityEngine.SceneManagement;
 
 namespace LethalAICrewmate
 {
-    /// <summary>Clean main-menu setup card for Buddy's two provider experiences.</summary>
+    /// <summary>Main-menu settings panel for AI provider, secure keys and opt-in response logging.</summary>
     public sealed class BuddySetupMenu : MonoBehaviour
     {
         private const float PanelWidth = 460f;
-        private const float PanelHeight = 278f;
+        private const float PanelHeight = 420f;
 
         private string _keyBuffer = "";
         private string _status = "";
@@ -23,6 +23,8 @@ namespace LethalAICrewmate
         private GUIStyle _providerButton;
         private GUIStyle _primaryButton;
         private GUIStyle _secondaryButton;
+        private GUIStyle _sectionTitle;
+        private GUIStyle _warning;
         private Texture2D _panelTexture;
         private Texture2D _accentTexture;
         private Texture2D _buttonTexture;
@@ -79,6 +81,11 @@ namespace LethalAICrewmate
                 normal = { background = _accentTexture, textColor = Color.white }
             };
             _secondaryButton = new GUIStyle(_providerButton) { fixedHeight = 28f };
+            _sectionTitle = new GUIStyle(_title) { fontSize = 14 };
+            _warning = new GUIStyle(_muted)
+            {
+                normal = { textColor = new Color(1f, 0.72f, 0.38f) }
+            };
         }
 
         private static Texture2D SolidTexture(Color color)
@@ -107,10 +114,11 @@ namespace LethalAICrewmate
             float y = Mathf.Max(18f, Screen.height - PanelHeight - 28f);
             GUILayout.BeginArea(new Rect(x, y, PanelWidth, PanelHeight), _panel);
 
-            GUILayout.Label("Buddy AI", _title);
-            GUILayout.Label("Choose how the host powers Buddy. Keys stay on this PC.", _muted);
+            GUILayout.Label("Buddy settings", _title);
+            GUILayout.Label("Host-only AI and privacy controls. API keys stay on this PC.", _muted);
             GUILayout.Space(8f);
 
+            GUILayout.Label("AI provider", _sectionTitle);
             GUILayout.BeginHorizontal();
             DrawProviderButton(BuddyAiArchitecture.OpenAiProvider, "OpenAI  |  Recommended", true);
             GUILayout.Space(6f);
@@ -137,7 +145,55 @@ namespace LethalAICrewmate
 
             GUILayout.Space(4f);
             GUILayout.Label(StatusLine(), _muted);
+
+            GUILayout.Space(10f);
+            GUILayout.Label("Response and prompt saving", _sectionTitle);
+            GUILayout.Label("Both options are off by default. Only enable them after everyone in the lobby agrees.", _warning);
+
+            bool saveResponses = Plugin.SaveResponses?.Value == true;
+            bool selectedResponses = GUILayout.Toggle(saveResponses,
+                " Save player messages, voice transcripts and Buddy responses", GUILayout.Height(24f));
+            if (selectedResponses != saveResponses) SetResponseSaving(selectedResponses);
+
+            GUI.enabled = selectedResponses;
+            bool savePromptContext = selectedResponses && Plugin.SavePromptContext?.Value == true;
+            bool selectedPromptContext = GUILayout.Toggle(savePromptContext,
+                " Save system prompt and live sensor context", GUILayout.Height(24f));
+            GUI.enabled = true;
+            if (selectedResponses && selectedPromptContext != savePromptContext)
+                SetPromptContextSaving(selectedPromptContext);
+
+            GUILayout.Label(selectedResponses
+                ? "Saving to: " + ResponseJournal.JournalPath
+                : "No responses are saved. Any previous response journal has been removed.", _muted);
             GUILayout.EndArea();
+        }
+
+        private void SetResponseSaving(bool enabled)
+        {
+            if (Plugin.SaveResponses == null) return;
+            Plugin.SaveResponses.Value = enabled;
+            if (!enabled)
+            {
+                if (Plugin.SavePromptContext != null) Plugin.SavePromptContext.Value = false;
+                ResponseJournal.DeleteExistingJournal();
+                SetStatus("Response and prompt saving disabled; previous journal removed.");
+            }
+            else
+            {
+                SetStatus("Response saving enabled. Make sure every crewmate has agreed.");
+            }
+            Plugin.SaveConfiguration();
+        }
+
+        private void SetPromptContextSaving(bool enabled)
+        {
+            if (Plugin.SavePromptContext == null || Plugin.SaveResponses?.Value != true) return;
+            Plugin.SavePromptContext.Value = enabled;
+            Plugin.SaveConfiguration();
+            SetStatus(enabled
+                ? "Prompt and sensor context saving enabled."
+                : "Prompt and sensor context saving disabled.");
         }
 
         private void DrawProviderButton(string provider, string label, bool recommended)
@@ -200,7 +256,8 @@ namespace LethalAICrewmate
         private void BeginTest()
         {
             if (_testing) return;
-            if (!SaveKey(showStatus: false))
+            string key = NormalizeBuffer();
+            if (string.IsNullOrEmpty(key))
             {
                 SetStatus("Paste a " + GroqSecrets.ProviderName + " key first.");
                 return;
@@ -212,7 +269,7 @@ namespace LethalAICrewmate
             }
             _testing = true;
             SetStatus("Testing " + GroqSecrets.ProviderName + "…");
-            Plugin.Host.StartCoroutine(TestKey(NormalizeBuffer()));
+            Plugin.Host.StartCoroutine(TestKey(key));
         }
 
         private IEnumerator TestKey(string key)

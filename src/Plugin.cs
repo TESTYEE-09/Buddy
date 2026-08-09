@@ -13,7 +13,7 @@ namespace LethalAICrewmate
     {
         public const string ModGuid = "com.lethalaicrewmate.buddy";
         public const string ModName = "Buddy";
-        public const string ModVersion = "3.5.1";
+        public const string ModVersion = "3.6.0";
 
         internal static Plugin Instance;
         internal static ManualLogSource Log;
@@ -48,6 +48,7 @@ namespace LethalAICrewmate
         internal static ConfigEntry<bool> SavePromptContext;
         internal static ConfigEntry<bool> RemoteVoiceInPublicLobbies;
         internal static ConfigEntry<bool> RemoteGameActionsInPublicLobbies;
+        internal static ConfigEntry<bool> RemoteAiInPublicLobbies;
         internal static ConfigEntry<int> ConfigRevision;
 
         private Harmony _harmony;
@@ -228,8 +229,8 @@ namespace LethalAICrewmate
                 "Allow matching remote players to upload bounded push-to-talk audio to the host for transcription. Disable this in public lobbies.");
             VoiceKey = Config.Bind("Voice", "PushToTalkKey", KeyCode.B,
                 "Hold this key to record mic audio for Buddy. B avoids the game's common V push-to-talk binding; on clients the clip is relayed to the host.");
-            VoiceAlternateKey = Config.Bind("Voice", "AlternatePushToTalkKey", KeyCode.V,
-                "Optional second Buddy push-to-talk key. V also activates normal Lethal Company voice chat; set this equal to PushToTalkKey to disable the alternate.");
+            VoiceAlternateKey = Config.Bind("Voice", "AlternatePushToTalkKey", KeyCode.None,
+                "Optional second Buddy push-to-talk key. None disables it; do not use the game's normal voice-chat key unless you intend to send that audio to Buddy's provider.");
             VoiceMaxSeconds = Config.Bind("Voice", "MaxRecordSeconds", 8f,
                 "Max push-to-talk length in seconds (capped at 12 by runtime).");
             KeepGameVoiceDuringPtt = Config.Bind("Voice", "KeepGameVoiceDuringPushToTalk", true,
@@ -237,15 +238,17 @@ namespace LethalAICrewmate
             VoiceInputDevice = Config.Bind("Voice", "InputDevice", "",
                 "Optional microphone name (or part of its name). Empty uses the Windows default. Set this if Buddy records the wrong device.");
             VisionEnabled = Config.Bind("Vision", "Enabled", false,
-                "Optional host screenshot analysis for explicit visual questions. Disabled by default.");
-            SaveResponses = Config.Bind("Logging", "SaveResponses", true,
-                "Host-only journal of every input and reply — player chat, voice transcripts, Buddy replies, observations and tool results — at BepInEx/LethalAICrewmate-responses.log. This records what your crewmates say. Set false if anyone in your lobby has not agreed to it.");
-            SavePromptContext = Config.Bind("Logging", "SavePromptContext", true,
-                "Also record the exact system prompt (once per change) and the live sensor context behind each turn. Needed to tell whether a bad reply came from the prompt or from what Buddy could actually see.");
+                "Reserved setting. The hardened public release does not upload host screenshots from player chat.");
+            SaveResponses = Config.Bind("Logging", "SaveResponses", false,
+                "Opt-in host-only journal of player chat, voice transcripts, Buddy replies, observations and tool results at BepInEx/LethalAICrewmate-responses.log. Enable only with the crew's informed consent.");
+            SavePromptContext = Config.Bind("Logging", "SavePromptContext", false,
+                "When response journaling is explicitly enabled, also record the system prompt and live sensor context. This may contain sensitive game and player data.");
             RemoteVoiceInPublicLobbies = Config.Bind("Security", "RemoteVoiceInPublicLobbies", false,
                 "Allow remote push-to-talk when the Steam lobby is public or its visibility cannot be verified. Off by default; known friends/invite-only lobbies remain allowed.");
             RemoteGameActionsInPublicLobbies = Config.Bind("Security", "RemoteGameActionsInPublicLobbies", false,
                 "Allow remote players to route, buy, spawn or change ship/facility state when the lobby is public or its visibility cannot be verified. Off by default.");
+            RemoteAiInPublicLobbies = Config.Bind("Security", "RemoteAiInPublicLobbies", false,
+                "Allow player chat to spend the host's AI-provider budget when the lobby is public or its visibility cannot be verified. Off by default.");
             ConfigRevision = Config.Bind("Internal", "ConfigRevision", 0,
                 "Internal migration marker. Do not edit.");
 
@@ -284,15 +287,12 @@ namespace LethalAICrewmate
                     }
                     if (ConfigRevision.Value < 13)
                     {
-                        // v3.5 turns the journal on so hosts can actually tune Buddy's behaviour
-                        // from real sessions. It records what other players say, so the change is
-                        // announced loudly rather than made quietly.
-                        SaveResponses.Value = true;
+                        // Raw chat, transcripts, prompts and sensor context are sensitive player
+                        // data. Upgrades must not silently opt a lobby into collecting them.
+                        SaveResponses.Value = false;
+                        SavePromptContext.Value = false;
                         ConfigRevision.Value = 13;
-                        Log.LogWarning(
-                            "Buddy now keeps a host-only journal of chat, voice transcripts and replies at " +
-                            ResponseJournal.JournalPath +
-                            " so you can tune its behaviour. Set [Logging] SaveResponses = false to turn it off.");
+                        Log.LogInfo("Disabled legacy response and prompt-context journaling; both settings are now opt-in.");
                     }
                     // v1.4.7/v1.5.3 revision-1/2 migrations were removed: the revision chain
                     // above already advances past them on every load, so they were unreachable.
@@ -309,6 +309,9 @@ namespace LethalAICrewmate
                 ConfigSafety.NormalizeOnce();
                 RemoveObsoleteConfigEntries(removeLegacyGroqKey: true, removeLegacyOpenAiKey: true);
                 Config.Save();
+
+                if (!SaveResponses.Value)
+                    ResponseJournal.DeleteExistingJournal();
 
                 string architecture = GroqSecrets.IsOpenAi
                     ? BuddyAiArchitecture.OpenAiRealtimeModel + " + " + BuddyAiArchitecture.OpenAiTranscriptionModel

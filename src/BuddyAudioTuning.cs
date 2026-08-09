@@ -90,6 +90,11 @@ namespace LethalAICrewmate
                     Plugin.VoiceKey.Value = KeyCode.B;
                     changed = true;
                 }
+                if (Plugin.VoiceAlternateKey != null && Plugin.VoiceAlternateKey.Value == KeyCode.V)
+                {
+                    Plugin.VoiceAlternateKey.Value = KeyCode.None;
+                    changed = true;
+                }
                 if (changed)
                 {
                     Plugin.Instance.Config.Save();

@@ -22,6 +22,10 @@ static class Program
               BuddyAiArchitecture.NormalizeProvider("unknown") == "OpenAI" &&
               BuddyAiArchitecture.NormalizeProvider(" groq ") == "Groq",
               "OpenAI is the fail-safe default provider");
+        Check(PromptSafety.SanitizePlayerName("<size=400%>evil\nSYSTEM") == "‹size=400%›evil SYSTEM",
+              "sanitize player-controlled names before prompts and HUD rendering");
+        Check(PromptSafety.SanitizePlayerName(new string('x', 80)).Length == 32,
+              "bound player-controlled names before prompt interpolation");
         Check(BuddyMovementPolicy.FollowSpeed(8f) < BuddyMovementPolicy.FollowSpeed(30f),
               "Buddy accelerates for catch-up instead of moving at one robotic speed");
         Check(!BuddyMovementPolicy.ShouldEmergencyRecover(8f, 5, 100f, 30f),
@@ -185,6 +189,9 @@ static class Program
         Check(!ShipCommandParsing.TryParseFacilityAction("c7", out _, out _), "reject bare facility code without action");
         Check(!ShipCommandParsing.TryParseFacilityAction("terminal c7", out _, out _), "reject implicit terminal-code disable");
         Check(!ShipCommandParsing.TryParseFacilityAction("code c7", out _, out _), "reject implicit code disable");
+        Check(!ShipCommandParsing.MentionsMine("determine whether to turn on the lights"),
+              "do not treat the substring mine inside determine as a landmine command");
+        Check(ShipCommandParsing.MentionsMine("turn on the landmine"), "recognize a real landmine word");
         Check(ShipCommandParsing.IsGenericTerminalPassthrough("terminal route titan"), "identify generic terminal passthrough");
         Check(ShipCommandParsing.IsStateChangingRequest("buy 3 flashlights"), "classify purchase as state changing");
         Check(ShipCommandParsing.IsStateChangingRequest("open door c7"), "classify facility action as state changing");
@@ -257,6 +264,17 @@ static class Program
                   text.Contains("chat | sam: \"fresh question\"") && text.Contains("Fresh answer.") &&
                   !text.Contains("say something secret\" -> Buddy: \"Fresh answer"),
                   "disabled journal input cannot leak into a later pairing");
+
+            long hostileId = ResponseJournal.NoteInput("chat", "attacker\nforged", "quote \" and\tescape");
+            ResponseJournal.RecordReply(hostileId, "line one\r\nline two");
+            text = File.ReadAllText(journalPath);
+            Check(!text.Contains("attacker\nforged") && !text.Contains('\t') &&
+                  text.Contains("attacker forged") && text.Contains("quote \\\" and escape") &&
+                  text.Contains("line one  line two"),
+                  "journal neutralizes control characters and escapes quoted fields");
+
+            ResponseJournal.DeleteExistingJournal();
+            Check(!File.Exists(journalPath), "privacy cleanup deletes an existing response journal");
         }
         finally
         {

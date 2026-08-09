@@ -78,7 +78,7 @@ Deterministic movement commands include:
 
 Questions can trigger a reply when addressed to Buddy, or when the player is within `ChatTriggerRange` and the message ends with `?`.
 
-Explicit terminal and ship actions (`route`, quantity-aware `buy`, coded facility doors/hazards, hangar doors and ship lights) are parsed deterministically from player chat. OpenAI Realtime can request the single bounded `execute_game_command` host tool, but the model never performs a side effect directly: the host re-parses, authorizes and executes the request through the same deterministic command layer. Model-produced `[ROUTE:]`, `[BUY:]` and `[TERMINAL:]` text tags are stripped without running them. Deterministic status queries expose player-visible time, credits, quota/deadline, moon/weather, ship scrap and crew state. Buddy maintains a networked physical body in the ship during orbit and moon phases; follow orders transfer ownership to the requesting living player.
+Explicit terminal and ship actions (`route`, quantity-aware `buy`, coded facility doors/hazards, hangar doors and ship lights) are parsed deterministically from player input. OpenAI Realtime exposes no game-action tool. Model-produced `[ROUTE:]`, `[BUY:]` and `[TERMINAL:]` text tags are stripped without running them. Deterministic status queries expose player-visible time, credits, quota/deadline, moon/weather, ship scrap and crew state. Buddy maintains a networked physical body in the ship during orbit and moon phases.
 
 Movement orders use one deterministic parser so overlapping conversational keywords cannot accidentally change state. Scout-ahead orders choose a complete reachable path 4-18 metres along the requester's facing direction, report nearby same-area threats or scrap, pause briefly, then return to `FollowOwner`. A blocked or stalled scout cancels safely instead of teleporting forward. Fetch selection uses a bounded value-versus-distance score. Personal `bring me` fetch phrasing returns the item near the living requester; ordinary fetch remains ship delivery. Closed-door detection only permits a short wait while the owner is nearby and never grants unlock, terminal or protected action authority.
 
@@ -109,8 +109,8 @@ the actual short line from live sensor context; deterministic danger warnings re
 
 ## AI providers
 
-OpenAI is the recommended provider. A single persistent `gpt-realtime-2.1-mini` session handles typed
-conversation, PTT audio, native Ash speech, image input and bounded host-side tool calls.
+OpenAI is the recommended provider. A fresh `gpt-realtime-2.1-mini` session handles each typed or PTT
+turn with native Ash speech and no game-action tools. Host screenshot input is disabled.
 `gpt-live-transcribe` is the session's live input transcription model. There is no separate OpenAI
 chat or request-based TTS path. Groq remains a fully functional secondary/free option.
 
@@ -131,7 +131,7 @@ LLM rules:
 - live game sensor context is included,
 - the model is instructed not to invent unseen enemies/hazards,
 - replies are short,
-- model-produced movement/action tags are stripped; Realtime tool requests still pass through deterministic host parsing and authorization before game state changes,
+- model-produced movement/action tags are stripped and Realtime exposes no game-action tool,
 - one request at a time with a bounded queue,
 - no API work blocks the Unity main thread.
 

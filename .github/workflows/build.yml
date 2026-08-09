@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: lethal-ai-${{ github.ref }}
@@ -24,6 +24,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -96,17 +99,31 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $pattern = '(gsk_|sk-(?:proj-)?)[A-Za-z0-9_-]{20,}'
-          $extensions = @('.cs', '.md', '.json', '.yml', '.yaml', '.ps1', '.csproj', '.txt')
+          $binaryExtensions = @('.png', '.jpg', '.jpeg', '.gif', '.dll', '.pdb', '.zip', '.7z', '.wav')
           $hits = @()
           Get-ChildItem -Recurse -File | Where-Object {
             $_.FullName -notmatch '[\\/]\.git[\\/]' -and
             $_.FullName -notmatch '[\\/](bin|obj)[\\/]' -and
-            $extensions -contains $_.Extension.ToLowerInvariant()
+            $binaryExtensions -notcontains $_.Extension.ToLowerInvariant()
           } | ForEach-Object {
             $text = Get-Content $_.FullName -Raw -ErrorAction SilentlyContinue
             if ($text -match $pattern) { $hits += $_.FullName }
           }
           if ($hits.Count -gt 0) { throw "Possible API key embedded in source: $($hits -join ', ')" }
+
+      - name: Scan release-branch Git history for embedded API keys
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $pattern = '(gsk_|sk-(proj-)?)[A-Za-z0-9_-]{20,}'
+          $found = $false
+          git rev-list HEAD | ForEach-Object {
+            if ($found) { return }
+            $commit = $_
+            git grep -I -q -E $pattern $commit -- . 2>$null
+            if ($LASTEXITCODE -eq 0) { $found = $true }
+          }
+          if ($found) { throw 'Possible provider API key found in release history. Rotate it and purge the history before release.' }
 
       - name: Restore
         run: dotnet restore src/LethalAICrewmate.csproj
@@ -187,14 +204,29 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download verified build artifact
+        uses: actions/download-artifact@v4
+        with:
+          pattern: Buddy-*
+          merge-multiple: true
+
       - name: Publish verified main release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $tag = "v$env:MOD_VERSION"
+          $zip = Get-ChildItem 'Buddy-*.zip' -File | Select-Object -First 1
+          if ($null -eq $zip) { throw 'Verified Buddy ZIP was not downloaded.' }
+          if ($zip.BaseName -notmatch '^Buddy-(\d+\.\d+\.\d+)$') { throw "Unexpected ZIP name: $($zip.Name)" }
+          $tag = "v$($Matches[1])"
 
           gh release view $tag *> $null
           if ($LASTEXITCODE -eq 0) {
@@ -203,7 +235,7 @@ jobs:
           }
 
           gh release create $tag `
-            "Buddy-$env:MOD_VERSION.zip" `
+            $zip.FullName `
             'SHA256SUMS.txt' `
             --target $env:GITHUB_SHA `
             --title "Buddy $tag" `

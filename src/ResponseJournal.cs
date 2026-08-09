@@ -34,6 +34,28 @@ namespace LethalAICrewmate
 
         internal static string JournalPath => ResolvePath();
 
+        /// <summary>Remove previously collected transcript data when journaling is disabled.</summary>
+        internal static void DeleteExistingJournal()
+        {
+            lock (Gate)
+            {
+                PendingInputs.Clear();
+                PendingOrder.Clear();
+                _nextInputId = 1;
+                _lastPromptHash = 0;
+                _lastPromptSnapshotAt = DateTime.MinValue;
+                try
+                {
+                    string path = ResolvePath();
+                    if (File.Exists(path)) File.Delete(path);
+                }
+                catch (Exception ex)
+                {
+                    Plugin.Log?.LogDebug("Response journal cleanup: " + ex.Message);
+                }
+            }
+        }
+
         /// <summary>Record an incoming player message and return its explicit reply-correlation id.</summary>
         internal static long NoteInput(string mode, string speaker, string input)
         {
@@ -48,7 +70,7 @@ namespace LethalAICrewmate
                 {
                     Mode = string.IsNullOrWhiteSpace(mode) ? "system" : mode,
                     Speaker = string.IsNullOrWhiteSpace(speaker) ? "-" : speaker.Trim(),
-                    Input = Sanitize(input)
+                    Input = input
                 };
                 PendingOrder.Enqueue(id);
                 return id;
@@ -72,10 +94,10 @@ namespace LethalAICrewmate
                 if (!IsEnabled()) return;
                 var sb = new StringBuilder(320);
                 sb.Append('[').Append(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")).Append("] ");
-                sb.Append(string.IsNullOrWhiteSpace(mode) ? "system" : mode).Append(" | ");
-                sb.Append(string.IsNullOrWhiteSpace(speaker) ? "-" : speaker.Trim()).Append(": ");
+                sb.Append(Sanitize(string.IsNullOrWhiteSpace(mode) ? "system" : mode)).Append(" | ");
+                sb.Append(Sanitize(string.IsNullOrWhiteSpace(speaker) ? "-" : speaker.Trim())).Append(": ");
                 sb.Append('"').Append(Sanitize(input)).Append('"');
-                sb.Append(" -> ").Append(Plugin.CrewmateName?.Value ?? "Buddy").Append(": ");
+                sb.Append(" -> ").Append(Sanitize(Plugin.CrewmateName?.Value ?? "Buddy")).Append(": ");
                 sb.Append('"').Append(Sanitize(reply)).Append('"');
                 if (!string.IsNullOrWhiteSpace(toolResult))
                     sb.Append(" [tool: ").Append(Sanitize(toolResult)).Append(']');
@@ -179,9 +201,10 @@ namespace LethalAICrewmate
 
                 var sb = new StringBuilder(320);
                 sb.Append('[').Append(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")).Append("] ");
-                sb.Append(mode).Append(" | ").Append(speaker).Append(": ");
+                sb.Append(Sanitize(mode)).Append(" | ").Append(Sanitize(speaker)).Append(": ");
+                input = Sanitize(input);
                 sb.Append('"').Append(input).Append('"');
-                sb.Append(" -> ").Append(Plugin.CrewmateName?.Value ?? "Buddy").Append(": ");
+                sb.Append(" -> ").Append(Sanitize(Plugin.CrewmateName?.Value ?? "Buddy")).Append(": ");
                 sb.Append('"').Append(Sanitize(reply)).Append('"');
                 if (!string.IsNullOrWhiteSpace(toolResult))
                     sb.Append(" [tool: ").Append(Sanitize(toolResult)).Append(']');
@@ -231,13 +254,12 @@ namespace LethalAICrewmate
                 {
                     try
                     {
-                        byte[] keep = new byte[MaxBytes / 2];
-                        using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
-                        {
-                            fs.Seek(-keep.Length, SeekOrigin.End);
-                            fs.Read(keep, 0, keep.Length);
-                        }
-                        File.WriteAllBytes(path, keep);
+                        string all = File.ReadAllText(path, Encoding.UTF8);
+                        int keepChars = Math.Min(all.Length, (int)(MaxBytes / 4));
+                        int start = all.Length - keepChars;
+                        int newline = all.IndexOf('\n', start);
+                        if (newline >= 0 && newline + 1 < all.Length) start = newline + 1;
+                        File.WriteAllText(path, all.Substring(start), Encoding.UTF8);
                     }
                     catch (Exception ex)
                     {
@@ -250,7 +272,18 @@ namespace LethalAICrewmate
         private static string Sanitize(string value)
         {
             if (string.IsNullOrEmpty(value)) return "-";
-            return value.Replace('\r', ' ').Replace('\n', ' ').Trim();
+            var clean = new StringBuilder(value.Length);
+            foreach (char ch in value)
+            {
+                if (char.IsControl(ch))
+                {
+                    clean.Append(' ');
+                    continue;
+                }
+                if (ch == '\\' || ch == '"') clean.Append('\\');
+                clean.Append(ch);
+            }
+            return clean.ToString().Trim();
         }
 
         private static bool IsEnabled() => Plugin.SaveResponses != null && Plugin.SaveResponses.Value;

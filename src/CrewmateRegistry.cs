@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using GameNetcodeStuff;
 using UnityEngine;
+using Unity.Netcode;
 
 namespace LethalAICrewmate
 {
@@ -60,6 +61,7 @@ namespace LethalAICrewmate
 
     public static class CrewmateRegistry
     {
+        private const int MaxKnownRemoteIds = 4;
         private static readonly Dictionary<ulong, CrewmateData> ById = new Dictionary<ulong, CrewmateData>();
         private static readonly HashSet<int> InstanceIds = new HashSet<int>();
         /// <summary>Network IDs known as crewmates on clients (and host). Survives until unregister/leave.</summary>
@@ -165,6 +167,11 @@ namespace LethalAICrewmate
         public static void RegisterRemote(ulong networkObjectId)
         {
             if (networkObjectId == 0) return;
+            if (!KnownCrewmateNetIds.Contains(networkObjectId) && KnownCrewmateNetIds.Count >= MaxKnownRemoteIds)
+            {
+                Plugin.Log?.LogWarning("Rejected excess remote Buddy identity.");
+                return;
+            }
             KnownCrewmateNetIds.Add(networkObjectId);
 
             try
@@ -173,14 +180,10 @@ namespace LethalAICrewmate
                     return;
 
                 MaskedPlayerEnemy found = null;
-                foreach (var m in Object.FindObjectsOfType<MaskedPlayerEnemy>())
-                {
-                    if (m != null && m.IsSpawned && m.NetworkObjectId == networkObjectId)
-                    {
-                        found = m;
-                        break;
-                    }
-                }
+                var nm = NetworkManager.Singleton;
+                if (nm?.SpawnManager != null &&
+                    nm.SpawnManager.SpawnedObjects.TryGetValue(networkObjectId, out var netObj) && netObj != null)
+                    found = netObj.GetComponent<MaskedPlayerEnemy>();
 
                 if (found == null)
                 {

@@ -23,5 +23,6 @@
     <Compile Include="..\..\src\BuddyPacingPolicy.cs" Link="BuddyPacingPolicy.cs" />
     <Compile Include="..\..\src\BuddySocialPolicy.cs" Link="BuddySocialPolicy.cs" />
     <Compile Include="..\..\src\BuddyMalicePolicy.cs" Link="BuddyMalicePolicy.cs" />
+    <Compile Include="..\..\src\PromptSafety.cs" Link="PromptSafety.cs" />
   </ItemGroup>
 </Project>
