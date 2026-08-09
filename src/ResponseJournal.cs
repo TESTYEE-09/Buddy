@@ -15,13 +15,15 @@ namespace LethalAICrewmate
     internal static class ResponseJournal
     {
         private const string FileName = "LethalAICrewmate-responses.log";
-        private const long MaxBytes = 2L * 1024 * 1024;
+        private const long MaxBytes = 8L * 1024 * 1024;
         private const int MaxPendingNotes = 32;
         private static readonly object Gate = new object();
         private static readonly Dictionary<long, InputNote> PendingInputs = new Dictionary<long, InputNote>();
         private static readonly Queue<long> PendingOrder = new Queue<long>();
         private static long _nextInputId = 1;
         private static string _resolvedPath;
+        private static int _lastPromptHash;
+        private static DateTime _lastPromptSnapshotAt = DateTime.MinValue;
 
         private sealed class InputNote
         {
@@ -93,6 +95,67 @@ namespace LethalAICrewmate
             {
                 PendingInputs.Clear();
                 PendingOrder.Clear();
+                _lastPromptHash = 0;
+                _lastPromptSnapshotAt = DateTime.MinValue;
+            }
+        }
+
+        /// <summary>
+        /// Records the exact system prompt Buddy is running, but only when it differs from the last
+        /// one written. This is what makes the journal usable for prompt iteration: every reply
+        /// below a snapshot was produced by the prompt in that snapshot.
+        /// </summary>
+        internal static void RecordPromptSnapshot(string systemPrompt)
+        {
+            try
+            {
+                if (!IsEnabled() || !IsContextEnabled() || string.IsNullOrWhiteSpace(systemPrompt)) return;
+                int hash = systemPrompt.GetHashCode();
+                DateTime now = DateTime.UtcNow;
+                lock (Gate)
+                {
+                    if (hash == _lastPromptHash) return;
+                    // The prompt carries live pacing and social lines that flip often. Re-snapshot
+                    // on change, but never more than once a minute, so the journal stays readable.
+                    if (_lastPromptHash != 0 && (now - _lastPromptSnapshotAt).TotalSeconds < 60d) return;
+                    _lastPromptHash = hash;
+                    _lastPromptSnapshotAt = now;
+                }
+
+                var sb = new StringBuilder(systemPrompt.Length + 256);
+                sb.Append("=== SYSTEM PROMPT @ ").Append(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"))
+                  .Append(" | Buddy v").Append(Plugin.ModVersion)
+                  .Append(" | provider ").Append(GroqSecrets.ProviderName)
+                  .AppendLine(" ===");
+                sb.AppendLine(systemPrompt.TrimEnd());
+                sb.AppendLine("=== END SYSTEM PROMPT ===");
+                WriteLine(sb.ToString());
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log?.LogDebug("Response journal prompt snapshot: " + ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Records the live sensor block that shaped one specific turn, tagged with the same
+        /// correlation id as the reply so a bad answer can be traced to what Buddy could see.
+        /// </summary>
+        internal static void RecordContext(long inputId, string context)
+        {
+            try
+            {
+                if (!IsEnabled() || !IsContextEnabled() || string.IsNullOrWhiteSpace(context)) return;
+                var sb = new StringBuilder(context.Length + 128);
+                sb.Append("--- CONTEXT #").Append(inputId).Append(" @ ")
+                  .Append(DateTime.Now.ToString("HH:mm:ss")).AppendLine(" ---");
+                sb.AppendLine(context.TrimEnd());
+                sb.AppendLine("--- END CONTEXT ---");
+                WriteLine(sb.ToString());
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log?.LogDebug("Response journal context: " + ex.Message);
             }
         }
 
@@ -156,8 +219,9 @@ namespace LethalAICrewmate
                 bool exists = File.Exists(path);
                 if (!exists)
                     File.AppendAllText(path,
-                        "# LethalAICrewmate response journal - every Buddy reply with its paired input.\n" +
-                        "# Format: [time] mode | speaker: \"input\" -> Buddy: \"reply\" [tool: result]\n",
+                        "# LethalAICrewmate response journal - every Buddy input and reply, for prompt tuning.\n" +
+                        "# Format: [time] mode | speaker: \"input\" -> Buddy: \"reply\" [tool: result]\n" +
+                        "# Blocks marked SYSTEM PROMPT and CONTEXT show exactly what produced the replies below them.\n",
                         Encoding.UTF8);
                 File.AppendAllText(path, line, Encoding.UTF8);
 
@@ -190,5 +254,7 @@ namespace LethalAICrewmate
         }
 
         private static bool IsEnabled() => Plugin.SaveResponses != null && Plugin.SaveResponses.Value;
+
+        private static bool IsContextEnabled() => Plugin.SavePromptContext != null && Plugin.SavePromptContext.Value;
     }
 }

@@ -202,8 +202,9 @@ namespace LethalAICrewmate
                 if (string.IsNullOrWhiteSpace(saveFile)) return;
                 if (!ES3.KeyExists(DigestSaveKey, saveFile) || !ES3.KeyExists(ValueSaveKey, saveFile)) return;
 
-                int[] digests = ES3.Load<int[]>(DigestSaveKey, saveFile, null);
-                int[] values = ES3.Load<int[]>(ValueSaveKey, saveFile, null);
+                // The default must be typed: an untyped null is ambiguous with the ES3Settings overload.
+                int[] digests = ES3.Load(DigestSaveKey, saveFile, (int[])null);
+                int[] values = ES3.Load(ValueSaveKey, saveFile, (int[])null);
                 if (digests == null || values == null) return;
 
                 int count = Math.Min(Math.Min(digests.Length, values.Length), BuddyRelationshipModel.MaxTrackedPlayers);

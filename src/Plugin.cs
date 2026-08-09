@@ -13,7 +13,7 @@ namespace LethalAICrewmate
     {
         public const string ModGuid = "com.lethalaicrewmate.buddy";
         public const string ModName = "Buddy";
-        public const string ModVersion = "3.1.0";
+        public const string ModVersion = "3.5.0";
 
         internal static Plugin Instance;
         internal static ManualLogSource Log;
@@ -45,6 +45,7 @@ namespace LethalAICrewmate
         internal static ConfigEntry<string> VoiceInputDevice;
         internal static ConfigEntry<bool> VisionEnabled;
         internal static ConfigEntry<bool> SaveResponses;
+        internal static ConfigEntry<bool> SavePromptContext;
         internal static ConfigEntry<bool> RemoteVoiceInPublicLobbies;
         internal static ConfigEntry<bool> RemoteGameActionsInPublicLobbies;
         internal static ConfigEntry<int> ConfigRevision;
@@ -237,8 +238,10 @@ namespace LethalAICrewmate
                 "Optional microphone name (or part of its name). Empty uses the Windows default. Set this if Buddy records the wrong device.");
             VisionEnabled = Config.Bind("Vision", "Enabled", false,
                 "Optional host screenshot analysis for explicit visual questions. Disabled by default.");
-            SaveResponses = Config.Bind("Logging", "SaveResponses", false,
-                "Opt in to a host-only journal containing raw player chat, voice transcripts, Buddy replies and tool results at BepInEx/LethalAICrewmate-responses.log.");
+            SaveResponses = Config.Bind("Logging", "SaveResponses", true,
+                "Host-only journal of every input and reply — player chat, voice transcripts, Buddy replies, observations and tool results — at BepInEx/LethalAICrewmate-responses.log. This records what your crewmates say. Set false if anyone in your lobby has not agreed to it.");
+            SavePromptContext = Config.Bind("Logging", "SavePromptContext", true,
+                "Also record the exact system prompt (once per change) and the live sensor context behind each turn. Needed to tell whether a bad reply came from the prompt or from what Buddy could actually see.");
             RemoteVoiceInPublicLobbies = Config.Bind("Security", "RemoteVoiceInPublicLobbies", false,
                 "Allow remote push-to-talk when the Steam lobby is public or its visibility cannot be verified. Off by default; known friends/invite-only lobbies remain allowed.");
             RemoteGameActionsInPublicLobbies = Config.Bind("Security", "RemoteGameActionsInPublicLobbies", false,
@@ -278,6 +281,18 @@ namespace LethalAICrewmate
                             TtsVoice.Value = "austin";
                         ConfigRevision.Value = 12;
                         Log.LogInfo("Migrated Buddy AI settings to OpenAI Realtime + separate Groq Qwen architecture.");
+                    }
+                    if (ConfigRevision.Value < 13)
+                    {
+                        // v3.5 turns the journal on so hosts can actually tune Buddy's behaviour
+                        // from real sessions. It records what other players say, so the change is
+                        // announced loudly rather than made quietly.
+                        SaveResponses.Value = true;
+                        ConfigRevision.Value = 13;
+                        Log.LogWarning(
+                            "Buddy now keeps a host-only journal of chat, voice transcripts and replies at " +
+                            ResponseJournal.JournalPath +
+                            " so you can tune its behaviour. Set [Logging] SaveResponses = false to turn it off.");
                     }
                     // v1.4.7/v1.5.3 revision-1/2 migrations were removed: the revision chain
                     // above already advances past them on every load, so they were unreachable.

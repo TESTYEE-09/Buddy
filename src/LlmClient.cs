@@ -85,8 +85,10 @@ namespace LethalAICrewmate
                 .Append(": ").AppendLine(message ?? "");
             if (isCommand)
                 content.AppendLine("[The game already handled this command; acknowledge it naturally.]");
+            string liveContext = GameSensors.BuildLiveContext();
+            ResponseJournal.RecordContext(journalId, liveContext);
             content.AppendLine().AppendLine("[LIVE GAME CONTEXT - SILENT BACKGROUND UNLESS RELEVANT]")
-                .AppendLine(GameSensors.BuildLiveContext())
+                .AppendLine(liveContext)
                 .AppendLine("[Do not turn sensor entries into the topic. Harmless wildlife requires no callout.]");
             return Enqueue(content.ToString(), isObservation: false, withVision: VisionIntent.IsVisualQuestion(message), journalId: journalId, playerName: playerName, playerId: playerId);
         }
@@ -100,7 +102,14 @@ namespace LethalAICrewmate
         {
             if (!HasApiKey) return false;
             string sensors = GameSensors.BuildLiveContext();
-            return Enqueue(sensors + "\n[Observation] " + summary, isObservation: true, withVision: false, journalId: 0);
+            // Pair the triggering evidence with whatever Buddy says, so unprompted lines are not
+            // journaled as replies to nothing.
+            long journalId = ResponseJournal.NoteInput("observation", "game", summary);
+            ResponseJournal.RecordContext(journalId, sensors);
+            if (Enqueue(sensors + "\n[Observation] " + summary, isObservation: true, withVision: false, journalId: journalId))
+                return true;
+            ResponseJournal.Discard(journalId);
+            return false;
         }
 
         internal static void NotePlayerInteraction() => LastPlayerInteractionAt = Time.unscaledTime;

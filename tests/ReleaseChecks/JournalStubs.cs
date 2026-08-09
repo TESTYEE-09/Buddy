@@ -3,9 +3,16 @@ namespace LethalAICrewmate
 {
     public static class Plugin
     {
+        public const string ModVersion = "test";
         public static BepInEx.Configuration.ConfigEntry<bool> SaveResponses;
+        public static BepInEx.Configuration.ConfigEntry<bool> SavePromptContext;
         public static BepInEx.Configuration.ConfigEntry<string> CrewmateName;
         public static BepInEx.Logging.ManualLogSource Log;
+    }
+
+    public static class GroqSecrets
+    {
+        public static string ProviderName => "test";
     }
 }
 

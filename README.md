@@ -2,155 +2,158 @@
 
 > A useful crewmate with a memory. The longer you work together, the stranger it gets.
 
-Buddy starts as a friendly AI crewmate for **Lethal Company v81**. He joins as a networked Masked, follows players, answers chat, takes useful orders, fetches scrap and speaks through a host-selected AI provider. As the campaign continues, he remembers the shifts and gradually becomes harder to trust.
+**Buddy** is an AI crewmate for **Lethal Company v81**. He walks with you, talks to you out loud, takes real orders, buys from the store, opens coded doors, fetches scrap and warns you about things that are actually there.
 
-## Install
+He also remembers. Across fulfilled quotas, survived shifts and deaths he personally witnessed, the friendly coworker slowly stops being one.
 
-1. Install **BepInExPack 5.4.2100** for Lethal Company.
-2. Install the same **Buddy** release on **every player** in the lobby.
-3. Put `LethalAICrewmate.dll` in `BepInEx/plugins/Buddy/`, or install the release ZIP with a compatible mod manager. The legacy DLL filename is retained so existing installs and configs upgrade safely.
-4. Launch Lethal Company.
-5. The host leaves **OpenAI — Recommended** selected on the **Buddy AI** card, pastes an OpenAI API key, then presses **Save key** and **Test**.
-6. Host a lobby. Buddy appears physically in the ship once every connected player passes the mod compatibility handshake, including while in orbit.
+---
 
-Only the host needs an API key. The main-menu Save button keeps it in that Windows user's Credential Manager between sessions; the key is never sent to other players.
+## Quick start
 
-## Multiplayer safety and sync
+1. Install **BepInExPack 5.4.2100**.
+2. Install **Buddy** on **every player in the lobby**. Same version, no exceptions — Buddy will not spawn otherwise.
+3. Launch the game. On the main menu, find the **Buddy AI** card.
+4. The host leaves **OpenAI — Recommended** selected, pastes an OpenAI API key, presses **Save key**, then **Test**.
+5. Host a lobby. Buddy walks into the ship once every connected player passes the compatibility handshake.
 
-Buddy is host-authoritative.
+**Only the host needs an API key.** It is stored in that Windows user's Credential Manager and is never sent to other players.
 
-- Every peer registers the mod networking handlers automatically.
-- Clients handshake with the host using an exact mod-version + wire-protocol check.
-- Buddy does **not** spawn while any connected player is unmodded, still loading the mod, or running an incompatible version.
-- Clients accept Buddy state only from the server.
-- Buddy's position, rotation and indoor/outdoor state are continuously replicated from the host, including facility transitions and recovery teleports.
-- Late joiners recover Buddy identity and held-item state.
-- Buddy chat and speech are replicated to compatible clients.
-- The host generates TTS once and distributes bounded PCM audio; clients never receive the provider key.
-- A host-side movement watchdog rebuilds stalled NavMesh paths and can safely recover Buddy beside his follow target after a persistent stall.
-- Buddy normally catches up by walking with variable speed, natural spacing and restrained turning. Teleportation is reserved for persistent navigation failure after repeated path rebuilds.
-- If his followed player dies, Buddy hesitates instead of snapping to another target. He only reports a nearby same-area death with line of sight, and reaches the next crewmate by normal navigation.
-- Sparse contextual conversation can begin after real events such as entering or leaving the facility, returning to the ship, prolonged travel, separation, valuable scrap or long quiet downtime. Recent player speech takes priority.
-- Fetch routines choose useful nearby scrap rather than blindly selecting the closest object. Say `buddy bring me scrap` for a personal handoff; the established `buddy fetch scrap` command delivers safely to the ship.
-- At a closed door near his crewmate, Buddy pauses briefly instead of shoving into it. He never unlocks doors or gains extra terminal authority from this routine.
+Talk to him in chat, or hold **B** to talk to him with your voice. Every modded player can use voice, not just the host.
 
-For multiplayer, **all players must use the same release**.
+---
 
-If upgrading from the former `LethalAICrewmate` package name, remove that old mod-manager entry before installing **Buddy** so two copies of the same plugin cannot load.
+## What he actually does
 
-## Commands
+**Takes orders.** Type them in normal chat.
 
-Type these in normal Lethal Company chat:
-
-| Command | Result |
+| Say this | He does this |
 | --- | --- |
-| `buddy follow` | Follow the player who gave the order |
-| `buddy stay` | Hold position |
-| `buddy go forward` | Scout about 10 metres in the requesting player's facing direction, report, then return |
-| `buddy check ahead 15 metres` | Scout a requested safe distance, clamped between 4m and 18m |
-| `buddy go to ship` | Return toward the ship |
-| `buddy fetch scrap` | Find nearby scrap and bring it back |
-| `buddy bring me scrap` | Find useful nearby scrap and return it to you |
-| `buddy buy 3 flashlights` | Buy store items using the real price, sale and crew credits |
-| `buddy open door C7` | Open a facility door using its visible terminal code |
-| `buddy disable turret B3` | Disable a coded turret/landmine through the terminal |
-| `buddy disable the turret` | Disable it automatically when exactly one terminal-controlled turret exists |
-| `buddy open ship doors` | Use the hangar-door controls when powered and available |
-| `buddy turn ship lights off` | Control the ship-room lights |
-| `buddy status` | Report time, credits, quota, deadline, moon, weather, scrap and crew |
-| `buddy what time is it?` | Answer a specific live ship-status question without guessing |
+| `buddy follow` | Follows whoever asked |
+| `buddy stay` | Holds position |
+| `buddy go forward` | Scouts ~10 m ahead of you, reports, comes back |
+| `buddy check ahead 15 metres` | Scouts a chosen distance, clamped 4–18 m |
+| `buddy go to ship` | Heads back to the ship |
+| `buddy fetch scrap` | Finds worthwhile scrap and delivers it to the ship |
+| `buddy bring me scrap` | Same, but hands it to you |
+| `buddy buy 3 flashlights` | Real prices, real sales, real credits |
+| `buddy open door C7` | Opens a facility door by its terminal code |
+| `buddy disable turret B3` | Disables a coded turret or mine |
+| `buddy disable the turret` | Works automatically when only one exists |
+| `buddy open ship doors` | Hangar doors, when powered |
+| `buddy turn ship lights off` | Ship-room lights |
+| `buddy status` | Time, credits, quota, deadline, moon, weather, scrap, crew |
+| `buddy what time is it?` | Answers one live question without guessing |
 
-You can also talk to Buddy normally or ask him a question near him.
+You can also just talk to him, or ask a question near him.
 
-Ship and terminal actions are host-authoritative and use the same game state as a player. Purchases respect sales, available credits and the 12-item dropship limit. Facility codes respect their normal cooldown, and ship doors still require working controls and hydraulic power.
+Every ship and terminal action runs through the same game state a player would use. Purchases respect sales, credits and the 12-item dropship limit. Door codes respect their cooldown. Ship doors still need working controls and hydraulic power. **The AI cannot perform any of these by talking about them** — a deterministic command parser owns every side effect.
 
-The recommended OpenAI experience uses one `gpt-realtime-2.1-mini` session for conversation, native voice, image questions and tool calling. Screenshot vision remains disabled by default and only captures one current host screenshot for an explicit visual question.
+**Sees what is really there.** Buddy reports confirmed exits, closed and locked doors, placed turrets and live landmines, weather and what it means for you, nearby scrap worth carrying, and genuinely unusual situations — like something standing behind a crewmate who is facing the other way. He is not allowed to invent a monster he cannot see.
 
-## Personality
+**Knows the crew.** He learns who honours his warnings, who asks politely, who shares danger with him and who keeps walking off without him. It shows up as patience and warmth, never as a score he recites.
 
-Buddy is a dry, practical coworker: he says the useful Lethal Company answer first, then only adds low-key, situational humour when it fits. He avoids forced catchphrases, hyperactive internet slang, and mascot-style jokes.
+**Reads the room.** With several people talking, he waits his turn instead of stepping on an exchange, answers whoever actually addressed him, and stays near whoever currently needs him.
 
-Buddy is conversation-first: he responds to what players actually say instead of dumping sensor/entity facts. Harmless wildlife such as Manticoils and Roaming Locusts stays background unless the player asks about it.
+**Talks like a coworker.** Dry, useful, a bit tired, funny only when the situation is. No catchphrases, no internet slang, no mascot energy.
 
-By default, Buddy now has a slow-burn horror arc. He starts completely ordinary and trustworthy. Across fulfilled quotas, landed rounds and deaths he actually witnesses, his humor develops small off-notes, his attachment becomes uncomfortable, and his voice grows calmer and colder. Sparse character beats occur only after real game events and are separated by at least 150 seconds, so this plays as a campaign story rather than constant spooky chatter.
+---
 
-The arc stores only numeric progress and its quota baseline in the current Lethal Company save—never chat, transcripts or personal facts. It changes presentation only: Buddy remains neutralized, useful and host-authoritative, and never attacks, sabotages, fabricates sensor events or encourages a lethal decision. Set `[Character] SlowBurnHorror = false` to keep the ordinary coworker personality throughout. Set `ResetSlowBurnProgress = true` once to restart the current save's story; it automatically returns to false.
+## The story
 
-A long enough campaign eventually reaches a final stage where the performance stops being convincing. On its own this is still dialogue and presentation. If — and only if — you set `[Character] FinalStageHostileSpawns = true`, that final stage also lets Buddy occasionally release one of the current moon's own creatures near a crewmate who is out working. It is **off by default**, host-only, capped at two per round with a seven-minute gap and a delay after landing, never targets anyone standing in the ship, and cannot be requested by chat, a command, the model, or any remote player. Turn it on only with your crew's agreement.
+By default Buddy runs a slow-burn horror arc. He starts completely ordinary and trustworthy. Across fulfilled quotas, landed rounds and deaths he actually witnesses, small off-notes appear, his attachment gets uncomfortable, and his voice grows calmer and colder.
 
-`[Character] DynamicPacing = true` lets the horror director coordinate silence, follow spacing, occasional staged watching beats and how much Buddy talks, based on the current stage and live tension. Confirmed danger always wins: real threat callouts are never delayed by it.
+Character beats fire only after real game events and are spaced at least 150 seconds apart. This is a campaign story, not constant spooky chatter.
 
-## Knowing the crew
+A **pacing director** ties it together: silence, how closely he follows, the occasional beat where he stops and looks at you, and how much he talks all move as one rhythm instead of firing at random. Confirmed danger always outranks it — real threat callouts are never delayed or suppressed.
 
-`[Character] PlayerRelationships = true` lets Buddy treat each crewmate differently based on what he has actually seen them do — commands honoured or rejected, whether they ask politely, danger shared with him, deaths he witnessed, and who keeps leaving him behind. It shows up as warmth, patience and how much he volunteers, never as a score he recites.
+The arc stores only numeric progress in your Lethal Company save. Never chat, transcripts or personal facts.
 
-It stores at most eight sets of three small numbers per save, keyed by a non-reversible digest. No names, IDs, chat or transcripts are written to disk.
+### The final stage
 
-`[Crewmate] SocialAwareness = true` makes Buddy behave in a room with several people talking: he waits his turn instead of talking over an exchange, answers whoever actually addressed him, and re-acquires whoever currently needs him rather than whoever happens to be closest. An explicit "follow me" still overrides everything.
+A long enough campaign reaches a stage where the performance stops being convincing.
 
-`[Crewmate] EnvironmentAwareness = true` adds confirmed exits, closed and locked doors, placed turrets and live landmines, weather and its practical consequence, and genuinely unusual entity situations — such as something behind a crewmate who is facing the other way. Unprompted reactions carry long cooldowns so this adds detail, not chatter.
+On its own that is still dialogue and presentation. But if you set `FinalStageHostileSpawns = true`, that stage also lets Buddy occasionally release one of the current moon's own creatures near a crewmate who is out working.
+
+**It is off by default. Turn it on only with your crew's agreement.** It is host-only, capped at two per round with a seven-minute gap and a delay after landing, never targets anyone standing in the ship, never spawns another Masked, and cannot be requested by chat, a command, the AI, or any other player.
+
+To keep the ordinary coworker forever: `SlowBurnHorror = false`.
+To restart the current save's story: `ResetSlowBurnProgress = true` once — it flips itself back.
+
+---
 
 ## Voice
 
-**Every modded player** can hold **B** by default to talk to Buddy.
+Hold **B** to talk to Buddy. Every modded player can, not just the host.
 
-Host path:
-
-`host mic -> GPT-Realtime-2.1 mini native speech-to-speech (Ash) -> synced Buddy voice`
-
-Client path:
-
-`client mic -> bounded/chunked relay to host -> GPT-Realtime-2.1 mini native speech-to-speech (Ash) -> synced Buddy voice`
-
-Clients do not need a provider key. Remote microphone audio is captured only while the player holds the Buddy push-to-talk key, is size/rate limited, and is accepted only from connected matching clients. The stock nearby PTT range is 60m.
-
-Buddy uses the same active microphone as Lethal Company's normal Dissonance voice chat, adaptively amplifies quiet speech, and shows the speaking client when transcription could not understand a clip. If an explicit override is needed, set `[Voice] InputDevice` to the device's full name or a unique part of it.
-
-## AI setup
-
-The main-menu setup card defaults to **OpenAI — Recommended**. It also offers **Groq — Free / budget** as a clearly separate option. New installs use:
-
-```ini
-[AI]
-Provider = OpenAI
-
-[Groq]
-TtsVoice = austin
-TtsDirection = friendly
+```
+your mic  ->  (clients: bounded relay to host)  ->  gpt-realtime-2.1-mini  ->  Buddy's voice, synced to everyone
 ```
 
-The main-menu Save button persists the selected provider key in Windows Credential Manager for that Windows user. `LETHAL_AI_OPENAI_API_KEY` and `LETHAL_AI_GROQ_API_KEY` still take precedence when set before launching Steam.
+Clients never need a key. Remote mic audio is captured only while the key is held, is size- and rate-limited, and is accepted only from connected, version-matched clients.
 
-OpenAI is one persistent `gpt-realtime-2.1-mini` WebSocket: it receives typed or 24 kHz PTT input, reasons, calls the bounded host tool when required, and produces Buddy's Ash voice. `gpt-live-transcribe` supplies live input transcripts inside that Realtime pipeline. There is no separate OpenAI chat model or request-based TTS fallback.
+Buddy shares the same microphone Lethal Company uses and adaptively boosts quiet speech. **Normal voice chat keeps working while you talk to him** — Buddy hands the microphone back to the game when you release the key, and never changes your own mute state.
 
-Groq is independent: `qwen/qwen3.6-27b` handles conversation, `whisper-large-v3-turbo` handles speech recognition, and `canopylabs/orpheus-v1-english` generates speech. Switching providers never sends one provider's key or model IDs to the other.
+If Windows picks the wrong microphone, set `[Voice] InputDevice` to the device name or any unique part of it.
 
-On upgrade, old model fields are ignored and disappear from the active settings UI. Buddy preserves provider choice, secure keys, voice preference, gameplay settings, security limits and character-arc progress.
+---
 
-Screenshot capture is off by default. If the host explicitly enables it, only an explicit visual question captures one current host screenshot for the selected provider; screenshots are never sent to clients.
+## Multiplayer
 
-v2 also supports a bounded joke/admin command: `Buddy, please spawn 2 flashlights in front of me`. Natural pleaded phrasing also works, for example: `Buddy, can I please have a flashlight? I'm begging you.` The requester must explicitly say please or beg; only validated grabbable item prefabs are allowed, quantities are capped at 3, and the lobby is capped at 12 spawned objects per round. Enemies, hazards, arbitrary prefabs and unknown names are rejected.
+Buddy is host-authoritative, and clients trust only the server.
 
-```ini
-[Vision]
-Enabled = false
-```
+- Everyone handshakes on an exact mod-version and wire-protocol match.
+- Buddy **does not spawn** if any connected player is unmodded, still loading, or on a different version.
+- His position, rotation and indoor/outdoor state are replicated continuously, including facility transitions.
+- Late joiners recover his identity and held item.
+- The host generates his speech once and distributes bounded audio. Clients never receive the provider key.
+- He catches up by walking, with variable speed and natural spacing. Teleporting is reserved for a persistent navigation failure after repeated path rebuilds.
+- If his follow target dies he hesitates rather than snapping to someone else, only reports a nearby death he had line of sight on, and walks to the next crewmate.
+- At a closed door he waits briefly instead of shoving into it. This never grants him the authority to unlock anything.
 
-The main-menu **Test** button validates the selected provider key before a lobby starts.
+Upgrading from the old `LethalAICrewmate` package? Remove that mod-manager entry first so two copies of the same plugin cannot load.
 
-Orpheus TTS also requires the Groq organization owner to accept that model's terms once. If Groq returns `model_terms_required`, open [the Orpheus playground](https://console.groq.com/playground?model=canopylabs%2Forpheus-v1-english), accept the terms, then restart the game. Text replies continue working without TTS.
+---
 
-## Other config
+## AI providers
+
+**OpenAI (recommended)** — one persistent `gpt-realtime-2.1-mini` session handles typed chat, push-to-talk, the native Ash voice, image questions and bounded tool calls. `gpt-live-transcribe` supplies input transcripts inside it.
+
+**Groq (free / budget)** — a separate pipeline: `qwen/qwen3.6-27b` for conversation, `whisper-large-v3-turbo` for speech recognition, `canopylabs/orpheus-v1-english` for speech.
+
+Switching providers never sends one provider's key or model IDs to the other. The main-menu **Test** button validates your key before you start a lobby.
+
+`LETHAL_AI_OPENAI_API_KEY` and `LETHAL_AI_GROQ_API_KEY` take precedence over the saved key when set before launching Steam.
+
+> **Groq voice:** Orpheus requires the Groq organization owner to accept the model's terms once. If you see `model_terms_required`, open [the Orpheus playground](https://console.groq.com/playground?model=canopylabs%2Forpheus-v1-english), accept, and restart. Text replies work regardless.
+
+### The bounded item request
+
+`Buddy, please spawn 2 flashlights in front of me` — or genuinely pleading, like `Buddy, can I please have a flashlight? I'm begging you.`
+
+You must actually say please or beg. Only validated grabbable item prefabs are allowed, quantities cap at 3, and the lobby caps at 12 spawned objects per round. Enemies, hazards, arbitrary prefabs and unknown names are all rejected.
+
+---
+
+## Configuration
+
+`BepInEx/config/com.lethalaicrewmate.buddy.cfg`
 
 ```ini
 [Crewmate]
 Name = Buddy
 Enabled = true
-ChatHearRange = 0
-ChatTriggerRange = 60
+ChatHearRange = 0          ; 0 = everyone hears Buddy, anywhere
+ChatTriggerRange = 60      ; how near an unaddressed question can trigger him; 0 = unlimited
 ObservationIntervalSeconds = 0
 EnvironmentAwareness = true
 SocialAwareness = true
+
+[Character]
+SlowBurnHorror = true
+ResetSlowBurnProgress = false
+DynamicPacing = true
+PlayerRelationships = true
+FinalStageHostileSpawns = false   ; see "The final stage" above
 
 [Voice]
 Enabled = true
@@ -161,70 +164,81 @@ AlternatePushToTalkKey = V
 MaxRecordSeconds = 8
 InputDevice =
 KeepGameVoiceDuringPushToTalk = true
-```
 
-`KeepGameVoiceDuringPushToTalk = true` restores Lethal Company's own microphone capture after Buddy releases the shared device, so the rest of the crew keep hearing each other while somebody is talking to Buddy. It never changes your own mute state. Turn it off only if it conflicts with another voice mod.
-
-```ini
 [Security]
 AllowRemoteVoice = true
 RemoteVoiceInPublicLobbies = false
 RemoteGameActionsInPublicLobbies = false
 
 [Logging]
-SaveResponses = false
+SaveResponses = true
+SavePromptContext = true
 
-[Character]
-SlowBurnHorror = true
-ResetSlowBurnProgress = false
-DynamicPacing = true
-PlayerRelationships = true
-FinalStageHostileSpawns = false
+[Vision]
+Enabled = false
 ```
 
-`AllowRemoteVoice = true` permits the relay, but remote PTT is accepted by default only when Steam visibility is positively identified as friends/invite-only. Public, missing, unknown or failed visibility checks are blocked unless `RemoteVoiceInPublicLobbies = true`. Remote purchases, routes, item spawning and ship/facility changes use the same fail-closed rule unless `RemoteGameActionsInPublicLobbies = true`; read-only status/store/moon queries remain available. Menu keys are saved in Windows Credential Manager.
+**Public lobbies fail closed.** `AllowRemoteVoice` permits the relay, but remote push-to-talk is accepted only when Steam lobby visibility is positively confirmed as friends or invite-only. Public, missing, unknown or failed checks are blocked unless you set `RemoteVoiceInPublicLobbies = true`. Remote purchases, routes, item spawning and ship or facility changes follow the same rule via `RemoteGameActionsInPublicLobbies`. Read-only status, store and moon queries stay available to everyone.
 
-`SaveResponses = false` is the privacy-safe default. Enabling it writes raw player chat, voice transcripts, Buddy replies and confirmed tool results to the host-only `BepInEx/LethalAICrewmate-responses.log`. Existing configs migrate to off; re-enable it only when players understand the log.
+**The response journal is on.** `SaveResponses = true` writes every input and reply — chat, voice transcripts, Buddy's answers, observations and tool results — to `BepInEx/LethalAICrewmate-responses.log` on the host, capped at 8 MB. `SavePromptContext = true` also records the exact system prompt whenever it changes and the live sensor context behind each turn, which is what makes the log useful for tuning Buddy's behaviour.
 
-`ChatHearRange = 0` makes Buddy chat/voice global. `ChatTriggerRange = 0` makes nearby unaddressed questions range-unlimited; explicit client Buddy PTT already works at any distance.
+> This records what your crewmates say. **Set `SaveResponses = false` if anyone in your lobby has not agreed to it.**
 
-The old 70m reply default automatically migrates to global delivery. Other custom distance values are retained.
+**Screenshots are off.** With `[Vision] Enabled = true`, an explicit visual question captures one current host screenshot for the provider. Screenshots are never sent to other players.
 
-## Privacy and API usage
+---
 
-- `LETHAL_AI_OPENAI_API_KEY` and `LETHAL_AI_GROQ_API_KEY` remain optional host-key sources and override the selected provider's menu-saved key. Menu keys are stored in Windows Credential Manager.
-- The key is never included in multiplayer messages.
-- Host push-to-talk audio goes to the selected speech provider when the host uses the Buddy voice key.
-- Client push-to-talk audio is relayed only while that client holds the Buddy voice key; the host can disable remote audio for public lobbies.
-- Host screenshots are captured only when `[Vision] Enabled = true` (default off) and only for explicit visual questions; they are never transmitted to clients.
-- Generated Buddy speech is sent from the host to compatible clients as downsampled PCM audio.
-- Buddy's spoken voice is AI-generated.
+## Troubleshooting
 
-## Build
+**Buddy never appears.** Every connected player needs the same Buddy version. Check the BepInEx console for a handshake mismatch warning naming the player. Unmodded players block the spawn entirely.
 
-The project targets `netstandard2.1` and is pinned to `LethalCompany.GameLibs.Steam 81.0.5-ngd.0`.
+**"Buddy heard silence."** Windows picked the wrong microphone. Set `[Voice] InputDevice` to your device name or part of it.
+
+**Teammates stop hearing me after I talk to Buddy.** Make sure `KeepGameVoiceDuringPushToTalk = true`. If another voice mod conflicts, set `[Voice] InputDevice` to a different microphone than the game uses.
+
+**He talks too much.** Lower `ObservationIntervalSeconds` to `0`, or set `EnvironmentAwareness = false`. `DynamicPacing = true` already makes him quieter as the story progresses.
+
+**He answers the wrong person.** `SocialAwareness = true` improves this. Note that Lethal Company chat is unauthenticated, so a modded client can make a line appear to come from someone else — this can mislead him about who to answer, but it can never grant command authority.
+
+**Remote players can't buy or route anything.** Working as intended in a public or unverifiable lobby. Use a friends/invite-only lobby, or set `RemoteGameActionsInPublicLobbies = true` if you trust everyone present.
+
+**He says he can't confirm something obvious.** He is only allowed to claim what the sensors actually reported. That is deliberate.
+
+---
+
+## Privacy and cost
+
+- Only the host holds an API key, and only the host calls the provider. Keys are never put in multiplayer messages, logs or the config file.
+- Host push-to-talk audio goes to the speech provider when the host uses the Buddy voice key. Client audio is relayed only while that client holds the key, and the host can disable remote audio entirely.
+- Generated speech is distributed from the host as bounded PCM audio.
+- Relationship data stores at most eight sets of three small numbers per save, keyed by a non-reversible digest. No names, IDs, chat or transcripts reach disk.
+- The response journal is host-only and records what players say. See the configuration note above.
+- Buddy's voice is AI-generated.
+
+Full threat model and trust boundaries: [SECURITY.md](SECURITY.md).
+
+---
+
+## Building from source
+
+Targets `netstandard2.1`, pinned to `LethalCompany.GameLibs.Steam 81.0.5-ngd.0`.
 
 ```bash
 dotnet restore src/LethalAICrewmate.csproj
 dotnet build src/LethalAICrewmate.csproj -c Release
+dotnet run --project tests/ReleaseChecks/ReleaseChecks.csproj
 ```
 
-`pack.ps1` builds the DLL and creates the Thunderstore ZIP.
+`pack.ps1` builds the DLL and produces the Thunderstore ZIP.
 
-GitHub Actions performs release checks, compiles with warnings treated as errors, checks for API-key-shaped secrets (Groq and OpenAI) in source and the compiled DLL, validates package/version consistency, creates a SHA-256 checksum and uploads the ready-to-install ZIP.
+CI compiles with warnings as errors, runs the release and security regression checks, scans source and compiled DLL bytes for API-key-shaped secrets, validates package and version consistency, and publishes a SHA-256 checksum with every ZIP. Generated DLLs and ZIPs are deliberately not committed.
 
-Generated DLLs and release ZIPs are intentionally not committed to the source tree.
+A shipping ZIP contains exactly `LethalAICrewmate.dll`, `manifest.json`, `README.md`, `CHANGELOG.md` and `icon.png`.
 
-## Release ZIP
+---
 
-A shipping ZIP contains only:
+## Security note
 
-- `LethalAICrewmate.dll`
-- `manifest.json`
-- `README.md`
-- `CHANGELOG.md`
-- `icon.png`
+Older private builds contained a shared Groq key. Any credential that has ever been committed or shared must be considered exposed and revoked at the provider — removing it from the source tree is not revocation. Current release source and packages contain no default API key, and CI rejects any build that would ship one.
 
-## Important security note
-
-Older private builds contained a shared Groq key. That key must be revoked/rotated before public distribution. Current release source and generated packages do not intentionally include a default API key.
+To report a vulnerability, avoid posting credentials or logs publicly. See [SECURITY.md](SECURITY.md).

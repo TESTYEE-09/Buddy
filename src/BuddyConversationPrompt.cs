@@ -77,7 +77,11 @@ namespace LethalAICrewmate
             sb.Append("No confirmed route: 'Can't confirm a safe route from here.'\n");
             sb.Append("Two nearby scrap items: 'Two bits nearby. Worth carrying.'\n");
             sb.Append("Blocked action: 'Didn't take. Try the exact code.'\n");
-            return sb.ToString();
+
+            string prompt = sb.ToString();
+            // Journal the exact prompt behind the replies that follow, so hosts can tune it.
+            ResponseJournal.RecordPromptSnapshot(prompt);
+            return prompt;
         }
 
         private static void AppendLine(StringBuilder sb, string line)
