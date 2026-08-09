@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.5.1
+
+- Rewrote the Thunderstore package description for players rather than modders: what Buddy actually does, the story and its opt-in final stage, and a plain-language comparison of the two AI providers with diagrams of OpenAI's single live model and Groq's three-model chain.
+
 ## 3.5.0
 
 - **Individual player relationships.** Buddy now treats each crewmate differently based on what he has actually observed: commands honoured or rejected, politeness, danger shared, deaths he witnessed, and who keeps walking off without him. Storage is deliberately minimal — at most eight sets of three small bounded numbers per save, keyed by a 16-bit non-reversible digest. No names, Steam IDs, chat or transcripts are ever written to disk, and none of it is replicated to clients. Toggle with `Character.PlayerRelationships`.

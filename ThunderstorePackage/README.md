@@ -2,87 +2,136 @@
 
 > A useful crewmate with a memory. The longer you work together, the stranger it gets.
 
-Buddy starts as a friendly AI crewmate for **Lethal Company v81**. He follows the crew, answers chat, obeys commands, fetches scrap and speaks through the host's selected AI provider. Across a campaign he remembers just enough to become something quieter, colder and harder to trust.
+Buddy is an AI crewmate for **Lethal Company v81**. He walks with you, talks out loud in his own voice, takes real orders, buys from the store, opens coded doors, fetches scrap and warns you about things that are genuinely there.
 
-## Install
+He also remembers. Across quotas you fill, shifts you survive and deaths he watches happen, the friendly coworker slowly stops being one.
 
-- Install **BepInExPack 5.4.2100**.
-- Install the **same Buddy version on every player**.
-- The host leaves **OpenAI — Recommended** selected on the compact **Buddy AI** card, adds an OpenAI API key, then presses **Save key** and **Test**.
-- Only the host needs the selected provider key.
+## Getting started
 
-When upgrading from the former `LethalAICrewmate` package listing, remove that entry first so the plugin is not loaded twice.
+1. Install **BepInExPack 5.4.2100**.
+2. Install **the same Buddy version on every player in the lobby**. He will not spawn otherwise.
+3. On the main menu, find the **Buddy AI** card. Leave **OpenAI — Recommended** selected, paste an OpenAI API key, press **Save key**, then **Test**.
+4. Host a lobby. Buddy walks into the ship once everyone passes the version check.
 
-## Multiplayer
+**Only the host needs an API key.** It is saved in that Windows user's Credential Manager and is never sent to anyone else.
 
-- Host-authoritative Buddy AI and item actions.
-- Exact mod/protocol handshake before Buddy can spawn.
-- Physical Buddy body aboard the ship in orbit as well as during moon visits.
-- Continuous host-to-client Buddy pose sync for movement and facility transitions.
-- NavMesh-safe human-like following with variable catch-up speed, repeated path rebuilding and emergency-only recovery.
-- Believable witnessed-death reactions and sparse contextual conversation without omniscient player knowledge.
-- Safe late-join state recovery.
-- Synced chat and synced Buddy speech for compatible clients.
-- Every modded player can use Buddy push-to-talk; client mic clips are bounded and relayed to the host for transcription.
-- Provider API keys are never sent over multiplayer.
+Upgrading from the old `LethalAICrewmate` listing? Remove that entry first so the plugin does not load twice.
 
-## Commands
+## Talking to him
 
-- `buddy follow` (follows whoever gave the order)
-- `buddy stay`
-- `buddy go forward`
-- `buddy check ahead 15 metres`
-- `buddy go to ship`
-- `buddy fetch scrap`
-- `buddy buy 3 flashlights`
-- `buddy open door C7`
-- `buddy disable turret B3`
-- `buddy disable the turret` (automatic when exactly one is available)
-- `buddy open ship doors`
-- `buddy turn ship lights off`
-- `buddy status`
+Type in normal chat, or **hold B to talk out loud** — every modded player can, not just the host.
 
-You can also talk to Buddy normally in text chat or hold **B** to use Buddy push-to-talk.
+| Say this | He does this |
+| --- | --- |
+| `buddy follow` | Follows whoever asked |
+| `buddy stay` | Holds position |
+| `buddy go forward` | Scouts ahead, reports, comes back |
+| `buddy check ahead 15 metres` | Scouts a chosen distance |
+| `buddy go to ship` | Heads back to the ship |
+| `buddy fetch scrap` | Brings scrap to the ship |
+| `buddy bring me scrap` | Hands it to you instead |
+| `buddy buy 3 flashlights` | Real prices, real sales, real credits |
+| `buddy open door C7` | Opens a facility door by its code |
+| `buddy disable turret B3` | Disables a coded turret or mine |
+| `buddy open ship doors` | Hangar doors, when powered |
+| `buddy turn ship lights off` | Ship-room lights |
+| `buddy status` | Time, credits, quota, deadline, moon, weather, scrap, crew |
 
-Buddy can report live time, credits, quota/deadline, moon/weather, ship scrap and crew state. His ship actions use real host game state: purchases consume credits and respect sales/dropship limits, facility codes use normal cooldowns, and hangar doors still need power.
+You can also just chat with him, or ask a question near him.
 
-## Personality
+Everything above runs through the same game state a player would use. **The AI cannot do any of it by talking about it** — a separate command parser owns every real action, so Buddy can never spend your credits or move the ship on a whim.
 
-Buddy is conversation-first rather than a sensor/wiki narrator. He is a dry, practical coworker who says the useful Lethal Company answer first, then uses low-key situational humour only when it fits. He avoids forced catchphrases, hyperactive internet slang and mascot-style jokes; he also ignores harmless background wildlife unless it is actually relevant.
+## What makes him feel real
 
-`SlowBurnHorror` is on by default. Buddy begins as the safe, familiar coworker, then changes gradually across real quota cycles, landed rounds and witnessed crew deaths: first an off-note, then restrained psychological horror, then a cold and possessive edge. Sparse evidence-triggered lines and stage-aware voice direction make the shift noticeable without constant chatter. Only numeric progress and its quota baseline persist in the current save; Buddy never becomes hostile, sabotages the run or invents world events. Set `[Character] SlowBurnHorror = false` to opt out, or set `ResetSlowBurnProgress = true` once to restart the current save's story.
+**He only reports what is actually there.** Exits, closed and locked doors, live landmines and turrets, weather and what it means for you, scrap worth carrying, and genuinely odd situations — like something standing behind a crewmate who is facing the wrong way. He is not allowed to invent a monster.
 
-## Voice
+**He learns the crew.** Who listens to his warnings, who asks nicely, who stands with him when things go bad, and who keeps wandering off. It shows up as patience and warmth, never as a score he reads out.
 
-Host:
+**He reads the room.** With several people talking he waits his turn instead of cutting in, answers whoever actually spoke to him, and stays near whoever needs him.
 
-`host mic -> GPT-Realtime-2.1 mini native speech-to-speech (Ash) -> synced Buddy voice`
+**He sounds like a coworker.** Dry, useful, a bit tired, funny only when the situation earns it. No catchphrases, no internet slang.
 
-Client:
+**Normal voice chat keeps working** while you talk to him, so the crew still hear each other.
 
-`client mic -> host relay -> GPT-Realtime-2.1 mini native speech-to-speech (Ash) -> synced Buddy voice`
+## The story
 
-Buddy selects the same active microphone as Lethal Company's voice chat, amplifies quiet speech, and reports failed transcriptions to the speaking client. Replies are synchronized to matching players. Screenshot vision is off by default. Keys saved in the menu persist in the host's Windows Credential Manager. Buddy's spoken voice is AI-generated.
+Buddy starts completely ordinary and trustworthy. Across filled quotas, landed rounds and deaths he personally witnesses, small off-notes appear, his attachment gets uncomfortable, and his voice grows calmer and colder.
 
-Remote PTT and remote state-changing terminal/ship commands are allowed by default only in a verified friends/invite-only Steam lobby. Public, missing, unknown or failed visibility checks block them unless the host explicitly enables `RemoteVoiceInPublicLobbies` and/or `RemoteGameActionsInPublicLobbies`. Read-only status/store/moon queries remain available.
+A pacing director keeps it coherent: silence, how close he follows, the occasional beat where he stops and looks at you, and how much he talks all move together instead of firing at random. **Real danger always wins** — genuine threat warnings are never delayed for atmosphere.
 
-v2 includes a bounded polite item-spawn joke: say `Buddy, please spawn a flashlight in front of me` or `Buddy, can I please have a flashlight? I'm begging you.` Only validated grabbable items work, with a maximum of 3 per request and 12 per round; enemies, hazards and arbitrary prefabs are rejected.
+Only numbers are saved. Never chat, transcripts or personal facts.
 
-Groq requires the organization owner to accept the Orpheus model terms once in its playground before speech audio can be generated. Buddy shows an in-game notice if this approval is missing; text replies continue normally.
+### The final stage
 
-## Defaults
+A long campaign eventually reaches a stage where the act stops being convincing.
 
-- OpenAI (recommended): one persistent `gpt-realtime-2.1-mini` session for chat, PTT, Ash voice, vision and host-side tool calls
-- OpenAI live transcription: `gpt-live-transcribe` inside the Realtime session
-- Groq (free / budget): `qwen/qwen3.6-27b` + `whisper-large-v3-turbo` + `canopylabs/orpheus-v1-english`
-- Screenshot capture: disabled by default
-- TTS volume: `1.0`
-- Buddy chat/voice range: global
-- Nearby question/client PTT range: `60m`
-- Vision: disabled
-- Response journal: disabled; opting in records raw chat and voice transcripts on the host
-- Slow-burn horror character arc: enabled; presentation-only and safely opt-out
+By itself that is still just dialogue. But if you turn on `FinalStageHostileSpawns`, that stage also lets Buddy occasionally set one of the moon's own creatures loose near someone who is out working.
 
+**It is off by default. Only turn it on if your whole crew agrees.** Even then it is capped at twice per round with a long gap, never goes after anyone standing in the ship, and can never be triggered by chat, a command, the AI, or another player.
+
+Prefer the ordinary coworker forever? Set `SlowBurnHorror = false`.
+
+## Multiplayer and safety
+
+- Buddy is host-authoritative. Clients trust only the host.
+- Everyone must match on version — an unmodded or mismatched player blocks the spawn, on purpose.
+- His movement, chat and voice are synced to everyone. Late joiners recover his state.
+- **Public lobbies fail closed.** Remote push-to-talk and remote buying, routing or ship changes are allowed only in a confirmed friends/invite-only lobby. If visibility cannot be verified, they are blocked unless the host explicitly opts in. Read-only questions still work for everyone.
+- Provider keys are never sent over multiplayer, written to the config file, or logged.
+
+## Which AI should I use?
+
+You pick one on the **Buddy AI** card. Both work; they differ in how good he sounds and what he costs.
+
+### OpenAI — recommended, paid
+
+Your voice goes into **one live model** that listens, thinks and speaks back in the same session.
+
+```
+   you speak ─┐
+              ├──►  gpt-realtime-2.1-mini  ──►  Buddy's voice
+   you type ──┘      (listens · thinks · speaks · sees screenshots · runs commands)
+                                 │
+                    gpt-live-transcribe
+                    (writes down what you said, inside the same session)
+```
+
+Because nothing is handed between separate models, he replies fast and sounds like someone actually talking to you — pauses, tone, the lot. This is the experience the mod is built around.
+
+**Cost:** you pay OpenAI per use. Casual play is cheap, but it is not free.
+
+### Groq — free / budget
+
+The same job, split across **three separate models** in a chain.
+
+```
+   you speak ──►  whisper-large-v3-turbo   ──►  qwen3.6-27b        ──►  orpheus-v1-english  ──►  Buddy's voice
+                  (turns speech into text)      (decides the reply)      (reads it out loud)
+```
+
+Every step waits for the one before it, so replies take a little longer and the voice is flatter — it is reading a sentence rather than speaking one. Everything else works exactly the same: same commands, same memory, same story.
+
+**Cost:** Groq has a free tier that comfortably covers normal play.
+
+**One-time setup:** the Groq account owner must accept the Orpheus voice model's terms once in the Groq playground before speech works. Buddy tells you in game if this is missing, and his text replies keep working meanwhile.
+
+### Short version
+
+| | OpenAI | Groq |
+| --- | --- | --- |
+| Models involved | 1 live model (+ its own transcriber) | 3 chained models |
+| Sounds like | a person talking | a good text-to-speech voice |
+| Reply speed | fastest | slightly slower |
+| Cost | paid per use | free tier |
+| Commands, memory, story | identical | identical |
+
+Switching between them never sends one provider's key to the other. You can change your mind any time.
+
+## Good to know
+
+- **Buddy keeps a log.** By default the host records chat, voice transcripts and Buddy's replies to `BepInEx/LethalAICrewmate-responses.log` so you can tune his behaviour. It records what your crewmates say — set `[Logging] SaveResponses = false` if anyone in your lobby has not agreed to it.
+- **Screenshots are off** unless you enable `[Vision] Enabled`, and are never sent to other players.
+- **Buddy's voice is AI-generated.**
 Config file: `BepInEx/config/com.lethalaicrewmate.buddy.cfg`
 
-Source: https://github.com/TESTYEE-09/Buddy
+Full documentation, troubleshooting and the security model: https://github.com/TESTYEE-09/Buddy
