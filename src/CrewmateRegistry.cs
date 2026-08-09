@@ -26,10 +26,13 @@ namespace LethalAICrewmate
         public float NextObservationAt;
         /// <summary>Scrap already counted via CollectNewScrapForThisRound this session.</summary>
         public readonly HashSet<int> ScrapCountedInstanceIds = new HashSet<int>();
-        /// <summary>Last MoveTo target (transform fallback when agent has no NavMesh).</summary>
+        /// <summary>Last requested NavMesh destination, used by the movement watchdog.</summary>
         public Vector3 ManualDestination;
-        /// <summary>Cooldown next facility/outside teleport (anti-spam).</summary>
+        /// <summary>Cooldown for a failed or completed facility/outside recovery.</summary>
         public float NextAreaTeleportAt;
+        /// <summary>Spaced path rebuild attempts made during a persistent area mismatch.</summary>
+        public int AreaPathRebuildAttempts;
+        public float NextAreaPathRebuildAt;
         /// <summary>Stable shoulder preference so following does not visibly zig-zag.</summary>
         public float FollowSideOffset;
         public Vector3 ScoutDestination;
