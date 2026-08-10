@@ -234,7 +234,12 @@ jobs:
 
           gh release view $tag --repo "$env:GITHUB_REPOSITORY" *> $null
           if ($LASTEXITCODE -eq 0) {
-            Write-Host "Release $tag already exists; leaving it untouched."
+            gh release upload $tag `
+              $zip.FullName `
+              'SHA256SUMS.txt' `
+              --repo "$env:GITHUB_REPOSITORY" `
+              --clobber
+            Write-Host "Refreshed verified assets for existing release $tag."
             exit 0
           }
 
