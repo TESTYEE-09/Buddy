@@ -73,16 +73,9 @@ static class Program
         Check(BuddyCharacterArc.StageFor(0, 3, 0) == BuddyArcStage.OffNote, "character arc develops an off note slowly");
         Check(BuddyCharacterArc.StageFor(1, 4, 0) == BuddyArcStage.Unsettling, "character arc reaches unsettling after sustained play");
         Check(BuddyCharacterArc.StageFor(2, 3, 2) == BuddyArcStage.Cold, "character arc reaches cold only after substantial evidence");
-        Check(BuddyCharacterArc.Beat(BuddyArcStage.Coworker, BuddyArcEvent.CrewDeath, 1) == null,
-              "ordinary stage does not force horror beats");
-        string unsettlingBeat = BuddyCharacterArc.Beat(BuddyArcStage.Unsettling, BuddyArcEvent.LastCrewmate, 7);
-        Check(!string.IsNullOrWhiteSpace(unsettlingBeat) && unsettlingBeat.Length <= 80,
-              "unsettling beat remains a short coworker line");
         Check(BuddyCharacterArc.PromptDirective(BuddyArcStage.Cold).Contains("Never attack") &&
               BuddyCharacterArc.PromptDirective(BuddyArcStage.Cold).Contains("fabricate evidence"),
               "late character arc cannot override gameplay safety or truth");
-        Check(BuddyCharacterArc.TtsDirection(BuddyArcStage.Cold).Contains("Never use a monster voice"),
-              "late character voice stays restrained rather than theatrical");
         Check(BuddyCharacterArc.Score(int.MaxValue, int.MaxValue, int.MaxValue) == int.MaxValue,
               "character score arithmetic saturates safely");
         Check(BuddyCharacterArc.AdvanceScore(int.MaxValue, 4) == int.MaxValue,
@@ -99,21 +92,9 @@ static class Program
               "confirmed quota progression advances the persistent arc");
         Check(BuddyCharacterArc.EventPoints(BuddyArcEvent.StageAdvanced, 99) == 0,
               "stage announcements cannot recursively advance character progress");
-        bool safeBeatCatalog = true;
-        foreach (BuddyArcStage stage in Enum.GetValues<BuddyArcStage>())
-        foreach (BuddyArcEvent eventKind in Enum.GetValues<BuddyArcEvent>())
-        for (int variant = 0; variant < 2; variant++)
-        {
-            string beat = BuddyCharacterArc.Beat(stage, eventKind, variant);
-            if (beat == null) continue;
-            string lowerBeat = beat.Trim().ToLowerInvariant();
-            if (beat.Length > 80 || beat.Contains('\r') || beat.Contains('\n') || beat.Contains('[') ||
-                lowerBeat.StartsWith("buy ") || lowerBeat.StartsWith("route ") || lowerBeat.StartsWith("open ") ||
-                lowerBeat.StartsWith("close ") || lowerBeat.StartsWith("disable ") || lowerBeat.StartsWith("spawn ") ||
-                lowerBeat.StartsWith("follow ") || lowerBeat.StartsWith("go ") || lowerBeat.StartsWith("leave "))
-                safeBeatCatalog = false;
-        }
-        Check(safeBeatCatalog, "scripted horror catalog stays short, plain and non-commanding");
+        // Every spoken line is the model's now, so there is no scripted catalogue left to police.
+        // What must stay true is that nothing in the codebase can put words in Buddy's mouth again.
+        Check(!File.Exists(Path.Combine(Directory.GetCurrentDirectory(), "src", "BuddyTts.cs")), "the speak-this-exact-text path must stay deleted");
         Check(BuddyCharacterArc.InitialProgress(false, 0, 2) == 8,
               "first install can join an established campaign at its earned arc stage");
         Check(BuddyCharacterArc.InitialProgress(true, 0, 2) == 0,

@@ -8,6 +8,21 @@ He can follow or wait, scout ahead, fetch scrap, return items to the ship, inspe
 
 Typed Lethal Company chat remains normal game chat and **does not trigger Buddy or use API credit**. Hold **B** to talk to him. Every compatible player can use voice.
 
+## Project status
+
+Active development is **paused** as of August 2026, with 5.0.0 as the intended stable release.
+The mod is feature-complete for what it set out to do and is not abandoned - it is simply not
+being worked on day to day.
+
+Contributions are welcome and the project is open to anyone who wants to build on it. Pull
+requests are the best way in. Two things are worth knowing before you start:
+
+- `dotnet run --project tests/ReleaseChecks -c Release` must pass. It asserts on safety
+  invariants and on exact system-prompt content, so a prompt change that breaks character or
+  weakens a safety rule fails the build rather than shipping quietly.
+- Nothing may speak for Buddy except the model. There are no hardcoded lines, and the checks
+  enforce that. Give the model a fact and let it choose the words.
+
 ## Quick start
 
 1. Install **BepInExPack 5.4.2100** and **LethalSettings 1.4.1**. Thunderstore/r2modman installs both automatically.

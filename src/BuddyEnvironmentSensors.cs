@@ -41,7 +41,7 @@ namespace LethalAICrewmate
             }
             catch (Exception ex)
             {
-                sb.Append("Environment sensor error: ").Append(ex.Message).AppendLine();
+                sb.Append("Some surroundings unavailable: ").Append(ex.Message).AppendLine();
             }
         }
 
@@ -81,11 +81,11 @@ namespace LethalAICrewmate
             }
             if (nearest == null || best > 120f)
             {
-                sb.AppendLine("Nearest known exit: not confirmable from here.");
+                sb.AppendLine("Nearest way out: not visible from here.");
                 return;
             }
             bool toBuilding = TryReadBool(nearest, "isEntranceToBuilding", out bool value) && value;
-            sb.Append("Nearest confirmed ").Append(toBuilding ? "facility entrance" : "exit door")
+            sb.Append("Nearest ").Append(toBuilding ? "facility entrance" : "way out")
               .Append(": ").Append(Mathf.RoundToInt(best)).AppendLine(" metres away.");
         }
 
@@ -130,11 +130,11 @@ namespace LethalAICrewmate
 
             if (hazards.Count == 0)
             {
-                sb.AppendLine("Placed hazards within 30m: NONE. Do not warn about traps.");
+                sb.AppendLine("Traps within 30m: none.");
                 return;
             }
             if (hazards.Count > 6) hazards.RemoveRange(6, hazards.Count - 6);
-            sb.Append("Placed hazards within 30m: ").Append(string.Join(", ", hazards)).AppendLine(".");
+            sb.Append("Traps within 30m: ").Append(string.Join(", ", hazards)).AppendLine(".");
         }
 
         private static void AppendWeatherAdvice(StringBuilder sb)
@@ -151,8 +151,8 @@ namespace LethalAICrewmate
         {
             string unusual = DescribeUnusualEnemy(origin, out _);
             sb.AppendLine(string.IsNullOrEmpty(unusual)
-                ? "Unusual entity situations: none confirmed."
-                : "Unusual entity situation: " + unusual + ".");
+                ? "Anything odd: nothing."
+                : "Something odd: " + unusual + ".");
         }
 
         // ---------- rare unprompted reactions ----------

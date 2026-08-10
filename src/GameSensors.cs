@@ -14,24 +14,24 @@ namespace LethalAICrewmate
         public static string BuildLiveContext(int perspectivePlayerId = -1)
         {
             var sb = new StringBuilder(512);
-            sb.AppendLine("[SENSOR — ONLY REAL DATA. Do NOT invent anything not listed here.]");
+            sb.AppendLine("RIGHT NOW");
 
             try
             {
                 var sor = StartOfRound.Instance;
                 if (sor == null)
                 {
-                    sb.AppendLine("Phase: unknown (no StartOfRound).");
+                    sb.AppendLine("Where: unknown.");
                     return sb.ToString();
                 }
 
                 bool inSpace = sor.inShipPhase || !sor.shipHasLanded;
-                sb.Append("Phase: ").Append(inSpace ? "IN SPACE / ORBIT (ship, terminal available)" : "ON MOON (landed)").AppendLine(".");
+                sb.Append("Where: ").Append(inSpace ? "in orbit, aboard the ship" : "landed on the moon").AppendLine(".");
 
                 string moon = sor.currentLevel != null
                     ? (sor.currentLevel.PlanetName ?? sor.currentLevel.name)
                     : "unknown";
-                sb.Append("Current route/moon: ").Append(moon).AppendLine(".");
+                sb.Append("Moon: ").Append(moon).AppendLine(".");
 
                 try
                 {
@@ -45,7 +45,7 @@ namespace LethalAICrewmate
                 {
                     var term = UnityEngine.Object.FindObjectOfType<Terminal>();
                     if (term != null)
-                        sb.Append("Company credits: ").Append(term.groupCredits).AppendLine(".");
+                        sb.Append("Credits: ").Append(term.groupCredits).AppendLine(".");
                 }
                 catch { /* ignore */ }
 
@@ -71,7 +71,7 @@ namespace LethalAICrewmate
                         shipScrapCount++;
                         shipScrapValue += Mathf.Max(0, item.scrapValue);
                     }
-                    sb.Append("Ship scrap: ").Append(shipScrapCount).Append(" items worth ")
+                    sb.Append("Scrap aboard the ship: ").Append(shipScrapCount).Append(" items worth ")
                       .Append(shipScrapValue).AppendLine(".");
                 }
                 catch { /* ignore */ }
@@ -90,7 +90,7 @@ namespace LethalAICrewmate
                 string perspectiveName = perspective != null
                     ? PromptSafety.SanitizePlayerName(perspective.playerUsername)
                     : buddy?.Enemy != null ? "Buddy" : "host";
-                sb.Append("Sensor origin: ").Append(perspectiveName).AppendLine(". Distances below are from this position.");
+                sb.Append("Distances measured from: ").Append(perspectiveName).AppendLine(".");
 
                 var crew = new List<string>();
                 if (sor.allPlayerScripts != null)
@@ -102,19 +102,19 @@ namespace LethalAICrewmate
                         crew.Add(playerName + "=" + (player.isPlayerDead ? "DEAD" : player.isPlayerControlled ? "alive" : "not active"));
                     }
                 }
-                sb.Append("Crew status: ").Append(crew.Count == 0 ? "unknown" : string.Join(", ", crew)).AppendLine(".");
+                sb.Append("Crew: ").Append(crew.Count == 0 ? "unknown" : string.Join(", ", crew)).AppendLine(".");
 
                 if (buddy?.Enemy != null)
                 {
                     string area = buddy.Enemy.isOutside ? "outside" : IsInsideShip(buddy.Enemy.transform.position, sor) ? "ship" : "facility";
-                    sb.Append("Buddy location: ").Append(area);
+                    sb.Append("You are: ").Append(area);
                     if (perspective != null)
                         sb.Append(", ").Append(Vector3.Distance(perspective.transform.position, buddy.Enemy.transform.position).ToString("F0")).Append("m from ").Append(perspectiveName);
                     sb.AppendLine(".");
                 }
                 else if (inSpace)
                 {
-                    sb.AppendLine("Buddy location: voice terminal in the ship; no physical body in orbit.");
+                    sb.AppendLine("You are: a voice in the ship, no body while in orbit.");
                 }
 
                 var nearby = new List<string>();
@@ -133,13 +133,13 @@ namespace LethalAICrewmate
                 catch { /* ignore */ }
 
                 if (nearby.Count == 0)
-                    sb.AppendLine("Nearby entities (35m): NONE. You must NOT claim to see any monster.");
+                    sb.AppendLine("Creatures within 35m: none.");
                 else
                 {
-                    sb.Append("Nearby entities (35m): ");
+                    sb.Append("Creatures within 35m: ");
                     sb.Append(string.Join(", ", nearby));
                     sb.AppendLine(".");
-                    sb.AppendLine("You may only name entities from this list if talking about threats.");
+                    
                 }
 
                 var scrapNear = new List<GrabbableObject>();
@@ -179,18 +179,35 @@ namespace LethalAICrewmate
                 }
 
                 if (buddy != null)
-                    sb.Append("Buddy AI state: ").Append(buddy.State).AppendLine(".");
+                    sb.Append("You are currently: ").Append(DescribeState(buddy.State)).AppendLine(".");
 
                 // Exits, doors, placed hazards, weather detail and unusual entity arrangements.
                 BuddyEnvironmentSensors.AppendContext(sb, origin);
             }
             catch (Exception ex)
             {
-                sb.Append("Sensor error: ").Append(ex.Message);
+                sb.Append("Some readings unavailable: ").Append(ex.Message);
             }
 
-            sb.AppendLine("[END SENSOR]");
+            
             return sb.ToString();
+        }
+
+        /// <summary>
+        /// Plain English for what Buddy is doing. The enum name leaked machine vocabulary into the
+        /// prompt ("Buddy AI state: FollowOwner"), which the contract then had to spend rules
+        /// forbidding him from repeating. Data he can read out as-is needs no such rule.
+        /// </summary>
+        private static string DescribeState(CrewmateState state)
+        {
+            switch (state)
+            {
+                case CrewmateState.Stay: return "holding still where you were left";
+                case CrewmateState.ReturnToShip: return "heading back to the ship";
+                case CrewmateState.FetchScrap: return "off fetching scrap";
+                case CrewmateState.ScoutAhead: return "scouting ahead";
+                default: return "following your owner";
+            }
         }
 
         private static PlayerControllerB FindPlayer(int playerId, PlayerControllerB[] players)

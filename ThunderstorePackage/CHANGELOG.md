@@ -1,4 +1,40 @@
 # Changelog
+## 5.0.0
+Nothing is scripted any more. Every word Buddy says is his own.
+
+This is the intended stable release. Active development is paused after it; the project stays
+open to contributions.
+
+**No more premade lines.** Danger warnings used to be picked from a hardcoded list, which is why
+you heard "I saw a Centipede." over and over. Arc moments came from a fixed catalogue of two
+lines per stage. Scout reports and blocked-route replies were C# strings. All of it is gone. The
+game now hands the model a confirmed fact and the model chooses the words - including the fear in
+them. Detection and cooldowns are exactly as deterministic as before; only the wording changed.
+
+**Actions stopped sounding like a machine.** The tool result was handed back as a finished English
+sentence ("Fetching scrap for the ship.") and read out verbatim, so the line you heard was a
+hardcoded string. Results are now terse status data and are labelled private - Buddy answers in
+his own words, differently each time.
+
+**One action, one reply.** A tool turn produced two spoken lines: a preamble, then a reply after
+the result. Audio on any tool-capable turn is now held until the response is known to be a plain
+message, so speaking and acting can never overlap.
+
+**Talking about a job no longer starts the job.** "Ready to get all the scrap?" sent Buddy off
+fetching. Orders, questions, plans and commentary are now separated explicitly.
+
+**Buddy no longer goes silent after doing what he was asked.** A reply that came back as text with
+no audio threw away the whole turn, action included.
+
+**The system prompt was rewritten.** Shorter, plainer, and organised around what Buddy does rather
+than a wall of prohibitions. The per-turn half now carries only what actually changes - the
+standing rules live once in the cached half instead of being re-sent and re-paid for every reply.
+The live state block reads as plain English rather than sensor output, so there is nothing
+machine-shaped left for him to accidentally repeat.
+
+**Removed:** the speak-this-exact-text path, the scripted arc dialogue catalogue, the danger
+callout phrase list, and an unused voice-direction helper.
+
 ## 4.4.0
 One action, one reply, and it sounds like Buddy.
 

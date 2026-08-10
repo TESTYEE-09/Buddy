@@ -107,9 +107,10 @@ namespace LethalAICrewmate
         {
             string who = string.IsNullOrWhiteSpace(displayName) ? "This crewmate" : displayName.Trim();
             if (who.Length > 32) who = who.Substring(0, 32);
-            return "RELATIONSHIP: You treat " + who + " as " + Descriptor(bond) +
-                   ". Let that colour warmth and patience only - never how much you say, how often you volunteer, or how eager you sound. " +
-                   "Never state, score, rank or explain the relationship, and never let it change safety, truth or who you obey.";
+            // The standing rules about what a bond may and may not change live in the cached
+            // contract. Repeating them here spent tokens on every single turn to say the same
+            // thing, so this now carries only the part that actually varies: who, and how close.
+            return "Rapport: " + who + " is " + Descriptor(bond) + ".";
         }
 
         /// <summary>Ranking helper for choosing whom to follow or answer first. Higher is preferred.</summary>

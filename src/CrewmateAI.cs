@@ -515,7 +515,7 @@ namespace LethalAICrewmate
             {
                 StopMoving(enemy);
                 CrewmateRegistry.SetState(data, CrewmateState.FollowOwner);
-                LlmClient.PublishLocalReply("I couldn't get any farther ahead safely. Coming back.");
+                LlmClient.EnqueueObservation("You could not get any farther ahead safely and are heading back.");
                 return;
             }
 
@@ -540,7 +540,7 @@ namespace LethalAICrewmate
             if (!data.ScoutReportSent)
             {
                 data.ScoutReportSent = true;
-                LlmClient.PublishLocalReply(BuildScoutReport(data));
+                LlmClient.EnqueueObservation(BuildScoutReport(data));
             }
             if (Time.time - data.ScoutArrivedAt >= 2.5f)
                 CrewmateRegistry.SetState(data, CrewmateState.FollowOwner);
@@ -568,14 +568,16 @@ namespace LethalAICrewmate
             {
                 string name = nearestThreat.enemyType?.enemyName;
                 if (string.IsNullOrWhiteSpace(name)) name = "something hostile";
-                return $"Hold up—{name} is about {Mathf.CeilToInt(nearestDistance)} metres ahead of us.";
+                return $"You scouted ahead: {name} is about {Mathf.CeilToInt(nearestDistance)} metres further on. Warn them.";
             }
 
             int scrap = 0;
             foreach (var item in UnityEngine.Object.FindObjectsOfType<GrabbableObject>())
                 if (IsValidScrap(item) && Vector3.Distance(data.Enemy.transform.position, item.transform.position) <= 12f)
                     scrap++;
-            return scrap > 0 ? $"Ahead looks clear. I found {scrap} piece{(scrap == 1 ? "" : "s")} of scrap nearby." : "Ahead looks clear. I'll come back to you.";
+            return scrap > 0
+                ? $"You scouted ahead: it is clear, with {scrap} piece{(scrap == 1 ? "" : "s")} of scrap around."
+                : "You scouted ahead: it is clear, nothing worth taking.";
         }
 
         private static bool TryBeginScout(CrewmateData data, PlayerControllerB requester, float requestedDistance, out string failure)
@@ -1164,7 +1166,7 @@ namespace LethalAICrewmate
                 {
                     StopMoving(data.Enemy);
                     CrewmateRegistry.SetState(data, CrewmateState.FollowOwner);
-                    LlmClient.PublishLocalReply("That route is blocked. I'm coming back.");
+                    LlmClient.EnqueueObservation("That route is blocked, so you are coming back.");
                     return true;
                 }
             }

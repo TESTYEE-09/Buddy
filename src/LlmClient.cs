@@ -45,7 +45,7 @@ namespace LethalAICrewmate
         internal static void NotePlayerInteraction()
         {
             LastPlayerInteractionAt = Time.unscaledTime;
-            BuddyTts.DropQueuedSpeech();
+            OpenAiRealtimeVoiceClient.BeginPushToTalk();
         }
 
 
@@ -73,30 +73,5 @@ namespace LethalAICrewmate
 
         internal static void NoteBuddyLine() => LastBuddyLineAt = Time.unscaledTime;
 
-        internal static void PublishLocalReply(string display, long journalId = 0)
-        {
-            if (string.IsNullOrWhiteSpace(display)) return;
-            Publish(display, journalId, null);
-        }
-
-        internal static void PublishCharacterBeat(string display, string evidence)
-        {
-            if (string.IsNullOrWhiteSpace(display)) return;
-            Publish(display, 0, evidence);
-        }
-
-        private static void Publish(string display, long journalId, string evidence)
-        {
-            var primary = CrewmateRegistry.GetPrimary();
-            Vector3 position = primary?.Enemy != null ? primary.Enemy.transform.position : Vector3.zero;
-            ulong networkId = primary?.NetworkObjectId ?? 0;
-            string name = Plugin.CrewmateName?.Value ?? "Buddy";
-            NetMessenger.BroadcastCrewmateChat(name, display, position, networkId);
-            ProximityChat.TryShowLocal(name, display, position);
-            BuddyTts.Speak(display, position + Vector3.up * 1.6f);
-            NoteBuddyLine();
-            if (evidence == null) ResponseJournal.RecordReply(journalId, display);
-            else ResponseJournal.RecordDirect("character", "system", evidence, display);
-        }
     }
 }

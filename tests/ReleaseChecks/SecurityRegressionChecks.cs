@@ -129,6 +129,35 @@ internal static class SecurityRegressionChecks
                 realtime.Contains("without audio or text", StringComparison.Ordinal),
                 "a reply that arrives as text must not discard the turn and leave Buddy silent");
 
+        // Every word Buddy says is the model's. Hardcoded dialogue is what made him sound like a
+        // toy: the same danger callout every time, the same two arc lines forever, and an action
+        // reply that was literally a C# string. Nothing may put words in his mouth again.
+        Require(!File.Exists(Path.Combine(root, "src", "BuddyTts.cs")),
+                "the speak-this-exact-text path must stay deleted");
+        Require(!realtime.Contains("SuppressChat", StringComparison.Ordinal) &&
+                !realtime.Contains("Read this line aloud exactly", StringComparison.Ordinal),
+                "no turn may render pre-written text as speech");
+        foreach (string speaker in new[] { "BuddyDangerCallout.cs", "BuddyCharacterDirector.cs", "BuddyMalice.cs", "CrewmateAI.cs" })
+        {
+            string source = File.ReadAllText(Path.Combine(root, "src", speaker));
+            Require(!source.Contains("PublishCharacterBeat", StringComparison.Ordinal) &&
+                    !source.Contains("PublishLocalReply", StringComparison.Ordinal),
+                    speaker + " must hand the model a fact and let it choose the words");
+        }
+        string arc = File.ReadAllText(Path.Combine(root, "src", "BuddyCharacterArc.cs"));
+        Require(!arc.Contains("internal static string Beat(", StringComparison.Ordinal),
+                "the scripted arc dialogue catalogue must stay deleted");
+        string callout = File.ReadAllText(Path.Combine(root, "src", "BuddyDangerCallout.cs"));
+        Require(callout.Contains("LlmClient.EnqueueObservation", StringComparison.Ordinal) &&
+                !callout.Contains("I saw a ", StringComparison.Ordinal),
+                "danger warnings must be spoken by the model, not chosen from a list");
+
+        // The per-turn half is paid for in full on every reply, so standing rules belong in the
+        // cached contract and only genuinely changing state belongs here.
+        string promptSource = File.ReadAllText(Path.Combine(root, "src", "BuddyConversationPrompt.cs"));
+        Require(!promptSource.Contains("never call yourself '", StringComparison.Ordinal),
+                "fixed speaking rules must not be re-sent with every turn");
+
         string crewmate = File.ReadAllText(Path.Combine(root, "src", "CrewmateAI.cs"));
         Require(crewmate.Contains("ok: state=following target=", StringComparison.Ordinal) &&
                 crewmate.Contains("ok: state=fetching_scrap", StringComparison.Ordinal) &&

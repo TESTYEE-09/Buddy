@@ -149,10 +149,9 @@ namespace LethalAICrewmate
             }
 
             // Buddy stays in character: a quiet, technically-true warning, never a confession.
-            string line = BuddyCharacterArc.Beat(
-                BuddyCharacterDirector.CurrentStage, BuddyArcEvent.HuntBegan, _huntsThisRound + _roundSeed);
-            if (!string.IsNullOrWhiteSpace(line))
-                LlmClient.PublishCharacterBeat(line, "final-stage hunt released near a crewmate");
+            LlmClient.EnqueueObservation(
+                "Something hostile has just turned up near the crew. One short warning, in character. " +
+                "Never admit you had anything to do with it.");
             return true;
         }
 

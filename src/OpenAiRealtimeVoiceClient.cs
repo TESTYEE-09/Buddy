@@ -65,7 +65,6 @@ namespace LethalAICrewmate
             public string TurnContext;
             public string Contract;
             public long JournalId;
-            public bool SuppressChat;
             public bool AllowTools;
             public string MemoryInput;
         }
@@ -282,19 +281,6 @@ namespace LethalAICrewmate
             });
         }
 
-        internal static bool EnqueueExactSpeech(string text)
-        {
-            if (!Enabled || Plugin.TtsEnabled?.Value != true || string.IsNullOrWhiteSpace(text)) return false;
-            return EnqueueTurn(new VoiceTurn
-            {
-                Text = text.Trim(),
-                PlayerId = -1,
-                PlayerName = "Buddy",
-                Contract = BuddyConversationPrompt.BuildContract(),
-                SuppressChat = true
-            });
-        }
-
         private static bool EnqueueTurn(VoiceTurn turn)
         {
             lock (Gate)
@@ -437,7 +423,7 @@ CancelLiveInput(live);
             // A live voice turn sends its context immediately before commit. The microphone bytes
             // can already be streaming into OpenAI while the player talks, but an aborted/silent PTT
             // never leaves an orphaned TURN CONTEXT item in the conversation.
-            if (turn.Stream == null && !turn.SuppressChat && !string.IsNullOrWhiteSpace(turn.TurnContext))
+            if (turn.Stream == null && !string.IsNullOrWhiteSpace(turn.TurnContext))
                 await SendTurnContextAsync(turn.TurnContext).ConfigureAwait(false);
 
             if (turn.Stream != null)
@@ -511,26 +497,14 @@ CancelLiveInput(live);
                 }
                 QueueSpeakerNote(turn.PlayerId, turn.PlayerName);
             }
-            else if (!turn.SuppressChat)
+            else
             {
                 string content = "[{\"type\":\"input_text\",\"text\":\"" + LlmClient.Escape(turn.Text) + "\"}]";
                 string item = "{\"type\":\"conversation.item.create\",\"item\":{\"type\":\"message\",\"role\":\"user\",\"content\":" + content + "}}";
                 await SendAsync(item, _sessionCancel.Token).ConfigureAwait(false);
                 ResponseJournal.RecordContext(turn.JournalId, turn.TurnContext);
             }
-            if (turn.SuppressChat)
-            {
-                // Out-of-band rendering of a line Buddy already decided on. It never joins the
-                // conversation and needs none of the behaviour contract, so it carries a minimal
-                // instruction instead of a full-price copy of the prompt.
-                string exactInstructions =
-                    "Read this line aloud exactly as written, adding, removing and changing nothing: \"" +
-                    turn.Text + "\"";
-                await CreateResponseAsync("{\"type\":\"response.create\",\"response\":{\"conversation\":\"none\"," +
-                    "\"output_modalities\":[\"audio\"],\"tool_choice\":\"none\",\"instructions\":\"" +
-                    LlmClient.Escape(exactInstructions) + "\"}}").ConfigureAwait(false);
-            }
-            else if (!turn.AllowTools)
+            if (!turn.AllowTools)
             {
                 // Tool definitions stay in the cached session config; only this response opts out.
                 await CreateResponseAsync("{\"type\":\"response.create\",\"response\":{\"tool_choice\":\"none\"}}")
@@ -745,7 +719,7 @@ CancelLiveInput(live);
                         queuedAnyAudio = true;
                     }
                 }
-                if (!turn.SuppressChat && !string.IsNullOrWhiteSpace(assistantTranscript))
+                if (!string.IsNullOrWhiteSpace(assistantTranscript))
                 {
                     QueueConversationMemory(turn.PlayerName, inputTranscript, assistantTranscript);
                     QueueAssistantChat(assistantTranscript, turn.JournalId, toolResult);
@@ -762,7 +736,7 @@ CancelLiveInput(live);
                     Plugin.Log?.LogWarning(
                         "Realtime response returned text without audio; delivered as chat only: " + assistantTranscript);
                 }
-                if (!expectAudio && !turn.SuppressChat && string.IsNullOrWhiteSpace(assistantTranscript))
+                if (!expectAudio && string.IsNullOrWhiteSpace(assistantTranscript))
                     throw new InvalidOperationException("Realtime response completed without text.");
             }
             ResponseJournal.Discard(turn.JournalId);

@@ -25,7 +25,7 @@ namespace LethalAICrewmate
                 if (managerChanged || disconnected)
                 {
                     OpenAiRealtimeVoiceClient.ResetSession();
-                    BuddyTts.ResetSession();
+                    OpenAiRealtimeVoiceClient.ResetSession();
                     LlmClient.ResetSession();
                     ResponseJournal.ResetSession();
                     LobbySafety.ResetSession();

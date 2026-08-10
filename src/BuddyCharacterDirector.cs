@@ -103,7 +103,7 @@ namespace LethalAICrewmate
                         _completedRounds++;
                         _progress = BuddyCharacterArc.AdvanceScore(_progress,
                             BuddyCharacterArc.EventPoints(BuddyArcEvent.RoundStarted));
-                        evidenceBeat = MakeBeat(BuddyArcEvent.RoundStarted, "new landed round seed " + seed, seed);
+                        evidenceBeat = MakeBeat(BuddyArcEvent.RoundStarted, "The crew has landed for another shift", seed);
                     }
 
                     // A global living-player count is not evidence Buddy witnessed a death.
@@ -116,7 +116,7 @@ namespace LethalAICrewmate
                     _progress = BuddyCharacterArc.AdvanceScore(_progress,
                         BuddyCharacterArc.QuotaDeltaPoints(_lastQuotaCycles, quotaCycles));
                     evidenceBeat = MakeBeat(BuddyArcEvent.QuotaAdvanced,
-                        "fulfilled quota cycles increased from " + _lastQuotaCycles + " to " + quotaCycles, quotaCycles);
+                        "The crew has made quota again", quotaCycles);
                     _lastQuotaCycles = quotaCycles;
                 }
 
@@ -127,16 +127,18 @@ namespace LethalAICrewmate
                 {
                     Plugin.Log?.LogInfo("Buddy character arc advanced " + previous + " -> " + CurrentStage + " at progress=" + _progress + ".");
                     _pending = MakeBeat(BuddyArcEvent.StageAdvanced,
-                        "character score reached " + _progress, _progress);
+                        "Something in you has shifted a little further", _progress);
                 }
                 else if (evidenceBeat != null && _pending == null)
                     _pending = evidenceBeat;
 
                 if (_pending != null && CurrentStage != BuddyArcStage.Coworker && Time.unscaledTime >= _nextBeatAt)
                 {
-                    string line = BuddyCharacterArc.Beat(CurrentStage, _pending.EventKind, _pending.VariantSeed);
-                    if (!string.IsNullOrWhiteSpace(line))
-                        LlmClient.PublishCharacterBeat(line, _pending.Evidence);
+                    // Hand the model the thing that happened and let it find the words. The old
+                    // path picked from a hardcoded catalogue per stage, so the same two lines came
+                    // back forever and landed as stage dressing rather than as Buddy.
+                    LlmClient.EnqueueObservation(_pending.Evidence +
+                        ". One short line if it is worth one, otherwise nothing at all.");
                     _pending = null;
                     _nextBeatAt = Time.unscaledTime + BeatCooldownSeconds;
                 }
@@ -171,7 +173,7 @@ namespace LethalAICrewmate
             BuddyArcEvent kind = living <= 1 ? BuddyArcEvent.LastCrewmate : BuddyArcEvent.CrewDeath;
             _progress = BuddyCharacterArc.AdvanceScore(_progress, BuddyCharacterArc.EventPoints(kind, 1));
             _pending = MakeBeat(kind,
-                "Buddy personally witnessed " + (string.IsNullOrWhiteSpace(playerName) ? "a crewmate" : playerName) + " die nearby.",
+                "You watched " + (string.IsNullOrWhiteSpace(playerName) ? "a crewmate" : playerName) + " die, right next to you",
                 (StartOfRound.Instance?.randomMapSeed ?? 0) + _witnessedDeaths);
             SaveProgress();
         }
