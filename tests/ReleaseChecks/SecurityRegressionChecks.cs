@@ -91,6 +91,21 @@ internal static class SecurityRegressionChecks
                 prompt.Contains("Say bazinga", StringComparison.Ordinal),
                 "the rewritten prompt must lock direct, useful and natural behavior from the saved-session regressions");
 
+        // v4.1.0 shipped refusals that narrated Buddy's own plumbing ("I can't kill it without a
+        // direct action tool") and, when forced to name a real missing prerequisite, invented one
+        // that does not exist ("I need the elevator entrance code"). Both are locked out here.
+        Require(prompt.Contains("SAYING NO", StringComparison.Ordinal) &&
+                prompt.Contains("couldn't be bothered", StringComparison.Ordinal) &&
+                prompt.Contains("Never invent a missing prerequisite", StringComparison.Ordinal),
+                "refusals must decline in character instead of reporting a missing mechanism");
+        Require(prompt.Contains("You cannot fight", StringComparison.Ordinal) &&
+                prompt.Contains("not a bug, not a leech, not a player", StringComparison.Ordinal),
+                "the contract must state plainly that Buddy never attacks anything");
+        Require(!prompt.Contains("enter the facility, and return to the ship", StringComparison.Ordinal),
+                "the contract must not advertise a facility-entry action no tool implements");
+        Require(prompt.Contains("Disinterest is never a reason to skip an action you can perform", StringComparison.Ordinal),
+                "a stronger personality must never become a licence to refuse supported work");
+
         string settingsPath = Path.Combine(root, "src", "BuddySettingsMenu.cs");
         string settings = File.ReadAllText(settingsPath);
         Require(!settings.Contains("Buddy personality prompt", StringComparison.Ordinal),

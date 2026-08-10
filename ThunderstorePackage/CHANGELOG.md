@@ -1,4 +1,36 @@
 # Changelog
+## 4.3.0
+
+- **Buddy turns things down like a person now.** "I can't kill it without a direct action tool" was a
+  real answer to "kill the bug on my head". He no longer describes his own plumbing to explain a refusal:
+  a thing he does not do gets a brush-off with attitude - "Nah, couldn't be bothered.", "You've got
+  hands.", "Charge it yourself." - and the character arc colours how cold that brush-off sounds.
+- **Fixed Buddy inventing game mechanics to justify a refusal.** Asked to come into the facility he
+  replied "Need the elevator code or a confirmed elevator entrance first", then repeated it twice. There
+  is no elevator code in Lethal Company. 4.1.0's honesty rule required a refusal to name a real missing
+  prerequisite and forbade inventing a limit, but never offered plain declining as an option - so when
+  the answer was simply "I don't do that", the only exit left was to invent a prerequisite. Refusing
+  because you cannot be bothered is now explicitly honest, and inventing a missing code, permission or
+  confirmation is now explicitly a lie.
+- **Removed a capability the prompt promised and the game never had.** The contract told Buddy his body
+  could "enter the facility"; no such action exists in the tool layer, which is what left him improvising
+  entry requirements. The contract now lists exactly what he can do, states that it is the whole list,
+  and states plainly what he does not do - fighting, healing, reviving, carrying, recharging, driving,
+  weapons, facility entry on command, teleporting.
+- **Refusal rules live in one place.** Guidance had drifted across three sections that partly contradicted
+  each other. There is now a single SAYING NO section separating three cases: can do it (do it, say
+  almost nothing), can do it but something real is missing (name the real thing in one line), and does
+  not do it at all (refuse in character, never explain).
+- **A stronger personality cannot become laziness.** Buddy has opinions, grudges, moons he hates and
+  permission to be a bit of a bastard - but "disinterest is never a reason to skip an action you can
+  perform: you grumble and you still do it."
+- Banned the vocabulary that leaked the implementation: tool, function, feature, ability, capability,
+  system, sensor, parameter, "not set up to", "there isn't a", "that's not supported". The old ban list
+  covered "capability" and "authorization" but not "tool", so the model simply used the words left open.
+- Four new security regression checks lock all of this in. No existing safety invariant was weakened:
+  no attacking, no sabotage, no fabricated evidence, no overriding safety, and hunting stays gated behind
+  the Feral stage plus its own explicit host opt-in.
+
 ## 4.2.0
 
 - **Buddy's replies no longer get cut off mid-word.** 4.1.0's "softer" preamble flush only spared a
