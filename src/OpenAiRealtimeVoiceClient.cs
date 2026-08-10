@@ -525,7 +525,6 @@ CancelLiveInput(live);
                 const int streamChunkBytes = OutputRate * 4 / 5;
                 int playbackChunkBytes = firstChunkBytes;
                 bool queuedAnyAudio = false;
-                bool outputItemKnown = !turn.AllowTools;
                 bool streamAudio = !turn.AllowTools;
                 bool streamedAudio = false;
                 // Speaking and acting are kept strictly separate: on any turn that may call a tool,
@@ -555,7 +554,6 @@ CancelLiveInput(live);
                     {
                         int item = message.IndexOf("\"item\"", StringComparison.Ordinal);
                         string itemType = item >= 0 ? ReadJsonString(message, "type", item) : null;
-                        outputItemKnown = true;
                         // Only a turn that cannot call a tool is allowed to start playback early;
                         // see the streamAudio note above for why a "message" item is not proof that
                         // no function call follows it in the same response.
@@ -579,7 +577,7 @@ CancelLiveInput(live);
                             audio.Write(bytes, 0, bytes.Length);
                             if (audio.Length >= playbackChunkBytes)
                             {
-                                if (streamAudio && outputItemKnown)
+                                if (streamAudio)
                                 {
                                     QueueAudioChunk(audio.ToArray());
                                     queuedAnyAudio = true;
@@ -628,7 +626,6 @@ CancelLiveInput(live);
                             audio.Position = 0;
                             completedAudioChunks.Clear();
                             assistantTranscript = "";
-                            outputItemKnown = false;
                             streamAudio = false;
                             streamedAudio = false;
                             queuedAnyAudio = false;

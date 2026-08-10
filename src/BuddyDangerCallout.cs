@@ -6,7 +6,12 @@ using UnityEngine;
 
 namespace LethalAICrewmate
 {
-    /// <summary>Deterministic emergency warning; it never waits for the LLM or player input.</summary>
+    /// <summary>
+    /// Emergency threat detection. The decision to warn is deterministic and never waits on the
+    /// model: scanning, severity and cooldowns are all local. The wording is not - the confirmed
+    /// fact is handed to the model so the warning sounds like Buddy rather than like one of three
+    /// canned strings. A warning that cannot be handed over keeps its cooldown and retries.
+    /// </summary>
     internal static class BuddyDangerCallout
     {
         private enum ThreatSeverity { Low = 1, Moderate = 2, High = 3, Lethal = 4 }
@@ -67,23 +72,12 @@ namespace LethalAICrewmate
                     return;
 
                 bool immediate = distance <= DangerDistance;
-                if (immediate)
-                {
-                    if (_dangerSent || Time.unscaledTime < _nextCalloutAt) return;
-                    _dangerSent = true;
-                    _nextCalloutAt = Time.unscaledTime + DangerCooldownSeconds;
-                }
-                else
-                {
-                    if (_warningSent || Time.unscaledTime < _nextCalloutAt) return;
-                    _warningSent = true;
-                    _nextCalloutAt = Time.unscaledTime + WarningCooldownSeconds;
-                }
+                if (immediate && (_dangerSent || Time.unscaledTime < _nextCalloutAt)) return;
+                if (!immediate && (_warningSent || Time.unscaledTime < _nextCalloutAt)) return;
 
                 string enemyName = threat.enemyType?.enemyName;
                 if (string.IsNullOrWhiteSpace(enemyName)) enemyName = "monster";
                 bool activelyThreatening = threat.targetPlayer != null || threat.movingTowardsTargetPlayer;
-                LastCalloutByMonster[id] = Time.unscaledTime;
 
                 // The words are the model's, never ours. This used to pick from a hardcoded list
                 // of canned strings, which is why every warning sounded the same and sounded
@@ -96,7 +90,36 @@ namespace LethalAICrewmate
                                   : severity >= ThreatSeverity.High
                                       ? ". Serious - warn them now, urgently."
                                       : ". Worth one short warning.");
-                LlmClient.EnqueueObservation(fact);
+
+                // Only burn the cooldowns if the warning was actually accepted. Handing the line to
+                // the model made this failable in a way a hardcoded string never was: the queue can
+                // be full, or a player can start talking and clear it. Marking the monster spoken-for
+                // before knowing that would silence this threat for two full minutes over a warning
+                // nobody ever heard - the one failure mode that actually gets somebody killed.
+                if (!LlmClient.TryEnqueueObservation(fact))
+                {
+                    // Journal the miss as well as logging it. "Buddy never warned me about the
+                    // thing that killed me" is the single hardest report to diagnose after the
+                    // fact, and a warning that was detected but never handed over leaves no other
+                    // trace: the observation turn that would normally record it never existed.
+                    ResponseJournal.RecordDirect("callout", "system", fact,
+                        "[not spoken - Buddy was busy; will retry]",
+                        enemyName + " severity=" + severity + " within " + distance.ToString("F1") + "m");
+                    Plugin.Log?.LogWarning($"Buddy danger callout dropped (busy); will retry: {enemyName} within {distance:F1}m.");
+                    return;
+                }
+
+                LastCalloutByMonster[id] = Time.unscaledTime;
+                if (immediate)
+                {
+                    _dangerSent = true;
+                    _nextCalloutAt = Time.unscaledTime + DangerCooldownSeconds;
+                }
+                else
+                {
+                    _warningSent = true;
+                    _nextCalloutAt = Time.unscaledTime + WarningCooldownSeconds;
+                }
                 Plugin.Log?.LogWarning($"Buddy danger callout: {enemyName} severity={severity} within {distance:F1}m.");
             }
             catch (Exception ex)

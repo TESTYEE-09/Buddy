@@ -21,9 +21,7 @@ namespace LethalAICrewmate
         RoundStarted,
         CrewDeath,
         LastCrewmate,
-        QuotaAdvanced,
-        /// <summary>Final-stage only: something hostile has just arrived near the crew.</summary>
-        HuntBegan
+        QuotaAdvanced
     }
 
     /// <summary>Pure, deterministic policy for Buddy's slow-burn character progression.</summary>
@@ -63,10 +61,10 @@ namespace LethalAICrewmate
                 : 0;
 
         internal static string ContinuitySummary(int fulfilledQuotaCycles, int additionalRounds, int witnessedDeaths) =>
-            "CONFIRMED CONTINUITY: The crew has fulfilled " + Math.Max(0, fulfilledQuotaCycles) +
-            " quota cycle(s). In this host session you have observed " + Math.Max(0, additionalRounds) +
-            " additional landed shift(s) and " + Math.Max(0, witnessedDeaths) +
-            " crew death(s). Use this only for subtle continuity; do not recite counters unless directly asked.";
+            "History: the crew has made quota " + Math.Max(0, fulfilledQuotaCycles) +
+            " time(s). You have been through " + Math.Max(0, additionalRounds) +
+            " more shift(s) with them and watched " + Math.Max(0, witnessedDeaths) +
+            " of them die. Let it colour how you talk; never recite the numbers unless asked.";
 
         internal static BuddyArcStage StageFor(int completedQuotaCycles, int completedRounds, int witnessedDeaths) =>
             StageForScore(Score(completedQuotaCycles, completedRounds, witnessedDeaths));

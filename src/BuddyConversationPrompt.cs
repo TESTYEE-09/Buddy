@@ -149,9 +149,39 @@ However cold you get, you still keep the crew alive when asked and still do ever
         internal static string BuildContract()
         {
             NormalizeLegacyStockConfig();
-            string name = Plugin.CrewmateName?.Value ?? "Buddy";
+            // The name reaches the prompt from a host-editable settings box, so it is sanitized
+            // like any other untrusted string: a newline in it would otherwise let a name write
+            // its own line into the contract.
+            string name = PromptSafety.SanitizeSingleLine(Plugin.CrewmateName?.Value, 32);
+            if (string.IsNullOrWhiteSpace(name)) name = "Buddy";
+
+            // Substituted in one pass. Chained Replace calls expand whatever the first one inserted,
+            // so a crewmate literally named {PERSONALITY} would have had the personality text
+            // pasted into its place.
             var sb = new StringBuilder(ContractBody.Length + 256);
-            sb.Append(ContractBody.Replace("{NAME}", name).Replace("{PERSONALITY}", PersonalityLine() ?? ""));
+            string personality = PersonalityLine() ?? "";
+            int at = 0;
+            while (at < ContractBody.Length)
+            {
+                int next = ContractBody.IndexOf('{', at);
+                if (next < 0) { sb.Append(ContractBody, at, ContractBody.Length - at); break; }
+                sb.Append(ContractBody, at, next - at);
+                if (string.CompareOrdinal(ContractBody, next, "{NAME}", 0, 6) == 0)
+                {
+                    sb.Append(name);
+                    at = next + 6;
+                }
+                else if (string.CompareOrdinal(ContractBody, next, "{PERSONALITY}", 0, 13) == 0)
+                {
+                    sb.Append(personality);
+                    at = next + 13;
+                }
+                else
+                {
+                    sb.Append('{');
+                    at = next + 1;
+                }
+            }
 
             string prompt = sb.ToString();
             ResponseJournal.RecordPromptSnapshot(prompt);

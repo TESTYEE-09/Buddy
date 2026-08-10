@@ -1,4 +1,28 @@
 # Changelog
+## 5.0.1
+Review pass over 5.0.0. Fixes found by re-reading the refactor rather than by playing it.
+
+- **A dropped danger warning used to consume its own cooldown.** Handing the wording to the model
+  made warnings failable in a way a hardcoded string never was - the turn queue can be full, or a
+  player pressing push-to-talk clears it. The cooldowns were committed before the handover, so a
+  warning nobody ever heard silenced that monster for two minutes. Cooldowns are now only spent
+  once the warning is accepted, and a dropped one is logged, journaled and retried. The same fix
+  applies to arc moments, which were losing a stage beat for two and a half minutes the same way.
+- **A crewmate name could rewrite the prompt.** The name went from a settings box into the system
+  prompt unsanitised, so a newline in it wrote its own line into the contract. It is now sanitised
+  like any other untrusted text. Placeholder substitution is also single-pass: chained replacements
+  meant a crewmate literally named {PERSONALITY} had the personality text pasted into its place.
+- **Conversation memory was the largest thing in every request.** Up to 18,000 characters of
+  dialogue history, re-sent uncached on every single turn, duplicating what the Realtime session
+  already keeps as its own items. Cut to a short recent window, which is all it needs to cover the
+  case the session cannot: a dropped socket.
+- Per-turn text now reads as plain English throughout. The remaining machine-shaped labels
+  (PACING:, SOCIAL:, CONFIRMED CONTINUITY:) were the last things left for Buddy to accidentally
+  repeat back.
+- Removed dead code the 5.0.0 deletions left behind: an unreachable audio flag, an empty method
+  ticked every frame, an unused arc event, and the leftover fields of the deleted dialogue picker.
+- Corrected a doc comment that still promised danger callouts never wait on the model.
+
 ## 5.0.0
 Nothing is scripted any more. Every word Buddy says is his own.
 

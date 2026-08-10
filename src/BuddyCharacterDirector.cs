@@ -22,20 +22,16 @@ namespace LethalAICrewmate
         private static int _lastLivingPlayers;
         private static int _lastQuotaCycles;
         private static int _progress;
-        private static PendingBeat _pending;
-
-        private sealed class PendingBeat
-        {
-            internal BuddyArcEvent EventKind;
-            internal string Evidence;
-            internal int VariantSeed;
-        }
+        // Just the sentence now. This was a small class carrying an event kind and a variant seed
+        // so the deleted dialogue catalogue could pick which hardcoded line to use; with the model
+        // writing the line, only the fact it is reacting to still matters.
+        private static string _pending;
 
         internal static BuddyArcStage CurrentStage { get; private set; } = BuddyArcStage.Coworker;
 
         internal static string PromptMemory()
         {
-            if (!_initialized) return "CONFIRMED CONTINUITY: No campaign history is available yet. Do not invent any.";
+            if (!_initialized) return "History: none yet. Do not invent any.";
             return BuddyCharacterArc.ContinuitySummary(_lastQuotaCycles, _completedRounds, _witnessedDeaths);
         }
 
@@ -87,7 +83,7 @@ namespace LethalAICrewmate
                     return;
                 }
 
-                PendingBeat evidenceBeat = null;
+                string evidenceBeat = null;
                 bool landed = !sor.inShipPhase && sor.shipHasLanded;
                 if (landed)
                 {
@@ -103,7 +99,7 @@ namespace LethalAICrewmate
                         _completedRounds++;
                         _progress = BuddyCharacterArc.AdvanceScore(_progress,
                             BuddyCharacterArc.EventPoints(BuddyArcEvent.RoundStarted));
-                        evidenceBeat = MakeBeat(BuddyArcEvent.RoundStarted, "The crew has landed for another shift", seed);
+                        evidenceBeat = "The crew has landed for another shift";
                     }
 
                     // A global living-player count is not evidence Buddy witnessed a death.
@@ -115,8 +111,7 @@ namespace LethalAICrewmate
                 {
                     _progress = BuddyCharacterArc.AdvanceScore(_progress,
                         BuddyCharacterArc.QuotaDeltaPoints(_lastQuotaCycles, quotaCycles));
-                    evidenceBeat = MakeBeat(BuddyArcEvent.QuotaAdvanced,
-                        "The crew has made quota again", quotaCycles);
+                    evidenceBeat = "The crew has made quota again";
                     _lastQuotaCycles = quotaCycles;
                 }
 
@@ -126,8 +121,7 @@ namespace LethalAICrewmate
                 if (CurrentStage > previous)
                 {
                     Plugin.Log?.LogInfo("Buddy character arc advanced " + previous + " -> " + CurrentStage + " at progress=" + _progress + ".");
-                    _pending = MakeBeat(BuddyArcEvent.StageAdvanced,
-                        "Something in you has shifted a little further", _progress);
+                    _pending = "Something in you has shifted a little further";
                 }
                 else if (evidenceBeat != null && _pending == null)
                     _pending = evidenceBeat;
@@ -137,10 +131,15 @@ namespace LethalAICrewmate
                     // Hand the model the thing that happened and let it find the words. The old
                     // path picked from a hardcoded catalogue per stage, so the same two lines came
                     // back forever and landed as stage dressing rather than as Buddy.
-                    LlmClient.EnqueueObservation(_pending.Evidence +
-                        ". One short line if it is worth one, otherwise nothing at all.");
-                    _pending = null;
-                    _nextBeatAt = Time.unscaledTime + BeatCooldownSeconds;
+                    // Only drop the beat and start the cooldown once it has actually been taken.
+                    // A queue that is full, or a player pressing push-to-talk, would otherwise
+                    // consume a stage moment that then waits another two and a half minutes.
+                    if (LlmClient.TryEnqueueObservation(_pending +
+                        ". One short line if it is worth one, otherwise nothing at all."))
+                    {
+                        _pending = null;
+                        _nextBeatAt = Time.unscaledTime + BeatCooldownSeconds;
+                    }
                 }
             }
             catch (Exception ex)
@@ -172,14 +171,10 @@ namespace LethalAICrewmate
             int living = Mathf.Max(0, StartOfRound.Instance?.livingPlayers ?? 0);
             BuddyArcEvent kind = living <= 1 ? BuddyArcEvent.LastCrewmate : BuddyArcEvent.CrewDeath;
             _progress = BuddyCharacterArc.AdvanceScore(_progress, BuddyCharacterArc.EventPoints(kind, 1));
-            _pending = MakeBeat(kind,
-                "You watched " + (string.IsNullOrWhiteSpace(playerName) ? "a crewmate" : playerName) + " die, right next to you",
-                (StartOfRound.Instance?.randomMapSeed ?? 0) + _witnessedDeaths);
+            _pending = "You watched " + (string.IsNullOrWhiteSpace(playerName) ? "a crewmate" : playerName) +
+                       " die, right next to you";
             SaveProgress();
         }
-
-        private static PendingBeat MakeBeat(BuddyArcEvent eventKind, string evidence, int variantSeed) =>
-            new PendingBeat { EventKind = eventKind, Evidence = evidence, VariantSeed = variantSeed };
 
         private static void LoadProgress(int currentQuotaCycles)
         {

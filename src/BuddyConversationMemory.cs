@@ -10,8 +10,14 @@ namespace LethalAICrewmate
     /// </summary>
     internal static class BuddyConversationMemory
     {
-        private const int MaxExchanges = 40;
-        private const int MaxPromptChars = 18000;
+        // This block is re-sent, uncached, on every single turn. At 40 exchanges and an 18,000
+        // character ceiling it was by far the largest thing in a request - and almost entirely
+        // redundant, because the Realtime session already carries the conversation as its own
+        // items and truncates them on its own policy. What this needs to cover is the gap that
+        // policy cannot: a dropped socket, where the session restarts with no history at all.
+        // A short recent window does that for a fraction of the cost.
+        private const int MaxExchanges = 8;
+        private const int MaxPromptChars = 1600;
         private const int MaxTurnChars = 700;
         private static readonly Queue<Exchange> Exchanges = new Queue<Exchange>();
 
@@ -41,8 +47,7 @@ namespace LethalAICrewmate
             if (Exchanges.Count == 0) return null;
             string name = Plugin.CrewmateName?.Value ?? "Buddy";
             var sb = new StringBuilder(Math.Min(MaxPromptChars, Exchanges.Count * 260));
-            sb.AppendLine("EARLIER CREWMATE DIALOGUE (oldest to newest; not current sensor truth)");
-            sb.AppendLine("Use this only to resolve references and remember what players care about. Do not copy old Buddy answers.");
+            sb.AppendLine("Earlier in this shift (oldest first, and no longer true of right now):");
             foreach (Exchange exchange in Exchanges)
             {
                 sb.Append(exchange.Speaker).Append(": ").AppendLine(exchange.Input);
@@ -50,7 +55,7 @@ namespace LethalAICrewmate
                 if (sb.Length > MaxPromptChars)
                 {
                     string tail = sb.ToString(sb.Length - MaxPromptChars, MaxPromptChars);
-                    return "EARLIER CREWMATE DIALOGUE (older entries trimmed)\n" + tail;
+                    return "Earlier in this shift (start trimmed):\n" + tail;
                 }
             }
             return sb.ToString();

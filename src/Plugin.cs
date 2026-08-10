@@ -14,7 +14,7 @@ namespace LethalAICrewmate
     {
         public const string ModGuid = "com.lethalaicrewmate.buddy";
         public const string ModName = "Buddy";
-public const string ModVersion = "5.0.0";
+public const string ModVersion = "5.0.1";
 
         internal static Plugin Instance;
         internal static ManualLogSource Log;
@@ -314,7 +314,6 @@ public const string ModVersion = "5.0.0";
                 BuddyRelationships.Tick();
                 BuddyEnvironmentSensors.Tick();
                 BuddyMalice.Tick();
-                LlmClient.Tick();
                 VoiceCommand.Tick();
                 BuddyClientVoice.Tick();
                 OpenAiRealtimeVoiceClient.Tick();

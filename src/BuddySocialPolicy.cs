@@ -79,14 +79,14 @@ namespace LethalAICrewmate
         internal static string GroupDirective(int liveSpeakers, string mostRecentAsker)
         {
             if (liveSpeakers <= 1) return null;
-            var line = "SOCIAL: " + liveSpeakers + " crewmates are talking near you. Answer one person, not the room. ";
+            var line = "Room: " + liveSpeakers + " crewmates are talking near you. Answer one person, not the room. ";
             if (!string.IsNullOrWhiteSpace(mostRecentAsker))
             {
                 string who = mostRecentAsker.Trim();
                 if (who.Length > 32) who = who.Substring(0, 32);
-                line += "The last person to actually address you was " + who + ". ";
+                line += "The last one to actually talk to you was " + who + ". ";
             }
-            line += "Do not repeat what a human just said, do not talk over an ongoing exchange, and stay quiet if nothing you have adds anything.";
+            line += "Do not repeat what someone just said, do not talk over them, and stay quiet if you have nothing to add.";
             return line;
         }
     }

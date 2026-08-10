@@ -148,9 +148,14 @@ internal static class SecurityRegressionChecks
         Require(!arc.Contains("internal static string Beat(", StringComparison.Ordinal),
                 "the scripted arc dialogue catalogue must stay deleted");
         string callout = File.ReadAllText(Path.Combine(root, "src", "BuddyDangerCallout.cs"));
-        Require(callout.Contains("LlmClient.EnqueueObservation", StringComparison.Ordinal) &&
+        Require(callout.Contains("LlmClient.TryEnqueueObservation", StringComparison.Ordinal) &&
                 !callout.Contains("I saw a ", StringComparison.Ordinal),
                 "danger warnings must be spoken by the model, not chosen from a list");
+        // Handing the warning to the model made it failable. Burning the per-monster cooldown
+        // before knowing it was accepted would silence a real threat for two minutes.
+        Require(callout.IndexOf("TryEnqueueObservation", StringComparison.Ordinal) <
+                callout.IndexOf("LastCalloutByMonster[id] = Time.unscaledTime", StringComparison.Ordinal),
+                "a dropped danger warning must not consume its own cooldown");
 
         // The per-turn half is paid for in full on every reply, so standing rules belong in the
         // cached contract and only genuinely changing state belongs here.

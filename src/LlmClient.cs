@@ -24,7 +24,6 @@ namespace LethalAICrewmate
             OpenAiRealtimeVoiceClient.ResetSession();
         }
 
-        internal static void Tick() { }
 
 
         public static void EnqueueObservation(string summary) => TryEnqueueObservation(summary);

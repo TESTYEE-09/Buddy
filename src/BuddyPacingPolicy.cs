@@ -124,12 +124,12 @@ namespace LethalAICrewmate
         internal static string PromptDirective(BuddyPacingPlan plan)
         {
             if (plan.DialogueDensity <= 0)
-                return "PACING: Hold back. Say nothing unless asked directly or something confirmed matters. One short line at most.";
+                return "Pace: hold back. Nothing unless you are asked or it really matters. One short line at most.";
             if (plan.DialogueDensity == 1)
-                return "PACING: Stay terse. Answer the question, add nothing.";
+                return "Pace: terse. Answer, add nothing.";
             if (plan.DialogueDensity >= 3)
-                return "PACING: Normal shift talk is fine when there is a real reason for it.";
-            return "PACING: Keep it economical. Volunteer only what actually helps.";
+                return "Pace: normal shift talk is fine when there is a reason for it.";
+            return "Pace: economical. Volunteer only what helps.";
         }
     }
 }

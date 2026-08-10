@@ -104,8 +104,8 @@ static class Program
         Check(BuddyCharacterArc.QuotaDeltaPoints(2, 3) == 4,
               "only newly fulfilled quota cycles advance persistent progress");
         string continuity = BuddyCharacterArc.ContinuitySummary(2, 3, 1);
-        Check(continuity.Contains("fulfilled 2 quota") && continuity.Contains("3 additional landed") &&
-              continuity.Contains("1 crew death") && continuity.Contains("do not recite counters"),
+        Check(continuity.Contains("made quota 2") && continuity.Contains("3 more shift") &&
+              continuity.Contains("watched 1") && continuity.Contains("never recite the numbers"),
               "character memory exposes only confirmed bounded campaign counters");
 
         byte[] audible = MakeWav(16000, 1f, 0.12f);
