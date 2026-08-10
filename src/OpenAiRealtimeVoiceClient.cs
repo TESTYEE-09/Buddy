@@ -17,12 +17,15 @@ namespace LethalAICrewmate
     internal static class OpenAiRealtimeVoiceClient
     {
         private const int OutputRate = 24000;
+        private const int InputWireRate = 16000;
         private const int MaxQueuedTurns = 3;
         private const int IdleTimeoutSeconds = 20;
+        private const int MaxLiveInputBytes = OutputRate * 2 * 14;
         private static readonly ConcurrentQueue<Action> MainThread = new ConcurrentQueue<Action>();
         private static readonly Queue<VoiceTurn> Pending = new Queue<VoiceTurn>();
         private static readonly object Gate = new object();
         private static bool _workerRunning;
+        private static bool _processingTurn;
         // A response only exists after response.create has been sent and before response.done.
         // Keep this separate from the websocket state: pressing PTT between turns must not send
         // response.cancel, because the Realtime API correctly rejects that with "no active response".
@@ -35,10 +38,27 @@ namespace LethalAICrewmate
         // definitions sit at the head of every request, so re-sending them per turn would bust the
         // prompt cache for the rest of the session; they are pushed only when they actually change.
         private static string _appliedSessionConfig;
+        private static LiveVoiceInput _liveInput;
+        private static ulong _nextLiveInputId = 1;
+
+        private sealed class LiveVoiceInput
+        {
+            public readonly object Gate = new object();
+            public readonly Queue<byte[]> Chunks = new Queue<byte[]>();
+            public readonly SemaphoreSlim Signal = new SemaphoreSlim(0);
+            public ulong Id;
+            public bool Ended;
+            public bool Cancelled;
+            public int BufferedBytes;
+            public DateTime StartedUtc;
+            public DateTime ReleasedUtc;
+            public bool FirstAudioLogged;
+        }
 
         private sealed class VoiceTurn
         {
             public byte[] Pcm24k;
+            public LiveVoiceInput Stream;
             public string Text;
             public int PlayerId;
             public string PlayerName;
@@ -58,6 +78,157 @@ namespace LethalAICrewmate
             {
                 try { action(); }
                 catch (Exception ex) { Plugin.Log?.LogWarning("Realtime main-thread action: " + ex.Message); }
+            }
+        }
+
+        internal static bool TryBeginStreamingVoice(int playerId, string playerName, out ulong streamId)
+        {
+            streamId = 0;
+            if (!Enabled || !OpenAiSecrets.HasKey) return false;
+
+            string safeName = PromptSafety.SanitizePlayerName(playerName);
+            LiveVoiceInput live;
+            bool cancelActiveResponse;
+            lock (Gate)
+            {
+                // One live microphone owns the single Realtime input buffer at a time. A new direct
+                // speaker may interrupt an active Buddy response, but never start in the tiny setup,
+                // commit or tool-result gaps where no response exists yet to cancel safely.
+                if (_liveInput != null || (_processingTurn && !_responseActive)) return false;
+
+                // EndStreamingVoice releases the live-input reservation immediately so the finished
+                // microphone cannot block forever. If its turn is still queued, preserve it rather
+                // than letting a second speaker clear and silently drop the just-committed speech.
+                foreach (VoiceTurn queued in Pending)
+                    if (queued.Stream != null) return false;
+
+                while (Pending.Count > 0)
+                    ResponseJournal.Discard(Pending.Dequeue().JournalId);
+
+                ulong id = _nextLiveInputId++;
+                if (_nextLiveInputId == 0) _nextLiveInputId = 1;
+                live = new LiveVoiceInput
+                {
+                    Id = id,
+                    StartedUtc = DateTime.UtcNow
+                };
+                _liveInput = live;
+                Pending.Enqueue(new VoiceTurn
+                {
+                    Stream = live,
+                    PlayerId = playerId,
+                    PlayerName = safeName,
+                    TurnContext = BuddyConversationPrompt.BuildTurnContext(safeName, playerId),
+                    Contract = BuddyConversationPrompt.BuildContract(),
+                    AllowTools = true,
+                    MemoryInput = "[voice input understood directly by gpt-realtime-2.1-mini]"
+                });
+
+                cancelActiveResponse = _responseActive;
+                if (cancelActiveResponse) _responseCancelRequested = true;
+                if (!_workerRunning)
+                {
+                    _workerRunning = true;
+                    _ = RunWorkerAsync();
+                }
+                streamId = id;
+            }
+
+            MainThread.Enqueue(BuddyNetworkAudio.StopPlayback);
+            if (cancelActiveResponse && _socket != null && _socket.State == WebSocketState.Open)
+                _ = TrySendCancelAsync();
+            return true;
+        }
+
+        internal static bool AppendStreamingVoice(ulong streamId, byte[] pcm16k)
+        {
+            if (streamId == 0 || pcm16k == null || pcm16k.Length < 4 || (pcm16k.Length & 1) != 0)
+                return false;
+            if (!TryConvertPcm16kToPcm24k(pcm16k, out byte[] pcm24k)) return false;
+
+            LiveVoiceInput live;
+            lock (Gate)
+            {
+                live = _liveInput;
+                if (live == null || live.Id != streamId) return false;
+            }
+
+            bool overflow = false;
+            lock (live.Gate)
+            {
+                if (live.Cancelled || live.Ended) return false;
+                if (live.BufferedBytes + pcm24k.Length > MaxLiveInputBytes)
+                {
+                    live.Cancelled = true;
+                    live.Ended = true;
+                    live.Chunks.Clear();
+                    live.BufferedBytes = 0;
+                    live.Signal.Release();
+                    overflow = true;
+                }
+                else
+                {
+                    live.Chunks.Enqueue(pcm24k);
+                    live.BufferedBytes += pcm24k.Length;
+                    live.Signal.Release();
+                }
+            }
+
+            if (!overflow) return true;
+            // Never take the global state lock while holding the per-stream lock. Keeping one lock
+            // order avoids a future Append/End deadlock if a caller moves off Unity's main thread.
+            lock (Gate)
+                if (_liveInput == live) _liveInput = null;
+            Plugin.Log?.LogWarning("Realtime live input exceeded the bounded audio queue and was aborted.");
+            return false;
+        }
+
+        internal static bool EndStreamingVoice(ulong streamId)
+        {
+            if (streamId == 0) return false;
+            LiveVoiceInput live;
+            lock (Gate)
+            {
+                live = _liveInput;
+                if (live == null || live.Id != streamId) return false;
+                _liveInput = null;
+            }
+            lock (live.Gate)
+            {
+                if (live.Cancelled || live.Ended) return false;
+                live.Ended = true;
+                live.ReleasedUtc = DateTime.UtcNow;
+                live.Signal.Release();
+                return true;
+            }
+        }
+
+        internal static void AbortStreamingVoice(ulong streamId)
+        {
+            if (streamId == 0) return;
+            LiveVoiceInput live = null;
+            lock (Gate)
+            {
+                if (_liveInput != null && _liveInput.Id == streamId)
+                {
+                    live = _liveInput;
+                    _liveInput = null;
+                }
+            }
+            if (live == null) return;
+            CancelLiveInput(live);
+        }
+
+        private static void CancelLiveInput(LiveVoiceInput live)
+        {
+            if (live == null) return;
+            lock (live.Gate)
+            {
+                live.Cancelled = true;
+                live.Ended = true;
+                live.Chunks.Clear();
+                live.BufferedBytes = 0;
+                live.Signal.Release();
             }
         }
 
@@ -126,12 +297,17 @@ namespace LethalAICrewmate
 
         internal static void ResetSession()
         {
+            LiveVoiceInput live = null;
             lock (Gate)
             {
                 while (Pending.Count > 0) ResponseJournal.Discard(Pending.Dequeue().JournalId);
+                live = _liveInput;
+                _liveInput = null;
+                _processingTurn = false;
                 _responseActive = false;
                 _responseCancelRequested = false;
             }
+            CancelLiveInput(live);
             try { _sessionCancel?.Cancel(); } catch { }
             try { _socket?.Abort(); } catch { }
             _socket = null;
@@ -154,10 +330,24 @@ namespace LethalAICrewmate
 
         private static async Task TrySendCancelAsync()
         {
+            // The flag check runs while the send lock is held, serializing the cancel against the
+            // next response.create: a turn cannot be created mid-cancel. If the just-cancelled
+            // response finished before this task was scheduled the flag has been reset and the
+            // newer turn must not be cancelled. Never clear the input audio buffer from here
+            // either: the following live turn streams audio into that buffer, so a stale cancel
+            // must not wipe it. Uncommitted audio from an aborted turn is cleared by that turn's
+            // own abort path.
             try
             {
-                await SendAsync("{\"type\":\"response.cancel\"}", _sessionCancel.Token).ConfigureAwait(false);
-                await SendAsync("{\"type\":\"input_audio_buffer.clear\"}", _sessionCancel.Token).ConfigureAwait(false);
+                await SendLock.WaitAsync(_sessionCancel.Token).ConfigureAwait(false);
+                try
+                {
+                    lock (Gate) if (!_responseCancelRequested) return;
+                    byte[] cancel = Encoding.UTF8.GetBytes("{\"type\":\"response.cancel\"}");
+                    await _socket.SendAsync(new ArraySegment<byte>(cancel), WebSocketMessageType.Text, true, _sessionCancel.Token)
+                        .ConfigureAwait(false);
+                }
+                finally { SendLock.Release(); }
             }
             catch (Exception ex)
             {
@@ -178,10 +368,17 @@ namespace LethalAICrewmate
                     {
                         if (Pending.Count == 0) break;
                         turn = Pending.Dequeue();
+                        _processingTurn = true;
                     }
                     try { await ProcessTurnAsync(turn).ConfigureAwait(false); }
                     catch (Exception ex)
                     {
+                        if (turn.Stream != null)
+                        {
+                            lock (Gate)
+                                if (_liveInput == turn.Stream) _liveInput = null;
+                            CancelLiveInput(turn.Stream);
+                        }
                         ResponseJournal.Discard(turn.JournalId);
                         turn.JournalId = 0;
                         Plugin.Log?.LogWarning("Realtime voice turn failed: " + ex.GetType().Name + ": " + ex.Message);
@@ -191,12 +388,17 @@ namespace LethalAICrewmate
                         if (reason.Length > 140) reason = reason.Substring(0, 140) + "...";
                         QueueHint("Realtime error: " + reason);
                     }
+                    finally
+                    {
+                        lock (Gate) _processingTurn = false;
+                    }
                 }
             }
             finally
             {
                 lock (Gate)
                 {
+                    _processingTurn = false;
                     _workerRunning = false;
                     if (Pending.Count > 0)
                     {
@@ -215,17 +417,62 @@ namespace LethalAICrewmate
             await EnsureConnectedAsync().ConfigureAwait(false);
             await EnsureSessionConfigAsync(turn.Contract).ConfigureAwait(false);
 
-            if (!turn.SuppressChat && !string.IsNullOrWhiteSpace(turn.TurnContext))
-            {
-                // Per-turn state rides in its own appended item so the cached instructions and tool
-                // definitions in front of it stay byte-identical between turns.
-                string context = "{\"type\":\"conversation.item.create\",\"item\":{\"type\":\"message\"," +
-                    "\"role\":\"system\",\"content\":[{\"type\":\"input_text\",\"text\":\"" +
-                    LlmClient.Escape(turn.TurnContext) + "\"}]}}";
-                await SendAsync(context, _sessionCancel.Token).ConfigureAwait(false);
-            }
+            // A live voice turn sends its context immediately before commit. The microphone bytes
+            // can already be streaming into OpenAI while the player talks, but an aborted/silent PTT
+            // never leaves an orphaned TURN CONTEXT item in the conversation.
+            if (turn.Stream == null && !turn.SuppressChat && !string.IsNullOrWhiteSpace(turn.TurnContext))
+                await SendTurnContextAsync(turn.TurnContext).ConfigureAwait(false);
 
-            if (turn.Pcm24k != null)
+            if (turn.Stream != null)
+            {
+                await SendAsync("{\"type\":\"input_audio_buffer.clear\"}", _sessionCancel.Token).ConfigureAwait(false);
+                while (true)
+                {
+                    byte[] chunk = null;
+                    bool ended;
+                    bool cancelled;
+                    lock (turn.Stream.Gate)
+                    {
+                        if (turn.Stream.Chunks.Count > 0)
+                        {
+                            chunk = turn.Stream.Chunks.Dequeue();
+                            turn.Stream.BufferedBytes -= chunk.Length;
+                        }
+                        ended = turn.Stream.Ended;
+                        cancelled = turn.Stream.Cancelled;
+                    }
+
+                    if (chunk != null)
+                    {
+                        string liveAudio = Convert.ToBase64String(chunk);
+                        await SendAsync("{\"type\":\"input_audio_buffer.append\",\"audio\":\"" + liveAudio + "\"}", _sessionCancel.Token)
+                            .ConfigureAwait(false);
+                        continue;
+                    }
+                    if (cancelled)
+                    {
+                        await SendAsync("{\"type\":\"input_audio_buffer.clear\"}", _sessionCancel.Token).ConfigureAwait(false);
+                        return;
+                    }
+                    if (ended) break;
+                    await turn.Stream.Signal.WaitAsync(_sessionCancel.Token).ConfigureAwait(false);
+                }
+
+                await SendTurnContextAsync(turn.TurnContext).ConfigureAwait(false);
+                await SendAsync("{\"type\":\"input_audio_buffer.commit\"}", _sessionCancel.Token).ConfigureAwait(false);
+                if (turn.JournalId == 0)
+                {
+                    turn.JournalId = ResponseJournal.NoteInput("voice", turn.PlayerName,
+                        "[audio streamed directly to gpt-realtime-2.1-mini while push-to-talk was held]");
+                    ResponseJournal.RecordContext(turn.JournalId, turn.TurnContext);
+                }
+                QueueSpeakerNote(turn.PlayerId, turn.PlayerName);
+                double releaseToCommitMs = turn.Stream.ReleasedUtc == default(DateTime)
+                    ? -1d
+                    : (DateTime.UtcNow - turn.Stream.ReleasedUtc).TotalMilliseconds;
+                Plugin.Log?.LogInfo($"Realtime live input committed releaseToCommitMs={releaseToCommitMs:F0}.");
+            }
+            else if (turn.Pcm24k != null)
             {
                 await SendAsync("{\"type\":\"input_audio_buffer.clear\"}", _sessionCancel.Token).ConfigureAwait(false);
                 const int chunkBytes = 24000; // 500 ms of mono PCM16 at 24 kHz
@@ -317,6 +564,14 @@ namespace LethalAICrewmate
                     }
                     else if (type == "response.output_audio.delta")
                     {
+                        if (turn.Stream != null && !turn.Stream.FirstAudioLogged)
+                        {
+                            turn.Stream.FirstAudioLogged = true;
+                            double releaseToFirstAudioMs = turn.Stream.ReleasedUtc == default(DateTime)
+                                ? -1d
+                                : (DateTime.UtcNow - turn.Stream.ReleasedUtc).TotalMilliseconds;
+                            Plugin.Log?.LogInfo($"Realtime first audio releaseToDeltaMs={releaseToFirstAudioMs:F0}.");
+                        }
                         string delta = ReadJsonString(message, "delta");
                         if (!string.IsNullOrEmpty(delta))
                         {
@@ -450,6 +705,15 @@ namespace LethalAICrewmate
             }
             ResponseJournal.Discard(turn.JournalId);
             turn.JournalId = 0;
+        }
+
+        private static async Task SendTurnContextAsync(string turnContext)
+        {
+            if (string.IsNullOrWhiteSpace(turnContext)) return;
+            string context = "{\"type\":\"conversation.item.create\",\"item\":{\"type\":\"message\"," +
+                "\"role\":\"system\",\"content\":[{\"type\":\"input_text\",\"text\":\"" +
+                LlmClient.Escape(turnContext) + "\"}]}}";
+            await SendAsync(context, _sessionCancel.Token).ConfigureAwait(false);
         }
 
         private static async Task EnsureConnectedAsync()
@@ -704,6 +968,32 @@ namespace LethalAICrewmate
             try { _socket?.Abort(); _socket?.Dispose(); } catch { }
             _socket = null;
             _sessionCancel = null;
+        }
+
+        private static bool TryConvertPcm16kToPcm24k(byte[] input, out byte[] output)
+        {
+            output = null;
+            if (input == null || input.Length < 4 || (input.Length & 1) != 0) return false;
+            int sourceSamples = input.Length / 2;
+            // StreamingMicCapture keeps chunks on even 16 kHz sample boundaries. Trim an odd tail
+            // defensively so every chunk maps exactly through the 3:2 16 kHz -> 24 kHz ratio.
+            sourceSamples &= ~1;
+            if (sourceSamples < 2) return false;
+            int targetSamples = sourceSamples * OutputRate / InputWireRate;
+            output = new byte[targetSamples * 2];
+            for (int i = 0; i < targetSamples; i++)
+            {
+                double sourcePos = i * (double)InputWireRate / OutputRate;
+                int a = Math.Min(sourceSamples - 1, (int)sourcePos);
+                int b = Math.Min(sourceSamples - 1, a + 1);
+                double fraction = sourcePos - a;
+                short sa = BitConverter.ToInt16(input, a * 2);
+                short sb = BitConverter.ToInt16(input, b * 2);
+                short sample = (short)Math.Max(short.MinValue, Math.Min(short.MaxValue, sa + (sb - sa) * fraction));
+                output[i * 2] = (byte)(sample & 0xff);
+                output[i * 2 + 1] = (byte)((sample >> 8) & 0xff);
+            }
+            return true;
         }
 
         private static bool TryConvertWavToPcm24k(byte[] wav, out byte[] output)
