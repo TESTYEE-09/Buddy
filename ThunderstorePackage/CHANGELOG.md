@@ -1,4 +1,25 @@
 # Changelog
+## 4.1.0
+
+- **Buddy can fetch the scrap you name.** The fetch tool now takes an optional `item_name` straight from
+  the speaker's words: "grab that bolt" targets the bolt, while asking for "the nearest scrap" still picks
+  the best one automatically. He no longer stalls with "I need the name before I can grab it" - if he
+  genuinely cannot find the named item, the tool result says so and he reports that in one line.
+- **The context now lists loose scrap by name, value and distance** (up to the six nearest), so Buddy
+  knows what is actually lying around instead of just a count and no longer has to invent or guess items.
+- **No more invented inabilities.** "I'm not set up to carry gear to the ship" was spoken when the fetch
+  tool exists to do exactly that; the contract now forbids claiming a lack the tools cover and forbids
+  demanding information the context already provides. A refusal must name a real missing thing.
+- **Sensor internals never reach the crew's ears.** "Monsters are off the sensor list" and "the sensor
+  said you were far from me" leaked internal vocabulary into speech; quoting the context is now banned and
+  reported facts are phrased as his own observation.
+- **Tool preambles are dropped only while still silent.** The v4.0.0 flush cut everything before a tool
+  result, including mid-sentence, which read as clipped replies. Playback now only discards preamble audio
+  that has not become audible (or is under half a second old); a preamble the crew is already hearing is
+  left to finish naturally and the confirmed line follows.
+- **Escalation of a refusal is shown, not just banned.** "Ask nicely." twice is now an explicit example,
+  with the second ask repeating the same line and never explaining capabilities.
+
 ## 4.0.0
 
 - **Buddy stays himself in first person.** In real sessions Buddy sometimes narrated his own actions from

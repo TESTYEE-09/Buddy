@@ -142,7 +142,7 @@ namespace LethalAICrewmate
                     sb.AppendLine("You may only name entities from this list if talking about threats.");
                 }
 
-                int scrapNear = 0;
+                var scrapNear = new List<GrabbableObject>();
                 try
                 {
                     foreach (var g in UnityEngine.Object.FindObjectsOfType<GrabbableObject>())
@@ -150,11 +150,33 @@ namespace LethalAICrewmate
                         if (g?.itemProperties == null || !g.itemProperties.isScrap) continue;
                         if (g.isHeld || g.isInShipRoom) continue;
                         if (Vector3.Distance(origin, g.transform.position) <= 25f)
-                            scrapNear++;
+                            scrapNear.Add(g);
                     }
+                    scrapNear.Sort((a, b) => Vector3.Distance(origin, a.transform.position)
+                        .CompareTo(Vector3.Distance(origin, b.transform.position)));
                 }
                 catch { /* ignore */ }
-                sb.Append("Loose scrap within 25m: ").Append(scrapNear).AppendLine(".");
+
+                if (scrapNear.Count == 0)
+                {
+                    sb.AppendLine("Loose scrap within 25m: NONE.");
+                }
+                else
+                {
+                    int shown = Mathf.Min(6, scrapNear.Count);
+                    var parts = new List<string>(shown);
+                    for (int i = 0; i < shown; i++)
+                    {
+                        GrabbableObject g = scrapNear[i];
+                        string itemName = g.itemProperties.itemName ?? g.itemProperties.name ?? "scrap";
+                        parts.Add(PromptSafety.SanitizeItemName(itemName) + " (" + g.scrapValue + "cr, "
+                            + Vector3.Distance(origin, g.transform.position).ToString("F0") + "m)");
+                    }
+                    sb.Append("Loose scrap within 25m: ").Append(string.Join(", ", parts));
+                    if (scrapNear.Count > shown)
+                        sb.Append(", and ").Append(scrapNear.Count - shown).Append(" more further out");
+                    sb.AppendLine(".");
+                }
 
                 if (buddy != null)
                     sb.Append("Buddy AI state: ").Append(buddy.State).AppendLine(".");

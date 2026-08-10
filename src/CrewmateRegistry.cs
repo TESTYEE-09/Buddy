@@ -22,6 +22,8 @@ namespace LethalAICrewmate
         public PlayerControllerB Owner;
         public GrabbableObject HeldItem;
         public GrabbableObject FetchTarget;
+        /// <summary>When set, fetch only scrap whose name contains this filter (from the speaker's own words).</summary>
+        public string FetchItemFilter;
         public Vector3 StayPosition;
         public bool Neutralized;
         public float NextObservationAt;
@@ -275,6 +277,7 @@ namespace LethalAICrewmate
             if (state != CrewmateState.FetchScrap)
             {
                 data.FetchTarget = null;
+                data.FetchItemFilter = null;
                 data.DeliverFetchToOwner = false;
             }
             if (state != CrewmateState.ScoutAhead)

@@ -638,13 +638,14 @@ CancelLiveInput(live);
                             // Chunks already streamed to the ring arrived ahead of the result and may
                             // claim something that was never confirmed (a narration said before the
                             // action happened). Every queued action runs before this flush in main-
-                            // thread order, so cut the unconfirmed preamble now; the reply the model
-                            // gives after seeing the real result is the only line the crew hears.
+                            // thread order, so drop the unconfirmed preamble now — unless it is already
+                            // audible, where cutting it mid-sentence is worse than the line itself and
+                            // the reply the model gives after seeing the real result follows it anyway.
                             string flushedToolName = pendingToolName;
                             MainThread.Enqueue(() =>
                             {
                                 if (!CrewmateSpawner.IsHost()) return;
-                                BuddyNetworkAudio.StopPlayback();
+                                BuddyNetworkAudio.FlushUnplayedPreamble();
                                 Plugin.Log?.LogInfo("Flushed unconfirmed preamble audio before tool result " + flushedToolName + ".");
                             });
 
@@ -822,7 +823,7 @@ CancelLiveInput(live);
         }
 
         private const string ToolDefinitionsJson =
-            "{\"type\":\"function\",\"name\":\"move_buddy\",\"description\":\"Move Buddy when the current speaker asks him to follow, stay, return to ship, fetch scrap, or scout ahead. Do not call for hypotheticals, complaints, negated requests, or reports of an action already taken.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"action\":{\"type\":\"string\",\"enum\":[\"follow\",\"stay\",\"return_to_ship\",\"fetch_scrap\",\"scout_ahead\"]},\"distance_metres\":{\"type\":\"number\",\"description\":\"Scout distance, normally 4 to 18 metres.\"},\"bring_to_player\":{\"type\":\"boolean\",\"description\":\"For fetch_scrap only: deliver to the requesting player instead of the ship.\"}},\"required\":[\"action\"]}}," +
+            "{\"type\":\"function\",\"name\":\"move_buddy\",\"description\":\"Move Buddy when the current speaker asks him to follow, stay, return to ship, fetch scrap, or scout ahead. Do not call for hypotheticals, complaints, negated requests, or reports of an action already taken. fetch_scrap picks the nearest worthwhile loose scrap on its own; pass item_name only when the speaker names a specific item.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"action\":{\"type\":\"string\",\"enum\":[\"follow\",\"stay\",\"return_to_ship\",\"fetch_scrap\",\"scout_ahead\"]},\"distance_metres\":{\"type\":\"number\",\"description\":\"Scout distance, normally 4 to 18 metres.\"},\"bring_to_player\":{\"type\":\"boolean\",\"description\":\"For fetch_scrap only: deliver to the requesting player instead of the ship.\"},\"item_name\":{\"type\":\"string\",\"description\":\"For fetch_scrap only: the item the speaker named, e.g. 'bolt' or 'propane'. Omit to fetch the nearest worthwhile loose scrap.\"}},\"required\":[\"action\"]}}," +
             "{\"type\":\"function\",\"name\":\"get_ship_status\",\"description\":\"Read current time, credits, quota, deadline, moon, weather, ship scrap, or crew status when the live context does not already answer it.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"topic\":{\"type\":\"string\"}}}}," +
             "{\"type\":\"function\",\"name\":\"list_moons\",\"description\":\"List the moons currently available in this game.\",\"parameters\":{\"type\":\"object\",\"properties\":{}}}," +
             "{\"type\":\"function\",\"name\":\"show_store\",\"description\":\"Read the current store and credit overview.\",\"parameters\":{\"type\":\"object\",\"properties\":{}}}," +

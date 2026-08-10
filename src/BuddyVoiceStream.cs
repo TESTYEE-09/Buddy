@@ -47,6 +47,7 @@ namespace LethalAICrewmate
         private static AudioSource _source;
         private static AudioClip _clip;
         private static bool _playing;
+        private static float _playStartedAt = -999f;
         private static float _lastWriteAt = -999f;
         // Set on Unity's audio thread when the ring could not fill a callback, promoted to a real
         // underrun by Write only if more of the same line then arrives. Draining the ring at the end
@@ -58,6 +59,27 @@ namespace LethalAICrewmate
         internal static bool HasAudio
         {
             get { lock (Gate) return _count > 0; }
+        }
+
+        /// <summary>
+        /// Tool-turn flush. A model preamble spoken before a tool call claims an action that was
+        /// never confirmed, so drop it while it is still silent (or younger than half a second, where
+        /// a listener has heard at most the first word). Once the preamble is clearly audible,
+        /// cutting it mid-sentence reads as a broken mod; the short line is preferable, so let it
+        /// finish and the post-result reply follows it.
+        /// </summary>
+        internal static void FlushUnplayedPreamble()
+        {
+            lock (Gate)
+            {
+                if (_playing && Time.unscaledTime - _playStartedAt >= 0.5f)
+                {
+                    Plugin.Log?.LogInfo("Buddy voice stream: pre-tool preamble already audible; letting it finish.");
+                    return;
+                }
+            }
+            Clear();
+            Plugin.Log?.LogInfo("Buddy voice stream: dropped unplayed pre-tool preamble.");
         }
 
         /// <summary>Appends mono PCM16 to the playback stream, resampling to the stream rate.</summary>
@@ -128,6 +150,7 @@ namespace LethalAICrewmate
                 try { _source.Stop(); } catch { }
             }
             _playing = false;
+            _playStartedAt = -999f;
             _lastWriteAt = -999f;
         }
 
@@ -174,6 +197,7 @@ namespace LethalAICrewmate
                         ApplyOutputSettings();
                         _source.Play();
                         _playing = true;
+                        _playStartedAt = Time.unscaledTime;
                         Plugin.Log?.LogInfo(
                             $"Buddy voice stream started peer={(CrewmateSpawner.IsHost() ? "host" : "client")} buffered={buffered / (float)StreamRate:F2}s cushion={cushion:F2}s.");
                     }

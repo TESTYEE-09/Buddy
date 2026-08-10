@@ -482,10 +482,14 @@ namespace LethalAICrewmate
             // Acquire target
             if (data.FetchTarget == null || !IsValidScrap(data.FetchTarget))
             {
-                data.FetchTarget = FindUsefulScrap(enemy.transform.position);
+                data.FetchTarget = string.IsNullOrWhiteSpace(data.FetchItemFilter)
+                    ? FindUsefulScrap(enemy.transform.position)
+                    : FindScrapNamed(data.FetchItemFilter, enemy.transform.position);
                 if (data.FetchTarget == null)
                 {
-                    Plugin.Log?.LogInfo("No scrap found for fetch; returning to follow.");
+                    Plugin.Log?.LogInfo(string.IsNullOrWhiteSpace(data.FetchItemFilter)
+                        ? "No scrap found for fetch; returning to follow."
+                        : "No scrap named '" + data.FetchItemFilter + "' found for fetch; returning to follow.");
                     CrewmateRegistry.SetState(data, CrewmateState.FollowOwner);
                     return;
                 }
@@ -916,6 +920,37 @@ namespace LethalAICrewmate
             return best;
         }
 
+        /// <summary>Nearest loose scrap whose item name contains the speaker's filter, or null.</summary>
+        private static GrabbableObject FindScrapNamed(string nameFilter, Vector3 from)
+        {
+            string want = (nameFilter ?? "").Trim().ToLowerInvariant();
+            if (want.Length == 0) return null;
+            GrabbableObject best = null;
+            float bestDist = float.MaxValue;
+            try
+            {
+                var items = UnityEngine.Object.FindObjectsOfType<GrabbableObject>();
+                foreach (var item in items)
+                {
+                    if (!IsValidScrap(item)) continue;
+                    if (item.isHeld || item.isInShipRoom) continue;
+                    string itemName = item.itemProperties?.itemName ?? "";
+                    if (itemName.Length == 0 || !itemName.ToLowerInvariant().Contains(want)) continue;
+                    float d = Vector3.Distance(from, item.transform.position);
+                    if (d < bestDist)
+                    {
+                        bestDist = d;
+                        best = item;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log?.LogWarning($"FindScrapNamed: {ex.Message}");
+            }
+            return best;
+        }
+
         private static bool TickDeliverToOwner(CrewmateData data)
         {
             PlayerControllerB owner = data.Owner;
@@ -1262,7 +1297,7 @@ namespace LethalAICrewmate
             }
         }
 
-        public static string ExecuteToolAction(string action, int requestingPlayerId, float scoutDistance, bool bringToPlayer)
+        public static string ExecuteToolAction(string action, int requestingPlayerId, float scoutDistance, bool bringToPlayer, string itemName = null)
         {
             string failure = null;
             if (!CrewmateSpawner.IsHost()) return "Tool failed: Buddy actions run on the host.";
@@ -1283,7 +1318,9 @@ namespace LethalAICrewmate
                 case "follow": movement = new BuddyMovementAction(BuddyMovementActionKind.Follow); break;
                 case "stay": movement = new BuddyMovementAction(BuddyMovementActionKind.Stay); break;
                 case "return_to_ship": movement = new BuddyMovementAction(BuddyMovementActionKind.ReturnToShip); break;
-                case "fetch_scrap": movement = new BuddyMovementAction(BuddyMovementActionKind.FetchScrap, deliverToRequester: bringToPlayer); break;
+                case "fetch_scrap":
+                    movement = new BuddyMovementAction(BuddyMovementActionKind.FetchScrap, deliverToRequester: bringToPlayer, fetchItemName: itemName);
+                    break;
                 case "scout_ahead": movement = new BuddyMovementAction(BuddyMovementActionKind.ScoutAhead, scoutDistance); break;
                 default: return "Tool failed: unknown movement action '" + action + "'.";
             }
@@ -1307,6 +1344,17 @@ namespace LethalAICrewmate
                 case BuddyMovementActionKind.FetchScrap:
                     data.Owner = requester ?? data.Owner;
                     data.DeliverFetchToOwner = movement.DeliverToRequester;
+                    data.FetchItemFilter = string.IsNullOrWhiteSpace(movement.FetchItemName) ? null : movement.FetchItemName.Trim();
+                    if (!string.IsNullOrWhiteSpace(data.FetchItemFilter))
+                    {
+                        var named = FindScrapNamed(data.FetchItemFilter, data.Enemy != null ? data.Enemy.transform.position : Vector3.zero);
+                        if (named == null)
+                        {
+                            data.FetchItemFilter = null;
+                            return "No loose scrap matching '" + movement.FetchItemName + "' is near me.";
+                        }
+                        data.FetchTarget = named;
+                    }
                     ApplyMovementState(data, movement.Kind);
                     return movement.DeliverToRequester ? "Fetching scrap for the requesting player." : "Fetching scrap for the ship.";
                 case BuddyMovementActionKind.ScoutAhead:

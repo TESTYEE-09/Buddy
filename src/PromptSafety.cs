@@ -27,5 +27,11 @@ namespace LethalAICrewmate
         }
 
         internal static string SanitizeChatText(string value) => SanitizeSingleLine(value, 512);
+
+        internal static string SanitizeItemName(string value)
+        {
+            string clean = SanitizeSingleLine(value, 40);
+            return string.IsNullOrWhiteSpace(clean) ? "scrap" : clean;
+        }
     }
 }

@@ -21,7 +21,8 @@ namespace LethalAICrewmate
                             JsonString(arguments, "action"),
                             playerId,
                             JsonFloat(arguments, "distance_metres", 10f),
-                            JsonBool(arguments, "bring_to_player", false));
+                            JsonBool(arguments, "bring_to_player", false),
+                            JsonString(arguments, "item_name"));
                     case "get_ship_status":
                         return TerminalBuddy.BuildShipStatus(JsonString(arguments, "topic") ?? "status");
                     case "list_moons":

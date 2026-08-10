@@ -1,8 +1,8 @@
-# HANDOFF — Buddy v4.0.0
+# HANDOFF — Buddy v4.1.0
 
 ## Current status
 
-Buddy is a BepInEx 5 mod for **Lethal Company v81** adding a host-authoritative AI crewmate named Buddy. The released baseline is v4.0.0. It uses voice-only conversational input with concise 2-14 word spoken replies.
+Buddy is a BepInEx 5 mod for **Lethal Company v81** adding a host-authoritative AI crewmate named Buddy. The released baseline is v4.1.0. It uses voice-only conversational input with concise 2-14 word spoken replies.
 
 Release gates remain:
 
@@ -66,12 +66,13 @@ Generated DLLs and ZIPs are ignored by Git. CI validates the release package, so
 ## Next release smoke test
 
 1. Hold B and speak a normal conversational line; audio should begin before the complete response has finished generating.
-2. Hold B and request a tool action; no action-success audio should play before the host tool result returns.
-3. Type `Buddy, follow me` in normal chat; Buddy must not call OpenAI or reply.
-4. Verify remote push-to-talk still works for a compatible client.
-5. Verify `ObservationIntervalSeconds = 0` produces no periodic observations while confirmed danger callouts still work.
-6. Verify the 384-token response ceiling keeps answers brief.
-7. Run the release build and all release checks before versioning the next package.
+2. Hold B and request a tool action; pre-tool preamble audio that is still silent must be dropped, and an already-audible preamble must NOT be cut mid-sentence (the confirmed line follows it).
+3. Say "grab that bolt" with loose bolt scrap within 25m; Buddy should call `move_buddy` with `item_name` "bolt" and never demand a name or distance first.
+4. Say "grab the nearest scrap" with loose scrap nearby; the tool must be called without `item_name` and pick the best scrap itself.
+5. Say "spawn a jetpack" twice; both refusals must be the same one-liner with no capability explanation.
+6. Check that spoken replies never contain "sensor", "context", "list says" or other context-language.
+7. Verify `ObservationIntervalSeconds = 0` produces no periodic observations while confirmed danger callouts still work.
+8. Run the release build and all release checks before versioning the next package.
 
 ## Release flow
 

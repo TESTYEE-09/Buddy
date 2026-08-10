@@ -20,6 +20,8 @@ namespace LethalAICrewmate
 
         internal static void StopPlayback() => BuddyVoiceStream.Clear();
 
+        internal static void FlushUnplayedPreamble() => BuddyVoiceStream.FlushUnplayedPreamble();
+
         public static void Tick()
         {
             _lastPosition = ResolveBuddyPosition(_lastPosition);
