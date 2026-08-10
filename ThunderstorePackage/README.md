@@ -1,8 +1,10 @@
 # Buddy
 
-> A useful crewmate with a memory. The longer you work together, the stranger it gets.
+> An agentic AI crewmate that listens, reasons about the run, uses real game tools, remembers the session and slowly gets stranger.
 
-Buddy is an AI crewmate for **Lethal Company v81**. He walks with you after landing, listens to push-to-talk voice, follows natural spoken requests, buys from the store, operates supported ship and facility controls, fetches scrap and reacts to confirmed danger.
+Buddy is a voice-first AI crewmate for **Lethal Company v81**. He is not a scripted command bot. Talk naturally and the Realtime model receives fresh host-side game context, decides whether to answer or use one of Buddy's bounded tools, then reacts to the real result.
+
+He can move with the crew, wait, scout, fetch scrap, return items to the ship, inspect crew and ship state, check moons and the store, buy equipment, and operate supported facility and ship controls. There is no command syntax to memorize.
 
 Typed Lethal Company chat remains normal game chat and **does not trigger Buddy or use API credit**. Hold **B** to talk to him. Every compatible player can use voice.
 
@@ -16,25 +18,15 @@ Typed Lethal Company chat remains normal game chat and **does not trigger Buddy 
 
 Only the host needs an API key. It is stored in Windows Credential Manager and is never sent to clients.
 
-## Talking and actions
+## Talk to him like a crewmate
 
-Hold **B** and speak naturally. No exact command wording is required.
+Hold **B** and speak naturally. Buddy works from your intent and the current run instead of matching fixed phrases.
 
-| Spoken request | Result |
-| --- | --- |
-| `Buddy, follow me` | Follows the speaker |
-| `Wait here` | Holds position |
-| `Check about 15 metres ahead` | Scouts a bounded distance and returns |
-| `Bring me some scrap` | Fetches scrap for the speaker |
-| `Take scrap back to the ship` | Fetches for ship delivery |
-| `Buy three flashlights` | Uses real prices, sales, credits and dropship limits |
-| `Open door C7` | Operates the coded facility object |
-| `Turn the ship lights off` | Uses the ship-room light control |
-| `What's our status?` | Reports current ship and crew state |
+You can ask him to come with you, stay somewhere, scout ahead, bring back scrap, take things to the ship, tell you how the crew is doing, buy useful gear, or operate supported doors, turrets, mines, hangar doors and lights. The model chooses the appropriate bounded game tool when one is needed.
 
-The host executes each supported game action and returns the real result before Buddy speaks. The model has no file, shell, process, credential or arbitrary-network access.
+Each turn is grounded in live host-side context. The host executes supported actions and sends the real result back to the model before Buddy speaks, so he reacts to what actually happened instead of blindly announcing success. The model has no file, shell, process, credential or arbitrary-network access.
 
-## One model
+## How the agent works
 
 Buddy uses **OpenAI `gpt-realtime-2.1-mini` only**:
 
@@ -43,6 +35,7 @@ push-to-talk voice
         |
         v
 gpt-realtime-2.1-mini
+  | live game context
   | configurable thinking level
   | bounded game tools
   | native voice output
@@ -51,7 +44,9 @@ gpt-realtime-2.1-mini
 host game state -> real tool result -> Buddy's spoken reply
 ```
 
-Thinking level defaults to **low** and is selectable in Buddy's settings (`minimal`, `low`, `medium`, `high`): lower answers faster and costs less, higher judges tool requests better but pauses longer before speaking. Spoken replies target **2-14 words**: concise but not clipped. Responses are capped at 1200 output tokens, which reasoning and speech share. Ordinary message audio starts as soon as Realtime identifies the output as a message. Tool-call audio remains buffered until the real host-side game result returns, so Buddy cannot announce a false success. The Realtime session stays connected during play for conversational continuity, supplemented by bounded in-memory context. Typed chat never enters this model path.
+Thinking level defaults to **low** and is selectable in Buddy's settings (`minimal`, `low`, `medium`, `high`): lower answers faster and costs less, higher judges tool requests better but pauses longer before speaking. Spoken replies target **2-14 words**: concise but not clipped. Responses are capped at 1200 output tokens, which reasoning and speech share. Ordinary message audio starts as soon as Realtime identifies the output as a message. Tool-call audio remains buffered until the real host-side game result returns, so Buddy cannot announce a false success.
+
+The Realtime session stays connected during play for conversational continuity, supplemented by bounded in-memory context. Buddy can therefore remember the current session, but this is not permanent chat storage. Typed chat never enters this model path.
 
 ## Voice and multiplayer
 

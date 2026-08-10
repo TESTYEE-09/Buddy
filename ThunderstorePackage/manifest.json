@@ -2,7 +2,7 @@
   "name": "Buddy",
   "version_number": "3.7.8",
   "website_url": "https://github.com/TESTYEE-09/Buddy",
-  "description": "A useful crewmate with a memory. The longer you work together, the stranger it gets.",
+  "description": "Agentic voice AI crewmate that reasons over live game state, uses real in-game tools, remembers the session, and slowly gets stranger.",
   "dependencies": [
     "BepInEx-BepInExPack-5.4.2100",
     "willis81808-LethalSettings-1.4.1"
