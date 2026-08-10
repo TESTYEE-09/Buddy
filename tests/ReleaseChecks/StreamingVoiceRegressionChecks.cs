@@ -12,6 +12,7 @@ internal static class StreamingVoiceRegressionChecks
         string hostVoice = Read(root, "src", "VoiceCommand.cs");
         string remoteVoice = Read(root, "src", "BuddyClientVoice.cs");
         string encoder = Read(root, "src", "StreamingMicCapture.cs");
+        string net = Read(root, "src", "NetMessenger.cs");
 
         Require(realtime.Contains("TryBeginStreamingVoice", StringComparison.Ordinal) &&
                 realtime.Contains("AppendStreamingVoice", StringComparison.Ordinal) &&
@@ -37,17 +38,19 @@ internal static class StreamingVoiceRegressionChecks
                 "host PTT must stream microphone chunks before release instead of uploading a completed WAV");
 
         Require(remoteVoice.Contains("MsgVoiceEnd", StringComparison.Ordinal) &&
-                remoteVoice.Contains("ReliableFragmentedSequenced", StringComparison.Ordinal) &&
+                Count(remoteVoice, "NetworkDelivery.ReliableFragmentedSequenced") >= 3 &&
+                !remoteVoice.Contains("NetworkDelivery.ReliableSequenced", StringComparison.Ordinal) &&
                 remoteVoice.Contains("offset != incoming.ReceivedBytes", StringComparison.Ordinal) &&
                 remoteVoice.Contains("MaxIncomingTransfers = 1", StringComparison.Ordinal),
-                "remote voice relay must stay fragmented, ordered and single-owner");
+                "remote start/chunk/end must share one fragmented ordered pipeline and one microphone owner");
 
         Require(remoteVoice.Contains("ResolveRemotePlayer(senderId)", StringComparison.Ordinal) &&
                 Count(remoteVoice, "IsSenderInBuddyRange(senderId)") >= 2 &&
                 remoteVoice.Contains("NetMessenger.IsCompatibleClient(senderId)", StringComparison.Ordinal) &&
+                remoteVoice.Contains("SenderCooldownSeconds = 3f", StringComparison.Ordinal) &&
                 !remoteVoice.Contains("OpenAiSecrets.CurrentKey", StringComparison.Ordinal) &&
                 !remoteVoice.Contains("ClientWebSocket", StringComparison.Ordinal),
-                "remote clients must be server-identified, compatibility/range checked, and never own provider credentials");
+                "remote clients must be server-identified, rate/range checked, and never own provider credentials");
 
         Require(!remoteVoice.Contains("EncodeAdaptiveMonoWav", StringComparison.Ordinal) &&
                 !remoteVoice.Contains("HostQueue", StringComparison.Ordinal) &&
@@ -58,6 +61,9 @@ internal static class StreamingVoiceRegressionChecks
                 encoder.Contains("ChunkMilliseconds = 100", StringComparison.Ordinal) &&
                 encoder.Contains("targetSamples &= ~1", StringComparison.Ordinal),
                 "live microphone transport must remain bounded 16 kHz PCM in stable 100 ms chunks");
+
+        Require(net.Contains("ProtocolVersion = 8", StringComparison.Ordinal),
+                "the incompatible live PTT wire format must stay behind its bumped multiplayer protocol gate");
     }
 
     private static string Read(string root, params string[] parts)
