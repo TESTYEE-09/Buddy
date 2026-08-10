@@ -1,4 +1,31 @@
 # Changelog
+## 5.1.0
+First release actually tested against the live model instead of only reasoned about.
+
+Fourteen scenarios were run through gpt-realtime-2.1-mini using the real contract and the real
+tool schemas, checking what it calls, what it says, and what it says before it calls. Three
+things turned up that no amount of code reading would have found.
+
+- **Buddy was reciting his own briefing.** Asked anything conversational he would sometimes
+  answer and then append a summary of the per-turn state block - "Block: Speaking: Buddy.
+  Feeling: mildly skeptical coworker. Say: short, practical." The contract described that block
+  without ever saying who writes it, so the model read the description as a template to fill in.
+  It is now explicitly something he receives and must never reproduce.
+- **Polite requests were being argued with.** "Can you grab that scrap?" is an order in ordinary
+  speech, and the model kept correctly treating it as one while the contract insisted it was small
+  talk. Rather than force an answer of "yeah, I can" while standing still, the contract now agrees:
+  a polite request is an order. Asking *about* the job - "ready to get all the scrap?", "do you
+  even fetch scrap?" - is still conversation, and that is the case that was actually reported.
+- **The preamble bug was reproduced live, and confirmed contained.** On roughly two in five tool
+  turns the model still speaks before it calls: one run said "I'm checking ahead first. Hang
+  tight." before scouting, then "Having a look." after; another said "Right behind you." twice.
+  The prompt does not stop this and probably cannot. The 5.0.0 change that buffers audio on
+  tool-capable turns is what keeps players from ever hearing it, which is the right place for the
+  fix - the architecture does not trust the model, and it should not.
+
+Everything else came back clean: no status parroting, no forbidden vocabulary, refusals in
+character, and every order executed.
+
 ## 5.0.1
 Review pass over 5.0.0. Fixes found by re-reading the refactor rather than by playing it.
 

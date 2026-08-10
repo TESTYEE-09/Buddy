@@ -14,7 +14,7 @@ namespace LethalAICrewmate
     {
         public const string ModGuid = "com.lethalaicrewmate.buddy";
         public const string ModName = "Buddy";
-public const string ModVersion = "5.0.1";
+public const string ModVersion = "5.1.0";
 
         internal static Plugin Instance;
         internal static ManualLogSource Log;

@@ -117,6 +117,16 @@ internal static class SecurityRegressionChecks
         Require(prompt.Contains("Never read it out", StringComparison.Ordinal) &&
                 prompt.Contains("private data for you, not a line for the crew", StringComparison.Ordinal),
                 "the contract must forbid reciting a tool status back to the crew");
+        // Live probing against gpt-realtime-2.1-mini showed the model reproducing the per-turn
+        // briefing as dialogue ("Block: Speaking: Buddy. Feeling: mildly skeptical coworker."),
+        // because the contract described the block without saying who writes it.
+        Require(prompt.Contains("It is written to you, never by you", StringComparison.Ordinal) &&
+                prompt.Contains("must never learn it exists", StringComparison.Ordinal),
+                "the turn briefing must be described as input Buddy receives, never as a shape to reply in");
+        // Same probing: the model treats "can you grab that?" as the order it plainly is, and no
+        // amount of contract text talked it out of that. The contract agrees with it now.
+        Require(prompt.Contains("orders wearing a polite hat", StringComparison.Ordinal),
+                "a polite request must be treated as the order it is");
         Require(prompt.Contains("WHEN TO ACT", StringComparison.Ordinal) &&
                 prompt.Contains("These are conversation, never actions", StringComparison.Ordinal) &&
                 prompt.Contains("Wait to be told", StringComparison.Ordinal),
