@@ -824,7 +824,10 @@ namespace LethalAICrewmate
                     return;
                 }
 
-                if (!IncomingAudioTransfers.ContainsKey(transferId) && IncomingAudioTransfers.Count >= 2)
+                // Streamed Realtime speech arrives as a transfer per audio chunk, so several are
+                // legitimately in flight at once. A cap of two silently deleted the middle of a
+                // sentence on clients; keep a bound, but one that streaming cannot trip.
+                if (!IncomingAudioTransfers.ContainsKey(transferId) && IncomingAudioTransfers.Count >= 32)
                 {
                     Plugin.Log?.LogWarning("Rejected Buddy audio transfer: client transfer queue is full.");
                     return;

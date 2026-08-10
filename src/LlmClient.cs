@@ -32,10 +32,10 @@ namespace LethalAICrewmate
         internal static bool TryEnqueueObservation(string summary)
         {
             if (!HasApiKey || string.IsNullOrWhiteSpace(summary)) return false;
-            string sensors = GameSensors.BuildLiveContext();
             long journalId = ResponseJournal.NoteInput("observation", "game", summary);
-            ResponseJournal.RecordContext(journalId, sensors);
-            string content = BuddyFourthWall.MaybeAnnotate(sensors + "\n[Observation] " + summary, true);
+            // Live sensors now arrive with every turn's context item; repeating them here would
+            // send the same block twice and pay for it twice.
+            string content = BuddyFourthWall.MaybeAnnotate("[Observation] " + summary, true);
             bool queued = OpenAiRealtimeVoiceClient.EnqueueText(content, "Game observation", -1, journalId,
                 includeScreenshot: false, allowTools: false);
             if (!queued) ResponseJournal.Discard(journalId);

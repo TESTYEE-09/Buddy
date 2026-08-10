@@ -18,6 +18,7 @@ namespace LethalAICrewmate
     {
         private const int OutputRate = 24000;
         private const int MaxQueuedTurns = 3;
+        private const int IdleTimeoutSeconds = 20;
         private static readonly ConcurrentQueue<Action> MainThread = new ConcurrentQueue<Action>();
         private static readonly Queue<VoiceTurn> Pending = new Queue<VoiceTurn>();
         private static readonly object Gate = new object();
@@ -30,6 +31,10 @@ namespace LethalAICrewmate
         private static ClientWebSocket _socket;
         private static CancellationTokenSource _sessionCancel;
         private static readonly SemaphoreSlim SendLock = new SemaphoreSlim(1, 1);
+        // The session config currently applied to the open socket. Instructions and tool
+        // definitions sit at the head of every request, so re-sending them per turn would bust the
+        // prompt cache for the rest of the session; they are pushed only when they actually change.
+        private static string _appliedSessionConfig;
 
         private sealed class VoiceTurn
         {
@@ -38,7 +43,8 @@ namespace LethalAICrewmate
             public string ImageJpegBase64;
             public int PlayerId;
             public string PlayerName;
-            public string Instructions;
+            public string TurnContext;
+            public string Contract;
             public long JournalId;
             public bool SuppressChat;
             public bool AllowTools;
@@ -60,29 +66,16 @@ namespace LethalAICrewmate
         {
             if (!Enabled || wav == null || !TryConvertWavToPcm24k(wav, out byte[] pcm)) return false;
             string safeName = PromptSafety.SanitizePlayerName(playerName);
-            string livePrompt = BuddyConversationPrompt.Build() +
-                "\n\nCURRENT VOICE TURN\nSpeaker: " + safeName +
-                ".\n" + GameSensors.BuildLiveContext(playerId);
-            lock (Gate)
+            return EnqueueTurn(new VoiceTurn
             {
-                if (Pending.Count >= MaxQueuedTurns)
-                    ResponseJournal.Discard(Pending.Dequeue().JournalId);
-                Pending.Enqueue(new VoiceTurn
-                {
-                    Pcm24k = pcm,
-                    PlayerId = playerId,
-                    PlayerName = safeName,
-                    Instructions = livePrompt,
-                    AllowTools = true,
-                    MemoryInput = "[voice input understood directly by gpt-realtime-2.1-mini]"
-                });
-                if (!_workerRunning)
-                {
-                    _workerRunning = true;
-                    _ = RunWorkerAsync();
-                }
-            }
-            return true;
+                Pcm24k = pcm,
+                PlayerId = playerId,
+                PlayerName = safeName,
+                TurnContext = BuddyConversationPrompt.BuildTurnContext(safeName, playerId),
+                Contract = BuddyConversationPrompt.BuildContract(),
+                AllowTools = true,
+                MemoryInput = "[voice input understood directly by gpt-realtime-2.1-mini]"
+            });
         }
 
         internal static bool EnqueueText(string text, string playerName, int playerId, long journalId, bool includeScreenshot, bool allowTools)
@@ -91,14 +84,16 @@ namespace LethalAICrewmate
             string image = null;
             if (includeScreenshot && Plugin.VisionEnabled?.Value == true)
                 VisionCapture.TryCaptureJpegBase64(out image);
-            string instructions = BuildTurnInstructions(playerName, playerId);
+            string safeName = PromptSafety.SanitizePlayerName(playerName);
             return EnqueueTurn(new VoiceTurn
             {
                 Text = text.Trim(),
                 ImageJpegBase64 = image,
                 PlayerId = playerId,
-                PlayerName = PromptSafety.SanitizePlayerName(playerName),
-                Instructions = instructions,
+                PlayerName = safeName,
+                // A game observation has no human speaker; naming one invites Buddy to reply to it.
+                TurnContext = BuddyConversationPrompt.BuildTurnContext(playerId >= 0 ? safeName : null, playerId),
+                Contract = BuddyConversationPrompt.BuildContract(),
                 JournalId = journalId,
                 MemoryInput = text.Trim(),
                 AllowTools = allowTools
@@ -110,11 +105,10 @@ namespace LethalAICrewmate
             if (!Enabled || Plugin.TtsEnabled?.Value != true || string.IsNullOrWhiteSpace(text)) return false;
             return EnqueueTurn(new VoiceTurn
             {
-                Text = "Read this exact Buddy line aloud without adding, removing, or changing any words: \"" + text.Trim() + "\"",
+                Text = text.Trim(),
                 PlayerId = -1,
                 PlayerName = "Buddy",
-                Instructions = BuddyConversationPrompt.Build() +
-                    "\nThis is an internal voice-rendering turn. Speak the supplied line exactly. Do not call tools.",
+                Contract = BuddyConversationPrompt.BuildContract(),
                 SuppressChat = true
             });
         }
@@ -135,11 +129,6 @@ namespace LethalAICrewmate
             return true;
         }
 
-        private static string BuildTurnInstructions(string playerName, int playerId) =>
-            BuddyConversationPrompt.Build() +
-            "\n\nCURRENT TURN\nSpeaker: " + PromptSafety.SanitizePlayerName(playerName) + ".\n" +
-            GameSensors.BuildLiveContext(playerId);
-
         internal static void ResetSession()
         {
             lock (Gate)
@@ -151,6 +140,7 @@ namespace LethalAICrewmate
             try { _sessionCancel?.Cancel(); } catch { }
             try { _socket?.Abort(); } catch { }
             _socket = null;
+            _appliedSessionConfig = null;
         }
 
         internal static void BeginPushToTalk()
@@ -228,9 +218,17 @@ namespace LethalAICrewmate
             string inputTranscript = turn.MemoryInput;
             bool expectAudio = Plugin.TtsEnabled?.Value == true;
             await EnsureConnectedAsync().ConfigureAwait(false);
-            string update = BuildSessionUpdate(turn.Instructions, expectAudio, turn.AllowTools);
-            await SendAsync(update, _sessionCancel.Token).ConfigureAwait(false);
-            await WaitForEventAsync("session.updated", 10).ConfigureAwait(false);
+            await EnsureSessionConfigAsync(turn.Contract).ConfigureAwait(false);
+
+            if (!turn.SuppressChat && !string.IsNullOrWhiteSpace(turn.TurnContext))
+            {
+                // Per-turn state rides in its own appended item so the cached instructions and tool
+                // definitions in front of it stay byte-identical between turns.
+                string context = "{\"type\":\"conversation.item.create\",\"item\":{\"type\":\"message\"," +
+                    "\"role\":\"system\",\"content\":[{\"type\":\"input_text\",\"text\":\"" +
+                    LlmClient.Escape(turn.TurnContext) + "\"}]}}";
+                await SendAsync(context, _sessionCancel.Token).ConfigureAwait(false);
+            }
 
             if (turn.Pcm24k != null)
             {
@@ -245,8 +243,13 @@ namespace LethalAICrewmate
                 }
                 await SendAsync("{\"type\":\"input_audio_buffer.commit\"}", _sessionCancel.Token).ConfigureAwait(false);
                 if (turn.JournalId == 0)
+                {
                     turn.JournalId = ResponseJournal.NoteInput("voice", turn.PlayerName,
                         "[audio processed directly by gpt-realtime-2.1-mini; no separate transcript model]");
+                    // The contract is now snapshotted once per session, so the journal needs the
+                    // per-turn half to stay traceable back to what Buddy could actually see.
+                    ResponseJournal.RecordContext(turn.JournalId, turn.TurnContext);
+                }
                 QueueSpeakerNote(turn.PlayerId, turn.PlayerName);
             }
             else if (!turn.SuppressChat)
@@ -257,12 +260,25 @@ namespace LethalAICrewmate
                 content += "]";
                 string item = "{\"type\":\"conversation.item.create\",\"item\":{\"type\":\"message\",\"role\":\"user\",\"content\":" + content + "}}";
                 await SendAsync(item, _sessionCancel.Token).ConfigureAwait(false);
+                ResponseJournal.RecordContext(turn.JournalId, turn.TurnContext);
             }
             if (turn.SuppressChat)
             {
-                string exactInstructions = turn.Instructions + "\n" + turn.Text;
-                await CreateResponseAsync("{\"type\":\"response.create\",\"response\":{\"conversation\":\"none\",\"output_modalities\":[\"audio\"],\"instructions\":\"" +
+                // Out-of-band rendering of a line Buddy already decided on. It never joins the
+                // conversation and needs none of the behaviour contract, so it carries a minimal
+                // instruction instead of a full-price copy of the prompt.
+                string exactInstructions =
+                    "Read this line aloud exactly as written, adding, removing and changing nothing: \"" +
+                    turn.Text + "\"";
+                await CreateResponseAsync("{\"type\":\"response.create\",\"response\":{\"conversation\":\"none\"," +
+                    "\"output_modalities\":[\"audio\"],\"tool_choice\":\"none\",\"instructions\":\"" +
                     LlmClient.Escape(exactInstructions) + "\"}}").ConfigureAwait(false);
+            }
+            else if (!turn.AllowTools)
+            {
+                // Tool definitions stay in the cached session config; only this response opts out.
+                await CreateResponseAsync("{\"type\":\"response.create\",\"response\":{\"tool_choice\":\"none\"}}")
+                    .ConfigureAwait(false);
             }
             else
             {
@@ -271,7 +287,9 @@ namespace LethalAICrewmate
 
             using (var audio = new MemoryStream())
             {
-                const int playbackChunkBytes = OutputRate; // roughly 500 ms of PCM16
+                // 250 ms of PCM16. The continuous voice stream stitches chunks together, so this
+                // only trades a little replication overhead against how soon Buddy starts talking.
+                const int playbackChunkBytes = OutputRate / 2;
                 bool queuedAnyAudio = false;
                 bool outputItemKnown = !turn.AllowTools;
                 bool streamAudio = !turn.AllowTools;
@@ -285,11 +303,13 @@ namespace LethalAICrewmate
                 string pendingToolCallId = null;
                 string pendingToolArguments = null;
                 int toolCalls = 0;
-                DateTime deadline = DateTime.UtcNow.AddSeconds(35);
+                bool responseComplete = false;
                 byte[] receive = new byte[32768];
-                while (DateTime.UtcNow < deadline && _socket.State == WebSocketState.Open)
+                // Bounded by silence, not by wall clock: a response that is still streaming audio
+                // must never be cut off mid-sentence, but a socket that stops talking must not hang.
+                while (_socket.State == WebSocketState.Open)
                 {
-                    string message = await ReceiveMessageAsync(receive, _sessionCancel.Token).ConfigureAwait(false);
+                    string message = await ReceiveMessageAsync(receive, IdleTimeoutSeconds).ConfigureAwait(false);
                     if (message == null) throw new IOException("Realtime socket closed.");
                     string type = ReadJsonString(message, "type");
                     if (type == "response.output_item.added")
@@ -369,9 +389,9 @@ namespace LethalAICrewmate
                             pendingToolArguments = null;
                             await SendAsync(item, _sessionCancel.Token).ConfigureAwait(false);
                             await CreateResponseAsync().ConfigureAwait(false);
-                            deadline = DateTime.UtcNow.AddSeconds(35);
                             continue;
                         }
+                        responseComplete = true;
                         break;
                     }
                     else if (type == "error")
@@ -383,6 +403,15 @@ namespace LethalAICrewmate
                         if (IsNoActiveResponseCancellation(apiError) && IsCancellationRequested()) continue;
                         throw new InvalidOperationException(apiError);
                     }
+                }
+
+                // Leaving the loop without response.done means the socket went away mid-response.
+                // Clearing the flag here stops the next turn from being rejected for an "active
+                // response" that no longer exists.
+                if (!responseComplete)
+                {
+                    FinishResponse();
+                    throw new IOException("Realtime response ended before completion.");
                 }
 
                 if (streamedAudio)
@@ -430,6 +459,7 @@ namespace LethalAICrewmate
             if (_socket != null && _socket.State == WebSocketState.Open &&
                 _sessionCancel != null && !_sessionCancel.IsCancellationRequested) return;
             CloseSocket();
+            _appliedSessionConfig = null;
             _sessionCancel = new CancellationTokenSource();
             _sessionCancel.CancelAfter(TimeSpan.FromMinutes(55));
             _socket = new ClientWebSocket();
@@ -476,20 +506,42 @@ namespace LethalAICrewmate
             !string.IsNullOrEmpty(message) &&
             message.IndexOf("Cancellation failed: no active response", StringComparison.OrdinalIgnoreCase) >= 0;
 
-        private static string BuildSessionUpdate(string instructions, bool spokenOutput, bool allowTools)
+        /// <summary>
+        /// Pushes the session configuration only when it actually differs from what the socket is
+        /// already running. Instructions and tool definitions are the cached prefix of every
+        /// request, so re-sending an identical blob per turn would throw away the prompt cache and
+        /// add a needless round trip before Buddy can start answering.
+        /// </summary>
+        private static async Task EnsureSessionConfigAsync(string contract)
         {
-            string tools = allowTools
-                ? "\"tool_choice\":\"auto\",\"tools\":[" + ToolDefinitionsJson + "]"
-                : "\"tool_choice\":\"none\",\"tools\":[]";
+            string update = BuildSessionUpdate(contract);
+            if (string.Equals(update, _appliedSessionConfig, StringComparison.Ordinal)) return;
+            await SendAsync(update, _sessionCancel.Token).ConfigureAwait(false);
+            await WaitForEventAsync("session.updated", 10).ConfigureAwait(false);
+            _appliedSessionConfig = update;
+        }
+
+        /// <summary>Built from a contract captured on the main thread when the turn was queued.</summary>
+        private static string BuildSessionUpdate(string contract)
+        {
+            bool spokenOutput = Plugin.TtsEnabled?.Value == true;
             return "{\"type\":\"session.update\",\"session\":{" +
                    "\"type\":\"realtime\",\"model\":\"" + BuddyAiArchitecture.OpenAiRealtimeModel + "\"," +
                    "\"output_modalities\":[\"" + (spokenOutput ? "audio" : "text") + "\"]," +
-                   "\"instructions\":\"" + LlmClient.Escape(instructions) + "\"," +
+                   "\"instructions\":\"" + LlmClient.Escape(contract) + "\"," +
                    "\"audio\":{\"input\":{\"format\":{\"type\":\"audio/pcm\",\"rate\":24000}," +
                    "\"noise_reduction\":{\"type\":\"far_field\"},\"turn_detection\":null}," +
                    "\"output\":{\"format\":{\"type\":\"audio/pcm\",\"rate\":24000},\"voice\":\"" +
                    BuddyAiArchitecture.SanitizeRealtimeVoice(Plugin.RealtimeVoiceName?.Value) + "\"}}," +
-                   "\"reasoning\":{\"effort\":\"low\"},\"max_output_tokens\":384," + tools + "}}";
+                   "\"reasoning\":{\"effort\":\"low\"}," +
+                   // Reasoning and audio both draw on this budget. The old 384 could end a reply
+                   // mid-word; the cap only bounds a runaway response, it is not a per-turn charge.
+                   "\"max_output_tokens\":1200," +
+                   // Drop a fifth of the window whenever the conversation overflows instead of
+                   // trimming the minimum every turn: one cache miss per truncation, not many.
+                   "\"truncation\":{\"type\":\"retention_ratio\",\"retention_ratio\":0.8," +
+                   "\"token_limits\":{\"post_instructions\":8000}}," +
+                   "\"tool_choice\":\"auto\",\"tools\":[" + ToolDefinitionsJson + "]}}";
         }
 
         private const string ToolDefinitionsJson =
@@ -598,7 +650,7 @@ namespace LethalAICrewmate
                 byte[] buffer = new byte[32768];
                 while (true)
                 {
-                    string message = await ReceiveMessageAsync(buffer, timeout.Token).ConfigureAwait(false);
+                    string message = await ReadMessageAsync(buffer, timeout.Token).ConfigureAwait(false);
                     if (message == null) throw new IOException("Realtime socket closed.");
                     string type = ReadJsonString(message, "type");
                     if (type == expected) return;
@@ -607,7 +659,27 @@ namespace LethalAICrewmate
             }
         }
 
-        private static async Task<string> ReceiveMessageAsync(byte[] buffer, CancellationToken token)
+        /// <summary>
+        /// Reads one event, failing only if the service goes quiet for <paramref name="idleSeconds"/>.
+        /// The timeout is per message rather than per response so a long answer keeps streaming.
+        /// </summary>
+        private static async Task<string> ReceiveMessageAsync(byte[] buffer, int idleSeconds)
+        {
+            using (var idle = CancellationTokenSource.CreateLinkedTokenSource(_sessionCancel.Token))
+            {
+                idle.CancelAfter(TimeSpan.FromSeconds(idleSeconds));
+                try
+                {
+                    return await ReadMessageAsync(buffer, idle.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (!_sessionCancel.IsCancellationRequested)
+                {
+                    throw new TimeoutException("Realtime stopped responding after " + idleSeconds + "s.");
+                }
+            }
+        }
+
+        private static async Task<string> ReadMessageAsync(byte[] buffer, CancellationToken token)
         {
             using (var stream = new MemoryStream())
             {

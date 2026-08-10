@@ -7,34 +7,6 @@ namespace LethalAICrewmate
     {
         private const float HearRange = 70f;
         private const float TriggerRange = 60f;
-        private const float TargetRms = 0.20f;
-
-        internal static void NormalizeHostClip(AudioClip clip)
-        {
-            if (!CrewmateSpawner.IsHost() || clip == null || clip.samples <= 0 || clip.channels <= 0)
-                return;
-            try
-            {
-                float[] samples = new float[clip.samples * clip.channels];
-                if (!clip.GetData(samples, 0)) return;
-                double sumSquares = 0d;
-                for (int i = 0; i < samples.Length; i++) sumSquares += samples[i] * samples[i];
-                float rms = (float)Math.Sqrt(sumSquares / Math.Max(1, samples.Length));
-                float loudness = Mathf.Clamp(Plugin.TtsVolume?.Value ?? 1.25f, 0f, 2f);
-                float gain = rms > 0.0001f ? Mathf.Clamp((TargetRms * Mathf.Max(1f, loudness)) / rms, 0.75f, 3.2f) : 1f;
-                const double drive = 1.15;
-                double divisor = Math.Tanh(drive);
-                for (int i = 0; i < samples.Length; i++)
-                    samples[i] = (float)(Math.Tanh(samples[i] * gain * drive) / divisor * 0.92);
-                clip.SetData(samples, 0);
-                Plugin.Log?.LogInfo($"Buddy voice normalized rms={rms:F3} gain={gain:F2} with soft limiter.");
-            }
-            catch (Exception ex)
-            {
-                Plugin.Log?.LogWarning($"Buddy voice normalization: {ex.Message}");
-            }
-        }
-
         internal static void ConfigureSource(AudioSource source)
         {
             if (source == null) return;
@@ -51,8 +23,8 @@ namespace LethalAICrewmate
             source.bypassListenerEffects = true;
             source.bypassReverbZones = true;
 
-            // Spatial behaviour is owned by BuddyNetworkAudio.PlayClip, which decides per clip
-            // from the ChatHearRange setting (0 = global listener-relative, >0 = positional).
+            // Spatial behaviour is owned by BuddyVoiceStream, which decides from the
+            // ChatHearRange setting (0 = global listener-relative, >0 = positional).
             // Keeping that decision here would override it and make the range setting dead code.
         }
 

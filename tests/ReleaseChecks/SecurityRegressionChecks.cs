@@ -43,8 +43,27 @@ internal static class SecurityRegressionChecks
                 "Realtime must expose game tools, execute them on the host, and return results to the model");
             Require(!realtime.Contains("OpenAiTranscriptionModel", StringComparison.Ordinal) &&
                     !realtime.Contains("input_audio_transcription", StringComparison.Ordinal) &&
-                    realtime.Contains("max_output_tokens\\\":384", StringComparison.Ordinal),
-                    "Realtime must use only gpt-realtime-2.1-mini and keep the normal voice response ceiling small");
+                    realtime.Contains("max_output_tokens\\\":1200", StringComparison.Ordinal),
+                    "Realtime must use only gpt-realtime-2.1-mini and keep a bounded voice response ceiling");
+            // 384 tokens had to cover reasoning plus audio, which ended replies mid-word. The
+            // ceiling only bounds a runaway response, so it must stay present but not that tight.
+            Require(realtime.Contains("retention_ratio\\\":0.8", StringComparison.Ordinal) &&
+                    realtime.Contains("post_instructions\\\":8000", StringComparison.Ordinal),
+                    "long sessions must stay bounded by an explicit cache-friendly truncation policy");
+            Require(realtime.Contains("_appliedSessionConfig", StringComparison.Ordinal) &&
+                    realtime.Contains("EnsureSessionConfigAsync", StringComparison.Ordinal) &&
+                    !realtime.Contains("BuildTurnInstructions", StringComparison.Ordinal),
+                    "instructions and tools must be pushed only on change so the prompt cache survives the session");
+
+        // Streamed speech must reach one continuous buffer. The old per-chunk AudioClip queue
+        // dropped the middle of a sentence whenever generation outran playback.
+        Require(File.Exists(Path.Combine(root, "src", "BuddyVoiceStream.cs")),
+                "streamed Realtime speech must play through the continuous voice stream");
+        string networkAudio = File.ReadAllText(Path.Combine(root, "src", "BuddyNetworkAudio.cs"));
+        Require(networkAudio.Contains("BuddyVoiceStream.Write", StringComparison.Ordinal) &&
+                !networkAudio.Contains("MaxQueuedClips", StringComparison.Ordinal) &&
+                !networkAudio.Contains("PlaybackQueue", StringComparison.Ordinal),
+                "Buddy audio must never re-introduce a bounded queue that silently discards speech");
 
         string promptPath = Path.Combine(root, "src", "BuddyConversationPrompt.cs");
         string prompt = File.ReadAllText(promptPath);

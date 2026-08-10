@@ -1,4 +1,20 @@
 # Changelog
+## 3.7.6
+
+- Fixes replies being cut in half and stuttering. Streamed speech now plays through one continuous
+  buffer instead of a three-clip queue that silently discarded audio whenever Buddy generated faster
+  than he could talk, and each chunk no longer carries its own leading silence.
+- Raises the response ceiling from 384 back to 1200 tokens. Reasoning and audio share that budget, so
+  384 could end a reply mid-word.
+- Clients no longer drop parts of a sentence: the concurrent audio-transfer cap fits a streamed reply.
+- Buddy starts talking sooner: audio is released in 250 ms chunks and the session is no longer
+  reconfigured before every turn.
+- Cheaper long sessions: instructions and tool definitions are sent only when they change, so the
+  prompt cache survives the whole session, per-turn state arrives as its own conversation item, and an
+  explicit retention-ratio truncation policy bounds input cost.
+- A response interrupted mid-stream no longer poisons the next turn.
+- The `Crewmate.Personality` setting is applied again; it had no effect on Buddy's prompt.
+
 ## 3.7.5
 
 - Sets the conversational reply target to 2-14 words: concise without forcing clipped one-word answers.
