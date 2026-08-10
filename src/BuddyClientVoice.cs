@@ -367,7 +367,7 @@ namespace LethalAICrewmate
                     MsgVoiceChunk,
                     NetworkManager.ServerClientId,
                     writer,
-                    NetworkDelivery.ReliableSequenced);
+                    NetworkDelivery.ReliableFragmentedSequenced);
             }
         }
 
