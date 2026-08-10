@@ -25,6 +25,7 @@ namespace LethalAICrewmate
         private static readonly Queue<VoiceTurn> Pending = new Queue<VoiceTurn>();
         private static readonly object Gate = new object();
         private static bool _workerRunning;
+        private static bool _processingTurn;
         // A response only exists after response.create has been sent and before response.done.
         // Keep this separate from the websocket state: pressing PTT between turns must not send
         // response.cancel, because the Realtime API correctly rejects that with "no active response".
@@ -91,9 +92,15 @@ namespace LethalAICrewmate
             lock (Gate)
             {
                 // One live microphone owns the single Realtime input buffer at a time. A new direct
-                // speaker may interrupt Buddy's current response, but two microphones must never be
-                // mixed together or attributed to the wrong player.
-                if (_liveInput != null) return false;
+                // speaker may interrupt an active Buddy response, but never start in the tiny setup,
+                // commit or tool-result gaps where no response exists yet to cancel safely.
+                if (_liveInput != null || (_processingTurn && !_responseActive)) return false;
+
+                // EndStreamingVoice releases the live-input reservation immediately so the finished
+                // microphone cannot block forever. If its turn is still queued, preserve it rather
+                // than letting a second speaker clear and silently drop the just-committed speech.
+                foreach (VoiceTurn queued in Pending)
+                    if (queued.Stream != null) return false;
 
                 while (Pending.Count > 0)
                     ResponseJournal.Discard(Pending.Dequeue().JournalId);
@@ -146,6 +153,7 @@ namespace LethalAICrewmate
                 if (live == null || live.Id != streamId) return false;
             }
 
+            bool overflow = false;
             lock (live.Gate)
             {
                 if (live.Cancelled || live.Ended) return false;
@@ -156,16 +164,23 @@ namespace LethalAICrewmate
                     live.Chunks.Clear();
                     live.BufferedBytes = 0;
                     live.Signal.Release();
-                    lock (Gate)
-                        if (_liveInput == live) _liveInput = null;
-                    Plugin.Log?.LogWarning("Realtime live input exceeded the bounded audio queue and was aborted.");
-                    return false;
+                    overflow = true;
                 }
-                live.Chunks.Enqueue(pcm24k);
-                live.BufferedBytes += pcm24k.Length;
-                live.Signal.Release();
-                return true;
+                else
+                {
+                    live.Chunks.Enqueue(pcm24k);
+                    live.BufferedBytes += pcm24k.Length;
+                    live.Signal.Release();
+                }
             }
+
+            if (!overflow) return true;
+            // Never take the global state lock while holding the per-stream lock. Keeping one lock
+            // order avoids a future Append/End deadlock if a caller moves off Unity's main thread.
+            lock (Gate)
+                if (_liveInput == live) _liveInput = null;
+            Plugin.Log?.LogWarning("Realtime live input exceeded the bounded audio queue and was aborted.");
+            return false;
         }
 
         internal static bool EndStreamingVoice(ulong streamId)
@@ -288,6 +303,7 @@ namespace LethalAICrewmate
                 while (Pending.Count > 0) ResponseJournal.Discard(Pending.Dequeue().JournalId);
                 live = _liveInput;
                 _liveInput = null;
+                _processingTurn = false;
                 _responseActive = false;
                 _responseCancelRequested = false;
             }
@@ -338,6 +354,7 @@ namespace LethalAICrewmate
                     {
                         if (Pending.Count == 0) break;
                         turn = Pending.Dequeue();
+                        _processingTurn = true;
                     }
                     try { await ProcessTurnAsync(turn).ConfigureAwait(false); }
                     catch (Exception ex)
@@ -357,12 +374,17 @@ namespace LethalAICrewmate
                         if (reason.Length > 140) reason = reason.Substring(0, 140) + "...";
                         QueueHint("Realtime error: " + reason);
                     }
+                    finally
+                    {
+                        lock (Gate) _processingTurn = false;
+                    }
                 }
             }
             finally
             {
                 lock (Gate)
                 {
+                    _processingTurn = false;
                     _workerRunning = false;
                     if (Pending.Count > 0)
                     {
