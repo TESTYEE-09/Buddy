@@ -1,4 +1,26 @@
 # Changelog
+## 4.0.0
+
+- **Buddy stays himself in first person.** In real sessions Buddy sometimes narrated his own actions from
+  outside - the exact line was "He's coming up. He'll check what's ahead and report back" - as if watching
+  himself work. The personality contract now requires 'I'/'me' for everything he does, says or reports;
+  self-reference by name, 'he', 'the crewmate' or 'the AI' is banned, and narrating one's own actions is a
+  hard failure. The per-turn context now opens by naming who he is and whom he is answering, so every reply
+  is anchored in his own body.
+- **Unconfirmed tool preambles are cut, not played.** Buddy spoke before his actions were confirmed; that
+  audio is now flushed the moment a tool result arrives, so the crew only hears the line spoken after the
+  game actually confirmed the action. No claim can finish playing before it is true.
+- **Refusals stay one line.** A captured reply said "I need a distance, or a specific target. I can't just
+  pick a whole hallway" - a two-sentence capability lecture. The refusal rule now states the missing thing
+  and stops: no second sentence, no list of what he could do instead.
+- **Conversation memory now shows both halves.** Earlier turns include Buddy's own past replies, so he can
+  stay consistent with what he already said instead of guessing from the crew's lines alone.
+- Tool acknowledgements are explicitly first person ('Flashlight's yours.', 'Right behind you.'), with
+  counter-examples added for the exact failure modes above.
+- Version 4 baseline: cumulative 3.7.6-3.8.0 voice and streaming fixes (continuous gapless stream,
+  adaptive cushion, faster first word, opening-chunk release, live push-to-talk) are locked in with this
+  behavior release.
+
 ## 3.8.0
 
 - Buddy's push-to-talk is now live speech streaming instead of a recorded upload. Microphone audio

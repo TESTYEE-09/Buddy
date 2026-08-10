@@ -307,7 +307,8 @@ namespace LethalAICrewmate
                 _responseActive = false;
                 _responseCancelRequested = false;
             }
-            CancelLiveInput(live);
+CancelLiveInput(live);
+            MainThread.Enqueue(BuddyNetworkAudio.StopPlayback);
             try { _sessionCancel?.Cancel(); } catch { }
             try { _socket?.Abort(); } catch { }
             _socket = null;
@@ -633,6 +634,19 @@ namespace LethalAICrewmate
                             streamedAudio = false;
                             queuedAnyAudio = false;
                             playbackChunkBytes = firstChunkBytes;
+
+                            // Chunks already streamed to the ring arrived ahead of the result and may
+                            // claim something that was never confirmed (a narration said before the
+                            // action happened). Every queued action runs before this flush in main-
+                            // thread order, so cut the unconfirmed preamble now; the reply the model
+                            // gives after seeing the real result is the only line the crew hears.
+                            string flushedToolName = pendingToolName;
+                            MainThread.Enqueue(() =>
+                            {
+                                if (!CrewmateSpawner.IsHost()) return;
+                                BuddyNetworkAudio.StopPlayback();
+                                Plugin.Log?.LogInfo("Flushed unconfirmed preamble audio before tool result " + flushedToolName + ".");
+                            });
 
                             string output = "{\"result\":\"" + LlmClient.Escape(result) + "\"}";
                             string item = "{\"type\":\"conversation.item.create\",\"item\":{\"type\":\"function_call_output\",\"call_id\":\"" +

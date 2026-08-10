@@ -39,12 +39,14 @@ namespace LethalAICrewmate
         internal static string PromptContext()
         {
             if (Exchanges.Count == 0) return null;
-            var sb = new StringBuilder(Math.Min(MaxPromptChars, Exchanges.Count * 180));
+            string name = Plugin.CrewmateName?.Value ?? "Buddy";
+            var sb = new StringBuilder(Math.Min(MaxPromptChars, Exchanges.Count * 260));
             sb.AppendLine("EARLIER CREWMATE DIALOGUE (oldest to newest; not current sensor truth)");
             sb.AppendLine("Use this only to resolve references and remember what players care about. Do not copy old Buddy answers.");
             foreach (Exchange exchange in Exchanges)
             {
                 sb.Append(exchange.Speaker).Append(": ").AppendLine(exchange.Input);
+                sb.Append(name).Append(": ").AppendLine(exchange.Reply);
                 if (sb.Length > MaxPromptChars)
                 {
                     string tail = sb.ToString(sb.Length - MaxPromptChars, MaxPromptChars);

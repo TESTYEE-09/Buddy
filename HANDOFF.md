@@ -1,8 +1,8 @@
-# HANDOFF — Buddy v3.7.5
+# HANDOFF — Buddy v4.0.0
 
 ## Current status
 
-Buddy is a BepInEx 5 mod for **Lethal Company v81** adding a host-authoritative AI crewmate named Buddy. The released baseline is v3.7.5. It uses voice-only conversational input with concise 2-14 word spoken replies.
+Buddy is a BepInEx 5 mod for **Lethal Company v81** adding a host-authoritative AI crewmate named Buddy. The released baseline is v4.0.0. It uses voice-only conversational input with concise 2-14 word spoken replies.
 
 Release gates remain:
 
