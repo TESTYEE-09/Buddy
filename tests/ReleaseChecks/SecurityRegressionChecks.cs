@@ -111,6 +111,21 @@ internal static class SecurityRegressionChecks
         // lines: a preamble, then a reply after the result. Second, the function result was handed
         // back as a plain English sentence ("Fetching scrap for the ship."), which the model read
         // back verbatim - so the line players heard was a hardcoded string, not Buddy talking.
+        // The one invariant that actually kills the double reply: on a turn that may call a tool,
+        // nothing reaches the speaker until the response is finished and known to be a message.
+        // Live probing shows the model still emits a preamble on roughly two tool turns in five
+        // ("I'm checking ahead first. Hang tight." then "Having a look."), so this must not be
+        // relaxed on the strength of prompt wording.
+        Require(realtime.Contains("bool streamAudio = !turn.AllowTools;", StringComparison.Ordinal),
+                "playback must start early only on a turn that cannot call a tool");
+        Require(realtime.Contains("if (!turn.AllowTools)", StringComparison.Ordinal),
+                "the message-item fast path must stay gated behind AllowTools");
+        // The old flush cut a preamble that had already reached the ring. Nothing reaches the ring
+        // before a tool result now, so the only audio it could still find is the previous reply's.
+        Require(!realtime.Contains("FlushUnplayedPreamble", StringComparison.Ordinal) &&
+                !File.ReadAllText(Path.Combine(root, "src", "BuddyVoiceStream.cs"))
+                     .Contains("FlushUnplayedPreamble", StringComparison.Ordinal),
+                "the obsolete preamble flush must not return and cut the previous reply");
         Require(prompt.Contains("ACTING AND SPEAKING ARE SEPARATE", StringComparison.Ordinal) &&
                 prompt.Contains("Call the tool first, silently", StringComparison.Ordinal),
                 "the contract must forbid speaking in the same turn as an action");

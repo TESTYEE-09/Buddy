@@ -631,20 +631,6 @@ CancelLiveInput(live);
                             queuedAnyAudio = false;
                             playbackChunkBytes = firstChunkBytes;
 
-                            // Chunks already streamed to the ring arrived ahead of the result and may
-                            // claim something that was never confirmed (a narration said before the
-                            // action happened). Every queued action runs before this flush in main-
-                            // thread order, so drop the unconfirmed preamble now — unless it is already
-                            // audible, where cutting it mid-sentence is worse than the line itself and
-                            // the reply the model gives after seeing the real result follows it anyway.
-                            string flushedToolName = pendingToolName;
-                            MainThread.Enqueue(() =>
-                            {
-                                if (!CrewmateSpawner.IsHost()) return;
-                                BuddyNetworkAudio.FlushUnplayedPreamble();
-                                Plugin.Log?.LogInfo("Flushed unconfirmed preamble audio before tool result " + flushedToolName + ".");
-                            });
-
                             // Labelled as private status, not as a line to deliver. With a bare
                             // {"result":"Fetching scrap for the ship."} the model reliably read the
                             // string back word for word, which is why every action sounded like a

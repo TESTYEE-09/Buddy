@@ -61,33 +61,6 @@ namespace LethalAICrewmate
             get { lock (Gate) return _count > 0; }
         }
 
-        /// <summary>
-        /// Tool-turn flush. A model preamble spoken before a tool call claims an action that was
-        /// never confirmed, so drop it while it is still buffered and silent.
-        ///
-        /// Once a single sample has reached the speaker there is no threshold that makes cutting
-        /// safe: 4.1.0 spared only preambles older than half a second, which left every preamble
-        /// under that age to be chopped mid-word — and because playback does not start until the
-        /// cushion fills while the tool executes in parallel, that short window is where most tool
-        /// turns actually land. That is the "his replies get cut short" report. Truthfulness is
-        /// already preserved without cutting: the unconfirmed transcript is discarded by the caller
-        /// and the model re-answers from the real tool result, so an audible preamble simply
-        /// finishes and the corrected reply follows it.
-        /// </summary>
-        internal static void FlushUnplayedPreamble()
-        {
-            lock (Gate)
-            {
-                if (_playing)
-                {
-                    Plugin.Log?.LogInfo("Buddy voice stream: pre-tool preamble already audible; letting it finish.");
-                    return;
-                }
-            }
-            Clear();
-            Plugin.Log?.LogInfo("Buddy voice stream: dropped unplayed pre-tool preamble.");
-        }
-
         /// <summary>Appends mono PCM16 to the playback stream, resampling to the stream rate.</summary>
         internal static void Write(byte[] pcm16, int sampleRate, float gain)
         {

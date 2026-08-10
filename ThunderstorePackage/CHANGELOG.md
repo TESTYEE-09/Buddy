@@ -1,4 +1,20 @@
 # Changelog
+## 5.1.1
+Closes the last way a second line could reach the speaker.
+
+- **Removed the pre-tool audio flush.** It was written for the streaming era, when a preamble could
+  already have reached the playback ring before the tool result arrived. Since 5.0.0 nothing
+  reaches the ring before that result, so the only audio the flush could still find belonged to the
+  *previous* reply - and clearing that would have cut a finished line short. Gone, along with the
+  now-unused method behind it.
+- Pinned the invariant that actually kills the double reply: on a turn that may call a tool, no
+  audio starts until the response is finished and known to be a plain message. Two release checks
+  now hold that shape in place, because live probing shows the model still speaks before calling
+  and no prompt wording reliably stops it.
+- Re-verified against the live model: 19 of 19 scenarios behave. A preamble appeared on 1 of 8 tool
+  turns ("Okay, I'll take a quick look ahead and report what's there." followed by "Having a
+  look.") and was discarded exactly as designed - which is the whole point of not trusting it.
+
 ## 5.1.0
 First release actually tested against the live model instead of only reasoned about.
 
