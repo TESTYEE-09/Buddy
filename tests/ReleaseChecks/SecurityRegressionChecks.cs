@@ -106,6 +106,35 @@ internal static class SecurityRegressionChecks
         Require(prompt.Contains("Disinterest is never a reason to skip an action you can perform", StringComparison.Ordinal),
                 "a stronger personality must never become a licence to refuse supported work");
 
+        // 4.3.0 made every action sound like a machine. Two separate causes, both locked out here.
+        // First, the model narrated before its own function call, so a tool turn produced two spoken
+        // lines: a preamble, then a reply after the result. Second, the function result was handed
+        // back as a plain English sentence ("Fetching scrap for the ship."), which the model read
+        // back verbatim - so the line players heard was a hardcoded string, not Buddy talking.
+        Require(prompt.Contains("ACTING AND SPEAKING ARE SEPARATE", StringComparison.Ordinal) &&
+                prompt.Contains("Call the tool first, silently", StringComparison.Ordinal),
+                "the contract must forbid speaking in the same turn as an action");
+        Require(prompt.Contains("Never read it out", StringComparison.Ordinal) &&
+                prompt.Contains("private data for you, not a line for the crew", StringComparison.Ordinal),
+                "the contract must forbid reciting a tool status back to the crew");
+        Require(prompt.Contains("WHEN TO ACT", StringComparison.Ordinal) &&
+                prompt.Contains("These are conversation, never actions", StringComparison.Ordinal) &&
+                prompt.Contains("Wait to be told", StringComparison.Ordinal),
+                "the contract must stop conversation about a job from triggering the job");
+        Require(realtime.Contains("private_status", StringComparison.Ordinal) &&
+                realtime.Contains("Never read aloud or paraphrase", StringComparison.Ordinal) &&
+                !realtime.Contains("\"{\\\"result\\\":\\\"\"", StringComparison.Ordinal),
+                "a function result must be handed back as private status, never as a speakable line");
+        Require(!realtime.Contains("Realtime response completed without audio.\"", StringComparison.Ordinal) &&
+                realtime.Contains("without audio or text", StringComparison.Ordinal),
+                "a reply that arrives as text must not discard the turn and leave Buddy silent");
+
+        string crewmate = File.ReadAllText(Path.Combine(root, "src", "CrewmateAI.cs"));
+        Require(crewmate.Contains("ok: state=following target=", StringComparison.Ordinal) &&
+                crewmate.Contains("ok: state=fetching_scrap", StringComparison.Ordinal) &&
+                !crewmate.Contains("\"Holding position.\"", StringComparison.Ordinal),
+                "movement results must read as status data the model cannot mistake for dialogue");
+
         string settingsPath = Path.Combine(root, "src", "BuddySettingsMenu.cs");
         string settings = File.ReadAllText(settingsPath);
         Require(!settings.Contains("Buddy personality prompt", StringComparison.Ordinal),

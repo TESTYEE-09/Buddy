@@ -1,4 +1,29 @@
 # Changelog
+## 4.4.0
+One action, one reply, and it sounds like Buddy.
+
+- Buddy no longer speaks twice for one action. A tool turn used to produce a spoken preamble
+  and then a second line after the result, because playback started as soon as Realtime
+  labelled an output item a "message" - which is also true of a preamble emitted before a
+  function call in the same response. Audio on any tool-capable turn is now held until the
+  response is finished and known to be a plain message.
+- Actions no longer sound pre-recorded. The function result was handed to the model as a
+  finished English sentence ("Fetching scrap for the ship."), which it read back word for
+  word, so the line players heard was a hardcoded string rather than Buddy talking. Movement
+  results are now terse status data ("ok: state=fetching_scrap deliver_to=ship") and are
+  labelled private status the model must answer in its own words.
+- Talking about a job no longer starts the job. "Ready to get all the scrap?" triggered a
+  fetch. A new WHEN TO ACT section separates orders from questions, plans, commentary and
+  hypotheticals, and the examples now cover the exact phrasings that misfired.
+- Buddy no longer goes silent after doing what he was asked. A response that returned text
+  without audio threw and discarded the whole turn - including an action the game had already
+  performed. It is now delivered as chat and logged, and the follow-up response after a tool
+  result explicitly asks for speech.
+- Rewrote the tool half of the system prompt around one rule: acting and speaking are separate
+  acts that never share a turn. Call silently, read the status privately, then say one short
+  thing of your own.
+- Six new release checks covering all of the above; nothing in the existing 69 was weakened.
+
 ## 4.3.0
 
 - **Buddy turns things down like a person now.** "I can't kill it without a direct action tool" was a

@@ -554,9 +554,14 @@ CancelLiveInput(live);
                 bool outputItemKnown = !turn.AllowTools;
                 bool streamAudio = !turn.AllowTools;
                 bool streamedAudio = false;
-                // Ordinary message output starts playback as soon as Realtime identifies it as a
-                // message. Tool-call output remains buffered until the confirmed game result so
-                // Buddy cannot speak a preamble that claims an action succeeded.
+                // Speaking and acting are kept strictly separate: on any turn that may call a tool,
+                // no audio reaches the speaker until the response is finished and known to be a
+                // plain message. 4.3.0 streamed the moment Realtime labelled an output item a
+                // "message", which is true of a preamble the model emits *before* a function call
+                // in the same response - so players heard the preamble, then heard a second line
+                // after the tool result. Buffering the whole first pass makes one turn produce
+                // exactly one spoken line. Realtime generates well ahead of real time, so a short
+                // reply costs a fraction of a second of extra latency for that guarantee.
                 var completedAudioChunks = new List<byte[]>();
                 string assistantTranscript = "";
                 string pendingToolName = null;
@@ -577,7 +582,11 @@ CancelLiveInput(live);
                         int item = message.IndexOf("\"item\"", StringComparison.Ordinal);
                         string itemType = item >= 0 ? ReadJsonString(message, "type", item) : null;
                         outputItemKnown = true;
-                        streamAudio = string.Equals(itemType, "message", StringComparison.Ordinal);
+                        // Only a turn that cannot call a tool is allowed to start playback early;
+                        // see the streamAudio note above for why a "message" item is not proof that
+                        // no function call follows it in the same response.
+                        if (!turn.AllowTools)
+                            streamAudio = string.Equals(itemType, "message", StringComparison.Ordinal);
                     }
                     else if (type == "response.output_audio.delta")
                     {
@@ -665,14 +674,26 @@ CancelLiveInput(live);
                                 Plugin.Log?.LogInfo("Flushed unconfirmed preamble audio before tool result " + flushedToolName + ".");
                             });
 
-                            string output = "{\"result\":\"" + LlmClient.Escape(result) + "\"}";
+                            // Labelled as private status, not as a line to deliver. With a bare
+                            // {"result":"Fetching scrap for the ship."} the model reliably read the
+                            // string back word for word, which is why every action sounded like a
+                            // canned announcement: the sentence players heard was this hardcoded
+                            // one, not the model's own.
+                            string output = "{\"private_status\":\"" + LlmClient.Escape(result) +
+                                "\",\"note\":\"Status data. Never read aloud or paraphrase. Answer in your own words.\"}";
                             string item = "{\"type\":\"conversation.item.create\",\"item\":{\"type\":\"function_call_output\",\"call_id\":\"" +
                                 LlmClient.Escape(pendingToolCallId) + "\",\"output\":\"" + LlmClient.Escape(output) + "\"}}";
                             pendingToolName = null;
                             pendingToolCallId = null;
                             pendingToolArguments = null;
                             await SendAsync(item, _sessionCancel.Token).ConfigureAwait(false);
-                            await CreateResponseAsync().ConfigureAwait(false);
+                            // Ask for speech explicitly. Left to its own devices after a function
+                            // result the model sometimes returned a text-only response, which the
+                            // audio guard below then treated as a failed turn - the player asked
+                            // for something, the action happened, and Buddy said nothing at all.
+                            await CreateResponseAsync(
+                                "{\"type\":\"response.create\",\"response\":{\"output_modalities\":[\"audio\"]}}")
+                                .ConfigureAwait(false);
                             continue;
                         }
                         responseComplete = true;
@@ -730,7 +751,17 @@ CancelLiveInput(live);
                     QueueAssistantChat(assistantTranscript, turn.JournalId, toolResult);
                     turn.JournalId = 0;
                 }
-                if (expectAudio && !queuedAnyAudio) throw new InvalidOperationException("Realtime response completed without audio.");
+                if (expectAudio && !queuedAnyAudio)
+                {
+                    // A response that produced words but no speech is a degraded turn, not a broken
+                    // one. Throwing here discarded the whole turn - including an action the game had
+                    // already performed - and surfaced as Buddy going silent after doing what he was
+                    // asked. Keep the text, log it, and only fail when there is genuinely nothing.
+                    if (string.IsNullOrWhiteSpace(assistantTranscript))
+                        throw new InvalidOperationException("Realtime response completed without audio or text.");
+                    Plugin.Log?.LogWarning(
+                        "Realtime response returned text without audio; delivered as chat only: " + assistantTranscript);
+                }
                 if (!expectAudio && !turn.SuppressChat && string.IsNullOrWhiteSpace(assistantTranscript))
                     throw new InvalidOperationException("Realtime response completed without text.");
             }

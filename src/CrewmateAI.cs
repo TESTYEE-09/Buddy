@@ -1334,13 +1334,13 @@ namespace LethalAICrewmate
                         Plugin.Log?.LogInfo($"Buddy follow owner -> '{requester.playerUsername}' (playerId={requestingPlayerId}).");
                     }
                     ApplyMovementState(data, movement.Kind);
-                    return "Following " + (requester?.playerUsername ?? "the requesting player") + ".";
+                    return "ok: state=following target=" + (requester?.playerUsername ?? "requesting_player");
                 case BuddyMovementActionKind.Stay:
                     ApplyMovementState(data, movement.Kind);
-                    return "Holding position.";
+                    return "ok: state=holding_position";
                 case BuddyMovementActionKind.ReturnToShip:
                     ApplyMovementState(data, movement.Kind);
-                    return "Returning to the ship.";
+                    return "ok: state=returning_to_ship";
                 case BuddyMovementActionKind.FetchScrap:
                     data.Owner = requester ?? data.Owner;
                     data.DeliverFetchToOwner = movement.DeliverToRequester;
@@ -1351,15 +1351,15 @@ namespace LethalAICrewmate
                         if (named == null)
                         {
                             data.FetchItemFilter = null;
-                            return "No loose scrap matching '" + movement.FetchItemName + "' is near me.";
+                            return "failed: no_loose_scrap_matching name='" + movement.FetchItemName + "'";
                         }
                         data.FetchTarget = named;
                     }
                     ApplyMovementState(data, movement.Kind);
-                    return movement.DeliverToRequester ? "Fetching scrap for the requesting player." : "Fetching scrap for the ship.";
+                    return movement.DeliverToRequester ? "ok: state=fetching_scrap deliver_to=requesting_player" : "ok: state=fetching_scrap deliver_to=ship";
                 case BuddyMovementActionKind.ScoutAhead:
                     return TryBeginScout(data, requester, movement.ScoutDistance, out failure)
-                        ? "Scouting ahead " + Mathf.Clamp(movement.ScoutDistance, MinScoutDistance, MaxScoutDistance).ToString("F0") + " metres."
+                        ? "ok: state=scouting_ahead distance_metres=" + Mathf.Clamp(movement.ScoutDistance, MinScoutDistance, MaxScoutDistance).ToString("F0")
                         : string.IsNullOrWhiteSpace(failure) ? "Tool failed: Buddy could not scout ahead." : failure;
                 default:
                     return "Tool failed: unsupported movement action.";
