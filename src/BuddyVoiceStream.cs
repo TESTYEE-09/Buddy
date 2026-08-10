@@ -22,14 +22,18 @@ namespace LethalAICrewmate
         internal const int StreamRate = 24000;
         private const int RingSamples = StreamRate * 20;
         private const int ClipSamples = StreamRate;
-        // Smallest lead-in Buddy ever starts on. Deliberately close to the size of the first audio
-        // chunk the host emits, so speech begins almost as soon as the first bytes exist.
-        private const float MinCushionSeconds = 0.12f;
+        // Smallest lead-in Buddy ever starts on. Realtime delivers the opening of a line in a burst
+        // and then settles to roughly real time, so a lead-in sized to the first chunk (0.12s) ran
+        // the ring dry partway through every single line: captured sessions re-buffered on the first
+        // reply, again on the second, and only played cleanly once the cushion had healed to ~0.5s.
+        // Starting there costs half a second of latency once and removes the mid-sentence cut that
+        // players hear as Buddy being talked over or clipped.
+        private const float MinCushionSeconds = 0.55f;
         // The audio thread drains in real time while chunks arrive in bursts. When a burst is late
         // the ring runs dry and the line audibly cuts, so every starvation permanently widens the
         // cushion for this session: a good connection stays fast, a jittery one heals to gapless.
-        private const float CushionGrowthSeconds = 0.18f;
-        private const float MaxCushionSeconds = 0.9f;
+        private const float CushionGrowthSeconds = 0.25f;
+        private const float MaxCushionSeconds = 1.5f;
         // A stream that stopped arriving is finished: play whatever is left even if it is short.
         private const float StreamIdleSeconds = 0.25f;
         private const float StopAfterSilenceSeconds = 0.6f;
@@ -157,7 +161,9 @@ namespace LethalAICrewmate
                     // a broken mod.
                     _source.Stop();
                     _playing = false;
-                    Plugin.Log?.LogDebug($"Buddy voice stream re-buffering; cushion now {cushion:F2}s.");
+                    // Info, not Debug: this is the exact event a player reports as "his replies get
+                    // cut off", and it has to be visible in an ordinary log without debug enabled.
+                    Plugin.Log?.LogInfo($"Buddy voice stream re-buffering; cushion now {cushion:F2}s.");
                     return;
                 }
 

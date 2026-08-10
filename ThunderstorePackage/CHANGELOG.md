@@ -1,4 +1,16 @@
 # Changelog
+## 3.7.8
+
+- Fixes Buddy still being cut off mid-sentence. 3.7.7 could recover from a starved audio buffer but
+  had to learn the right cushion by failing first, so the opening replies of every session were cut
+  while it healed. Playback now starts on a cushion that survives the initial burst, and the
+  re-buffering warning is logged at info level so a genuine stumble is visible without debug logging.
+- Buddy no longer renames what he bought. He was reporting a plain Flashlight as a "pro flashlight" -
+  a different, more expensive store item - so the crew was told they owned gear they did not. Item,
+  moon, door and creature names are now repeated exactly as the game reports them.
+- A greeting gets a greeting back. Buddy no longer answers "morning" by opening a conversation or
+  asking what is on the shift list.
+
 ## 3.7.7
 
 - Fixes Buddy cutting out mid-sentence. 3.7.6 started playback on a fixed 0.14 s lead-in, so any late
