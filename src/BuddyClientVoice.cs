@@ -24,7 +24,7 @@ namespace LethalAICrewmate
         private const int VoiceChunkBytes = 8000;
         private const float MinRms = 0.008f;
         private const float TransferExpirySeconds = 3f;
-        private const float SenderCooldownSeconds = 0.75f;
+        private const float SenderCooldownSeconds = 3f;
         private const int MaxIncomingTransfers = 1;
 
         private sealed class IncomingVoice
@@ -345,7 +345,7 @@ namespace LethalAICrewmate
                     MsgVoiceStart,
                     NetworkManager.ServerClientId,
                     writer,
-                    NetworkDelivery.ReliableSequenced);
+                    NetworkDelivery.ReliableFragmentedSequenced);
             }
         }
 
@@ -385,7 +385,7 @@ namespace LethalAICrewmate
                     MsgVoiceEnd,
                     NetworkManager.ServerClientId,
                     writer,
-                    NetworkDelivery.ReliableSequenced);
+                    NetworkDelivery.ReliableFragmentedSequenced);
             }
         }
 
