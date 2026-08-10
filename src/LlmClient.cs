@@ -37,7 +37,7 @@ namespace LethalAICrewmate
             // send the same block twice and pay for it twice.
             string content = BuddyFourthWall.MaybeAnnotate("[Observation] " + summary, true);
             bool queued = OpenAiRealtimeVoiceClient.EnqueueText(content, "Game observation", -1, journalId,
-                includeScreenshot: false, allowTools: false);
+                allowTools: false);
             if (!queued) ResponseJournal.Discard(journalId);
             return queued;
         }

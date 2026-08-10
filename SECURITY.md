@@ -43,7 +43,7 @@ The model is not given tools for filesystem access, shell commands, process exec
 Opting in stores Buddy voice-turn results, observations and confirmed tool results at `BepInEx/LethalAICrewmate-responses.log`, bounded to 8 MB. Typed chat never enters the model or journal. Voice audio goes directly to Realtime and is not separately transcribed into the journal. `SavePromptContext` is a second opt-in for the system prompt and live sensor context. Treat the journal as sensitive player data and obtain the whole crew's consent before enabling or sharing it.
 
 
-Ordinary logs contain status and lengths, not raw player speech, chat, names, API response bodies or credentials. Host screenshots are disabled in the public build.
+Ordinary logs contain status and lengths, not raw player speech, chat, names, API response bodies or credentials. The mod has no screen-capture path at all.
 
 The live Realtime connection and compact conversation memory are in-memory only and reset with the gameplay/session lifecycle. The character arc separately persists bounded numeric progress, not chat, transcripts, Steam IDs or personal facts.
 

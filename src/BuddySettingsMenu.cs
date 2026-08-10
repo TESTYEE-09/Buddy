@@ -21,12 +21,24 @@ namespace LethalAICrewmate
             new List<TMP_Dropdown.OptionData>(Array.ConvertAll(
                 BuddyAiArchitecture.RealtimeVoices, v => new TMP_Dropdown.OptionData(v)));
 
+        private static readonly List<TMP_Dropdown.OptionData> ReasoningOptions =
+            new List<TMP_Dropdown.OptionData>(Array.ConvertAll(
+                BuddyAiArchitecture.ReasoningEfforts, e => new TMP_Dropdown.OptionData(e)));
+
         private static TMP_Dropdown.OptionData VoiceOptionFor(string value)
         {
             string match = BuddyAiArchitecture.SanitizeRealtimeVoice(value);
             foreach (TMP_Dropdown.OptionData option in VoiceOptions)
                 if (option.text == match) return option;
             return VoiceOptions[0];
+        }
+
+        private static TMP_Dropdown.OptionData ReasoningOptionFor(string value)
+        {
+            string match = BuddyAiArchitecture.SanitizeReasoningEffort(value);
+            foreach (TMP_Dropdown.OptionData option in ReasoningOptions)
+                if (option.text == match) return option;
+            return ReasoningOptions[0];
         }
 
         internal static void Register()
@@ -58,7 +70,24 @@ namespace LethalAICrewmate
             var components = new MenuComponent[]
             {
                 new LabelComponent { Text = "AI", FontSize = 19f },
-                new LabelComponent { Text = "gpt-realtime-2.1-mini only: voice input, low reasoning, game tools and spoken replies. Typed chat never triggers Buddy.", FontSize = 12f },
+                new LabelComponent { Text = "gpt-realtime-2.1-mini only: voice input, game tools and spoken replies. Typed chat never triggers Buddy.", FontSize = 12f },
+                new DropdownComponent
+                {
+                    Text = "Thinking level",
+                    Options = ReasoningOptions,
+                    Value = ReasoningOptionFor(Plugin.ReasoningEffort?.Value),
+                    OnValueChanged = (_, value) =>
+                    {
+                        if (Plugin.ReasoningEffort == null || value == null) return;
+                        Plugin.ReasoningEffort.Value = value.text;
+                        Plugin.SaveConfiguration();
+                    }
+                },
+                new LabelComponent
+                {
+                    Text = "Minimal answers fastest and costs least; higher levels judge tool requests better but leave a longer pause before Buddy speaks. Host setting.",
+                    FontSize = 11f
+                },
                 new ToggleComponent
                 {
                     Text = "Final-stage hostile spawning",

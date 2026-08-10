@@ -22,8 +22,14 @@ namespace LethalAICrewmate
         internal const int StreamRate = 24000;
         private const int RingSamples = StreamRate * 20;
         private const int ClipSamples = StreamRate;
-        // Enough lead-in to absorb network jitter without a noticeable delay before Buddy speaks.
-        private const float PrebufferSeconds = 0.14f;
+        // Smallest lead-in Buddy ever starts on. Deliberately close to the size of the first audio
+        // chunk the host emits, so speech begins almost as soon as the first bytes exist.
+        private const float MinCushionSeconds = 0.12f;
+        // The audio thread drains in real time while chunks arrive in bursts. When a burst is late
+        // the ring runs dry and the line audibly cuts, so every starvation permanently widens the
+        // cushion for this session: a good connection stays fast, a jittery one heals to gapless.
+        private const float CushionGrowthSeconds = 0.18f;
+        private const float MaxCushionSeconds = 0.9f;
         // A stream that stopped arriving is finished: play whatever is left even if it is short.
         private const float StreamIdleSeconds = 0.25f;
         private const float StopAfterSilenceSeconds = 0.6f;
@@ -38,6 +44,12 @@ namespace LethalAICrewmate
         private static AudioClip _clip;
         private static bool _playing;
         private static float _lastWriteAt = -999f;
+        // Set on Unity's audio thread when the ring could not fill a callback, promoted to a real
+        // underrun by Write only if more of the same line then arrives. Draining the ring at the end
+        // of a finished line is not a fault and must not widen the cushion.
+        private static bool _ranDry;
+        private static bool _starved;
+        private static float _cushionSeconds = MinCushionSeconds;
 
         internal static bool HasAudio
         {
@@ -70,6 +82,13 @@ namespace LethalAICrewmate
 
             lock (Gate)
             {
+                if (_ranDry)
+                {
+                    // Audio for this line kept coming after playback had nothing left to play, so
+                    // the gap the listener just heard was a buffering fault, not the end of a line.
+                    _ranDry = false;
+                    _starved = true;
+                }
                 for (int i = 0; i < converted.Length; i++)
                 {
                     if (_count == RingSamples)
@@ -95,6 +114,10 @@ namespace LethalAICrewmate
             {
                 _read = 0;
                 _count = 0;
+                _ranDry = false;
+                _starved = false;
+                // _cushionSeconds is deliberately kept: it is what this PC and connection have
+                // proven they need, and relearning it would cut the first line of every reply.
             }
             if (_source != null)
             {
@@ -112,18 +135,41 @@ namespace LethalAICrewmate
                 if (_go != null) _go.transform.position = position;
 
                 int buffered;
-                lock (Gate) buffered = _count;
+                bool starved;
+                float cushion;
+                lock (Gate)
+                {
+                    buffered = _count;
+                    starved = _starved;
+                    _starved = false;
+                    if (starved && _cushionSeconds < MaxCushionSeconds)
+                        _cushionSeconds = Mathf.Min(MaxCushionSeconds, _cushionSeconds + CushionGrowthSeconds);
+                    cushion = _cushionSeconds;
+                }
+
+                bool streamFinished = Time.unscaledTime - _lastWriteAt > StreamIdleSeconds;
+
+                if (_playing && starved && !streamFinished)
+                {
+                    // The line is still being generated but the ring ran dry, so the audio thread is
+                    // padding Buddy's sentence with silence. Hold output until the wider cushion is
+                    // refilled: one short pause reads as a breath, a stream of micro-gaps reads as
+                    // a broken mod.
+                    _source.Stop();
+                    _playing = false;
+                    Plugin.Log?.LogDebug($"Buddy voice stream re-buffering; cushion now {cushion:F2}s.");
+                    return;
+                }
 
                 if (!_playing)
                 {
-                    bool streamFinished = Time.unscaledTime - _lastWriteAt > StreamIdleSeconds;
-                    if (buffered >= (int)(StreamRate * PrebufferSeconds) || (buffered > 0 && streamFinished))
+                    if (buffered >= (int)(StreamRate * cushion) || (buffered > 0 && streamFinished))
                     {
                         ApplyOutputSettings();
                         _source.Play();
                         _playing = true;
                         Plugin.Log?.LogInfo(
-                            $"Buddy voice stream started peer={(CrewmateSpawner.IsHost() ? "host" : "client")} buffered={buffered / (float)StreamRate:F2}s.");
+                            $"Buddy voice stream started peer={(CrewmateSpawner.IsHost() ? "host" : "client")} buffered={buffered / (float)StreamRate:F2}s cushion={cushion:F2}s.");
                     }
                     return;
                 }
@@ -186,6 +232,7 @@ namespace LethalAICrewmate
             lock (Gate)
             {
                 int available = Math.Min(data.Length, _count);
+                if (available < data.Length) _ranDry = true;
                 for (int i = 0; i < available; i++)
                 {
                     data[i] = Ring[_read];

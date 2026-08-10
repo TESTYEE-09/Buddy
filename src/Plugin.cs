@@ -14,7 +14,7 @@ namespace LethalAICrewmate
     {
         public const string ModGuid = "com.lethalaicrewmate.buddy";
         public const string ModName = "Buddy";
-        public const string ModVersion = "3.7.6";
+        public const string ModVersion = "3.7.7";
 
         internal static Plugin Instance;
         internal static ManualLogSource Log;
@@ -42,7 +42,7 @@ namespace LethalAICrewmate
         internal static ConfigEntry<float> VoiceMaxSeconds;
         internal static ConfigEntry<string> VoiceInputDevice;
         internal static ConfigEntry<string> RealtimeVoiceName;
-        internal static ConfigEntry<bool> VisionEnabled;
+        internal static ConfigEntry<string> ReasoningEffort;
         internal static ConfigEntry<bool> SaveResponses;
         internal static ConfigEntry<bool> SavePromptContext;
         internal static ConfigEntry<int> ConfigRevision;
@@ -118,6 +118,7 @@ namespace LethalAICrewmate
                 RemoveObsolete("Groq", "TtsVolume", 1f);
                 if (removeLegacyGroqKey) RemoveObsolete("Groq", "ApiKey", "");
                 RemoveObsolete("Vision", "Model", "");
+                RemoveObsolete("Vision", "Enabled", false);
                 RemoveObsolete("Security", "PersistApiKey", false);
                 RemoveObsolete("OpenRouter", "ApiKey", "");
                 RemoveObsolete("OpenRouter", "Model", "");
@@ -199,8 +200,10 @@ namespace LethalAICrewmate
                 "Keep normal Lethal Company voice chat working while you talk to Buddy, so the rest of the crew still hear each other. Leave this on unless it conflicts with another voice mod.");
             VoiceInputDevice = Config.Bind("Voice", "InputDevice", "",
                 "Optional microphone name (or part of its name). Empty uses the Windows default. Set this if Buddy records the wrong device.");
-            VisionEnabled = Config.Bind("Vision", "Enabled", false,
-                "Reserved setting. The hardened public release does not upload host screenshots from player chat.");
+            ReasoningEffort = Config.Bind("AI", "ReasoningEffort", BuddyAiArchitecture.DefaultReasoningEffort,
+                "How hard Buddy thinks before answering. Valid values: " + string.Join(", ", BuddyAiArchitecture.ReasoningEfforts) +
+                ". Lower is faster and cheaper; higher gives better judgement on tool requests but a longer pause before he speaks. " +
+                "Host-only, and it applies from the next spoken reply.");
             SaveResponses = Config.Bind("Logging", "SaveResponses", false,
                 "Opt-in host-only journal of Buddy voice turns, replies, observations and tool results at BepInEx/LethalAICrewmate-responses.log. Voice audio is not separately transcribed into the journal. Enable only with the crew's informed consent.");
             SavePromptContext = Config.Bind("Logging", "SavePromptContext", false,
@@ -247,10 +250,13 @@ namespace LethalAICrewmate
                         ConfigRevision.Value = 14;
                         Log.LogInfo("Migrated Buddy to the single gpt-realtime-2.1-mini tool-calling architecture.");
                     }
+                    if (ConfigRevision.Value < 15)
+                    {
+                        ConfigRevision.Value = 15;
+                        Log.LogInfo("Removed the unused [Vision] settings; Buddy has no screenshot path.");
+                    }
                     // v1.4.7/v1.5.3 revision-1/2 migrations were removed: the revision chain
                     // above already advances past them on every load, so they were unreachable.
-                    // Vision is default-off for stock installs (config bind default false) and
-                    // is now honored if a host explicitly enables it — no unconditional reset.
                     Config.Save();
                 }
                 catch (Exception ex)

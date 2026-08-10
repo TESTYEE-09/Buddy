@@ -65,6 +65,24 @@ internal static class SecurityRegressionChecks
                 !networkAudio.Contains("PlaybackQueue", StringComparison.Ordinal),
                 "Buddy audio must never re-introduce a bounded queue that silently discards speech");
 
+        // A fixed lead-in cannot cover every connection: when the ring runs dry mid-line the audio
+        // thread pads Buddy's sentence with silence, which is exactly the cut-out players report.
+        string voiceStream = File.ReadAllText(Path.Combine(root, "src", "BuddyVoiceStream.cs"));
+        Require(voiceStream.Contains("_ranDry", StringComparison.Ordinal) &&
+                voiceStream.Contains("_cushionSeconds", StringComparison.Ordinal) &&
+                voiceStream.Contains("CushionGrowthSeconds", StringComparison.Ordinal),
+                "playback must detect buffer starvation and widen its cushion instead of cutting speech");
+        Require(realtime.Contains("firstChunkBytes", StringComparison.Ordinal) &&
+                realtime.Contains("streamChunkBytes", StringComparison.Ordinal),
+                "the opening audio chunk must stay small so Buddy starts talking promptly");
+        // Thinking level is user-selectable, so it reaches the session config as config text and
+        // must be whitelisted rather than interpolated raw.
+        Require(realtime.Contains("SanitizeReasoningEffort(Plugin.ReasoningEffort", StringComparison.Ordinal),
+                "reasoning effort must be validated against the release-owned list before it is sent");
+        Require(!File.Exists(Path.Combine(root, "src", "VisionCapture.cs")) &&
+                !realtime.Contains("VisionCapture", StringComparison.Ordinal),
+                "the retired screenshot path must not return");
+
         string promptPath = Path.Combine(root, "src", "BuddyConversationPrompt.cs");
         string prompt = File.ReadAllText(promptPath);
         Require(prompt.Contains("Never recommend an exit", StringComparison.Ordinal) &&

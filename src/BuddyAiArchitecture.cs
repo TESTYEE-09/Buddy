@@ -19,6 +19,28 @@ namespace LethalAICrewmate
 
         internal const string DefaultRealtimeVoice = "ash";
 
+        /// <summary>
+        /// Reasoning effort accepted for this model, cheapest and fastest first. Higher settings buy
+        /// better tool decisions with noticeably longer silence before Buddy answers, and reasoning
+        /// shares the response token budget with his speech, so this is a real speed/quality dial.
+        /// </summary>
+        internal static readonly string[] ReasoningEfforts =
+        {
+            "minimal", "low", "medium", "high"
+        };
+
+        internal const string DefaultReasoningEffort = "low";
+
+        /// <summary>Maps a config value to a valid reasoning effort, falling back to low.</summary>
+        internal static string SanitizeReasoningEffort(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return DefaultReasoningEffort;
+            string candidate = value.Trim().ToLowerInvariant();
+            foreach (string allowed in ReasoningEfforts)
+                if (string.Equals(allowed, candidate, StringComparison.Ordinal)) return allowed;
+            return DefaultReasoningEffort;
+        }
+
         /// <summary>Maps a config value to a valid Realtime voice, falling back to Ash.</summary>
         internal static string SanitizeRealtimeVoice(string value)
         {

@@ -47,7 +47,7 @@ push-to-talk voice
         |
         v
 gpt-realtime-2.1-mini
-  | low-effort reasoning
+  | configurable thinking level
   | bounded game tools
   | native voice output
         |
@@ -55,7 +55,7 @@ gpt-realtime-2.1-mini
 host game state -> real tool result -> Buddy's spoken reply
 ```
 
-Reasoning stays at **low** effort. Spoken replies target **2-14 words**: concise but not clipped. Normal responses have a 384-token ceiling so Buddy stays brief and responds quickly. Ordinary message audio starts as soon as Realtime identifies the output as a message. Tool-call audio remains buffered until the real host-side game result returns, so Buddy cannot announce a false success.
+Thinking level defaults to **low** and is selectable in Buddy's settings (`minimal`, `low`, `medium`, `high`): lower answers faster and costs less, higher judges tool requests better but pauses longer before speaking. Spoken replies target **2-14 words**: concise but not clipped. Responses are capped at 1200 output tokens, which reasoning and speech share. Ordinary message audio starts as soon as Realtime identifies the output as a message. Tool-call audio remains buffered until the real host-side game result returns, so Buddy cannot announce a false success.
 
 The Realtime session stays connected during play for conversational continuity, supplemented by bounded in-memory context. Typed chat never enters this model path. Context resets with the gameplay/session lifecycle and is not durable chat storage.
 
@@ -107,18 +107,18 @@ InputDevice =
 KeepGameVoiceDuringPushToTalk = true
 RealtimeVoiceName = ash
 
+[AI]
+ReasoningEffort = low      ; minimal | low | medium | high
+
 [Security]
 AllowRemoteVoice = true
 
 [Logging]
 SaveResponses = false
 SavePromptContext = false
-
-[Vision]
-Enabled = false
 ```
 
-The native Buddy settings page controls the key, microphone, voice, volume, story settings and response saving. The AI panel explicitly identifies the model, low reasoning mode and voice-only input path.
+The native Buddy settings page controls the key, microphone, voice, volume, thinking level, story settings and response saving. The AI panel explicitly identifies the model and the voice-only input path.
 
 `ObservationIntervalSeconds = 0` is the default. Confirmed danger and important event callouts remain separate from periodic observations.
 
@@ -128,7 +128,7 @@ The native Buddy settings page controls the key, microphone, voice, volume, stor
 - Typed chat never enters the model or journal.
 - Host and compatible remote push-to-talk audio goes to OpenAI Realtime.
 - Generated speech is distributed from the host as bounded PCM audio.
-- Screenshots are disabled.
+- Buddy has no screen-capture path: the mod cannot read or upload the host's screen.
 - The opt-in journal stores Buddy voice-turn results, observations and tool results. It does not save raw voice audio or separately transcribe voice.
 - `SavePromptContext` additionally stores the system prompt and live sensor context.
 

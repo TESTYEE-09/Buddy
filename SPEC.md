@@ -27,7 +27,7 @@ The host and compatible remote clients capture bounded push-to-talk audio. The h
 - Static system-prompt prefix remains stable for prompt caching.
 - Live sensor context is refreshed per turn.
 - The active Realtime session retains current conversation context; bounded in-memory context supplements it. Both reset with the gameplay/session lifecycle.
-- Screenshots are disabled.
+- Buddy has no screen-capture path: the mod cannot read or upload the host's screen.
 
 Normal message audio starts playback after the Realtime output item is identified as a message. Tool-call responses remain buffered until the host-side game result is returned. Buddy therefore gains earlier ordinary speech without allowing unconfirmed tool success to reach players.
 

@@ -40,7 +40,6 @@ namespace LethalAICrewmate
         {
             public byte[] Pcm24k;
             public string Text;
-            public string ImageJpegBase64;
             public int PlayerId;
             public string PlayerName;
             public string TurnContext;
@@ -78,17 +77,13 @@ namespace LethalAICrewmate
             });
         }
 
-        internal static bool EnqueueText(string text, string playerName, int playerId, long journalId, bool includeScreenshot, bool allowTools)
+        internal static bool EnqueueText(string text, string playerName, int playerId, long journalId, bool allowTools)
         {
             if (!Enabled || string.IsNullOrWhiteSpace(text)) return false;
-            string image = null;
-            if (includeScreenshot && Plugin.VisionEnabled?.Value == true)
-                VisionCapture.TryCaptureJpegBase64(out image);
             string safeName = PromptSafety.SanitizePlayerName(playerName);
             return EnqueueTurn(new VoiceTurn
             {
                 Text = text.Trim(),
-                ImageJpegBase64 = image,
                 PlayerId = playerId,
                 PlayerName = safeName,
                 // A game observation has no human speaker; naming one invites Buddy to reply to it.
@@ -254,10 +249,7 @@ namespace LethalAICrewmate
             }
             else if (!turn.SuppressChat)
             {
-                string content = "[{\"type\":\"input_text\",\"text\":\"" + LlmClient.Escape(turn.Text) + "\"}";
-                if (!string.IsNullOrWhiteSpace(turn.ImageJpegBase64))
-                    content += ",{\"type\":\"input_image\",\"image_url\":\"data:image/jpeg;base64," + turn.ImageJpegBase64 + "\"}";
-                content += "]";
+                string content = "[{\"type\":\"input_text\",\"text\":\"" + LlmClient.Escape(turn.Text) + "\"}]";
                 string item = "{\"type\":\"conversation.item.create\",\"item\":{\"type\":\"message\",\"role\":\"user\",\"content\":" + content + "}}";
                 await SendAsync(item, _sessionCancel.Token).ConfigureAwait(false);
                 ResponseJournal.RecordContext(turn.JournalId, turn.TurnContext);
@@ -287,9 +279,13 @@ namespace LethalAICrewmate
 
             using (var audio = new MemoryStream())
             {
-                // 250 ms of PCM16. The continuous voice stream stitches chunks together, so this
-                // only trades a little replication overhead against how soon Buddy starts talking.
-                const int playbackChunkBytes = OutputRate / 2;
+                // Chunk size is a straight trade between how soon Buddy starts talking and how far
+                // ahead playback stays buffered, so it ramps: ship the opening ~100 ms the moment
+                // it exists, then switch to ~400 ms so the rest of the line arrives well ahead of
+                // the audio thread and never has to be padded with silence.
+                const int firstChunkBytes = OutputRate / 5;
+                const int streamChunkBytes = OutputRate * 4 / 5;
+                int playbackChunkBytes = firstChunkBytes;
                 bool queuedAnyAudio = false;
                 bool outputItemKnown = !turn.AllowTools;
                 bool streamAudio = !turn.AllowTools;
@@ -340,6 +336,7 @@ namespace LethalAICrewmate
                                 }
                                 audio.SetLength(0);
                                 audio.Position = 0;
+                                playbackChunkBytes = streamChunkBytes;
                             }
                         }
                     }
@@ -380,6 +377,7 @@ namespace LethalAICrewmate
                             streamAudio = false;
                             streamedAudio = false;
                             queuedAnyAudio = false;
+                            playbackChunkBytes = firstChunkBytes;
 
                             string output = "{\"result\":\"" + LlmClient.Escape(result) + "\"}";
                             string item = "{\"type\":\"conversation.item.create\",\"item\":{\"type\":\"function_call_output\",\"call_id\":\"" +
@@ -533,7 +531,8 @@ namespace LethalAICrewmate
                    "\"noise_reduction\":{\"type\":\"far_field\"},\"turn_detection\":null}," +
                    "\"output\":{\"format\":{\"type\":\"audio/pcm\",\"rate\":24000},\"voice\":\"" +
                    BuddyAiArchitecture.SanitizeRealtimeVoice(Plugin.RealtimeVoiceName?.Value) + "\"}}," +
-                   "\"reasoning\":{\"effort\":\"low\"}," +
+                   "\"reasoning\":{\"effort\":\"" +
+                   BuddyAiArchitecture.SanitizeReasoningEffort(Plugin.ReasoningEffort?.Value) + "\"}," +
                    // Reasoning and audio both draw on this budget. The old 384 could end a reply
                    // mid-word; the cap only bounds a runaway response, it is not a per-turn charge.
                    "\"max_output_tokens\":1200," +

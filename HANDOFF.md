@@ -28,14 +28,14 @@ Release gates remain:
 ## OpenAI Realtime path
 
 - Model: `gpt-realtime-2.1-mini`.
-- One persistent host WebSocket session handles voice understanding, low-effort reasoning, native voice output and bounded host-side tool calls.
-- Reasoning effort is `low`.
-- Normal spoken replies target 2-14 words and are capped at 384 output tokens.
+- One persistent host WebSocket session handles voice understanding, reasoning, native voice output and bounded host-side tool calls.
+- Reasoning effort is the host setting `[AI] ReasoningEffort` (`minimal`/`low`/`medium`/`high`), default `low`. It is validated against that list before it reaches the session config.
+- Normal spoken replies target 2-14 words and are capped at 1200 output tokens, shared between reasoning and audio.
 - Periodic unsolicited observations default to off with `ObservationIntervalSeconds = 0`; confirmed danger and important event callouts remain separate.
 - Normal message audio begins playback after Realtime identifies the output item as a message. Tool-call output remains buffered until the host executes the game action and returns the real result, preventing false success audio.
 - The static prompt prefix remains stable for input caching. Live game context is refreshed per turn.
 - Conversation context is held in the active Realtime session with a bounded in-memory supplement. It resets when the gameplay/session lifecycle resets and is not durable chat storage.
-- Screenshots are disabled.
+- Buddy has no screen-capture path: the mod cannot read or upload the host's screen.
 
 ## Voice-only behavior
 

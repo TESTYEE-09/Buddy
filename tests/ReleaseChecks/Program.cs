@@ -155,11 +155,6 @@ static class Program
         Check(!VoiceSignalMath.HasUsableSignal(0.0001f), "reject true silence floor");
         float quietGain = VoiceSignalMath.CalculateGain(0.0011f, 0.01f);
         Check(quietGain > 10f && quietGain <= 30f, "adaptively amplify quiet microphone");
-        Check(VisionIntent.IsVisualQuestion("Buddy, what am I looking at?"), "detect looking-at vision request");
-        Check(VisionIntent.IsVisualQuestion("Can you see my screen?"), "detect screen vision request");
-        Check(VisionIntent.IsVisualQuestion("what's in front of me?"), "detect what-is-in-front vision request");
-        Check(!VisionIntent.IsVisualQuestion("Buddy follow me"), "avoid screenshots for normal commands");
-        Check(!VisionIntent.IsVisualQuestion("get in front of me"), "avoid screenshots for position command");
 
         // Response journal behavior: file creation, input/reply pairing, FIFO ordering, config suppression.
         string journalDir = Path.Combine(Path.GetTempPath(), "lethal-ai-journal-" + Guid.NewGuid().ToString("N"));

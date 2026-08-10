@@ -43,7 +43,7 @@ push-to-talk voice
         |
         v
 gpt-realtime-2.1-mini
-  | low-effort reasoning
+  | configurable thinking level
   | bounded game tools
   | native voice output
         |
@@ -51,7 +51,7 @@ gpt-realtime-2.1-mini
 host game state -> real tool result -> Buddy's spoken reply
 ```
 
-Reasoning stays at **low** effort. Spoken replies target **2-14 words**: concise but not clipped. Normal responses have a 384-token ceiling so Buddy stays brief and responds quickly. Ordinary message audio starts as soon as Realtime identifies the output as a message. Tool-call audio remains buffered until the real host-side game result returns, so Buddy cannot announce a false success. The Realtime session stays connected during play for conversational continuity, supplemented by bounded in-memory context. Typed chat never enters this model path.
+Thinking level defaults to **low** and is selectable in Buddy's settings (`minimal`, `low`, `medium`, `high`): lower answers faster and costs less, higher judges tool requests better but pauses longer before speaking. Spoken replies target **2-14 words**: concise but not clipped. Responses are capped at 1200 output tokens, which reasoning and speech share. Ordinary message audio starts as soon as Realtime identifies the output as a message. Tool-call audio remains buffered until the real host-side game result returns, so Buddy cannot announce a false success. The Realtime session stays connected during play for conversational continuity, supplemented by bounded in-memory context. Typed chat never enters this model path.
 
 ## Voice and multiplayer
 
@@ -81,7 +81,7 @@ Buddy's native LethalSettings page provides:
 
 Response logging is **off by default**. When enabled, it stores Buddy voice-turn results, observations and tool results in the bounded host-only `BepInEx/LethalAICrewmate-responses.log`. Voice audio is sent directly to Realtime and is not separately transcribed into that journal. Prompt and sensor context require the additional `SavePromptContext` opt-in.
 
-Screenshots are disabled. Buddy does not upload the host's screen.
+Buddy has no screen-capture path: the mod cannot read or upload the host's screen.
 
 Buddy's voice is AI-generated. Obtain the crew's consent before enabling response logging.
 

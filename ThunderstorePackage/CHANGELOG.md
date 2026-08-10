@@ -1,4 +1,18 @@
 # Changelog
+## 3.7.7
+
+- Fixes Buddy cutting out mid-sentence. 3.7.6 started playback on a fixed 0.14 s lead-in, so any late
+  chunk left the audio thread with nothing to play and it padded the line with silence. Playback now
+  detects that starvation and permanently widens its cushion for the session, so a good connection
+  stays fast and a jittery one settles into gapless speech after the first stumble.
+- Buddy starts talking sooner. The opening chunk of a reply is now ~100 ms instead of 250 ms, and the
+  rest of the line streams in larger 400 ms chunks that stay comfortably ahead of playback.
+- New **Thinking level** setting in Buddy's settings page (`[AI] ReasoningEffort`): `minimal`, `low`
+  (default), `medium` or `high`. Minimal answers fastest and costs least; higher levels judge tool
+  requests better but leave a longer pause before Buddy speaks. Host-only.
+- Settings cleanup: the `[Vision]` section is gone. It was a reserved, permanently-off screenshot
+  toggle with no working path behind it, and the capture code has been removed outright.
+
 ## 3.7.6
 
 - Fixes replies being cut in half and stuttering. Streamed speech now plays through one continuous
