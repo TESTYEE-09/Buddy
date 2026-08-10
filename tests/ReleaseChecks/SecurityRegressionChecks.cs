@@ -153,6 +153,33 @@ internal static class SecurityRegressionChecks
         Require(!realtime.Contains("Realtime response completed without audio.\"", StringComparison.Ordinal) &&
                 realtime.Contains("without audio or text", StringComparison.Ordinal),
                 "a reply that arrives as text must not discard the turn and leave Buddy silent");
+        // Live probe, 5.1.1: "Come inside the facility with me." called move_buddy(follow) and
+        // Buddy answered "Right behind you." The refusal existed only in the contract prose; the
+        // tool description, which is what the call decision actually reads, never mentioned the
+        // facility - and the request is lexically almost identical to "Come with me.", which is a
+        // legitimate follow. The constraint has to live on the tool.
+        Require(realtime.Contains("Going into the facility is never one of these moves", StringComparison.Ordinal),
+                "move_buddy's own description must refuse being ordered into the facility");
+        // Same run: status state=holding_position came straight back as "Holding position." The
+        // contract forbade parroting in the abstract but never showed what parroting looks like.
+        Require(prompt.Contains("A state name is not a phrase to hand back", StringComparison.Ordinal),
+                "the contract must name the state-name parrot, not just forbid parroting in general");
+        // Same run's ancestor: "Nothing dangerous is listed near you." The word came from the
+        // contract itself, which used to say "Only what is listed there exists" and annotate an
+        // example "(nothing listed)". Do not reintroduce vocabulary that reveals the data block.
+        Require(prompt.Contains("never say a thing is listed, shown, reported or according to anything",
+                                StringComparison.Ordinal),
+                "the contract must forbid the wording that reveals Buddy is reading a data block");
+        // TerminalBuddy.BuyItem was the last tool status still written as prose, and it carried two
+        // credit figures in one sentence: "Bought 1 Flashlight for 15 credits. 30 left." The model
+        // read the cost as the balance and told the player "Fifteen credits left." with 30 left.
+        // A status is data; every figure in it has to be named.
+        string terminalPath = Path.Combine(root, "src", "TerminalBuddy.cs");
+        Require(File.Exists(terminalPath), "release checks must locate TerminalBuddy.cs");
+        string terminal = File.ReadAllText(terminalPath);
+        Require(terminal.Contains("cost_credits={totalCost} credits_left={newCredits}", StringComparison.Ordinal) &&
+                !terminal.Contains("credits. {newCredits} left.", StringComparison.Ordinal),
+                "the buy status must name each credit figure, never leave them to be picked out of prose");
 
         // Every word Buddy says is the model's. Hardcoded dialogue is what made him sound like a
         // toy: the same danger callout every time, the same two arc lines forever, and an action

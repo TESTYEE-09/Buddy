@@ -213,7 +213,7 @@ namespace LethalAICrewmate
                 }
 
                 if (match < 0)
-                    return $"Store doesn't have '{itemQuery}' (or name mismatch).";
+                    return $"failed: no_store_item_matching name='{itemQuery}'";
 
                 int salePercent = 100;
                 if (term.itemSalesPercentages != null && match < term.itemSalesPercentages.Length)
@@ -221,22 +221,25 @@ namespace LethalAICrewmate
                 int unitCost = (int)(list[match].creditsWorth * (salePercent / 100f));
                 int totalCost = unitCost * quantity;
                 if (term.groupCredits < totalCost)
-                    return $"Need {totalCost} credits for {quantity} {matchName}, have {term.groupCredits}.";
+                    return $"failed: insufficient_credits need_credits={totalCost} qty={quantity} item={matchName} credits_have={term.groupCredits}";
                 int dropshipCount = term.numberOfItemsInDropship + quantity;
                 if (dropshipCount > 12)
-                    return $"Dropship limit is 12 items; there are already {term.numberOfItemsInDropship} queued.";
+                    return $"failed: dropship_full limit=12 queued={term.numberOfItemsInDropship}";
 
                 int[] bought = new int[quantity];
                 for (int i = 0; i < bought.Length; i++) bought[i] = match;
                 int newCredits = term.groupCredits - totalCost;
                 term.BuyItemsServerRpc(bought, newCredits, dropshipCount);
                 Plugin.Log?.LogInfo($"Bought {quantity}x store index {match} ({matchName}) for {totalCost}");
-                return $"Bought {quantity} {matchName} for {totalCost} credits. {newCredits} left.";
+                // Token form, not prose. "Bought 1 Flashlight for 15 credits. 30 left." made the
+                // model pick the wrong number out of the sentence and tell the player "Fifteen
+                // credits left." when 30 remained. Naming each figure removes the guess.
+                return $"ok: bought={matchName} qty={quantity} cost_credits={totalCost} credits_left={newCredits}";
             }
             catch (Exception ex)
             {
                 Plugin.Log?.LogWarning($"BuyItem: {ex.Message}");
-                return "Purchase failed safely; use the terminal manually.";
+                return "failed: purchase_error";
             }
         }
 

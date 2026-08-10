@@ -1,4 +1,29 @@
 # Changelog
+## 5.1.2
+Three things the live model actually did wrong, found by re-running the probe instead of trusting
+the last run's score.
+
+- **Buddy could be ordered into the facility.** "Come inside the facility with me." called
+  `move_buddy(follow)` and he answered "Right behind you." The refusal existed only in the contract
+  prose; `move_buddy`'s own description - which is what the call decision reads - never mentioned
+  the facility, and the request is nearly identical to "Come with me.", which is a legitimate
+  follow. The constraint now lives on the tool, where `buy_item` already kept its own.
+- **He read a state name back as dialogue.** Status `state=holding_position` came out as "Holding
+  position." The contract forbade parroting in the abstract but never showed what it looks like; it
+  now names the failure. He answers "Parked." instead.
+- **The buy status made him misreport credits.** `BuyItem` was the last tool status still written
+  as prose, carrying two credit figures in one sentence ("...for 15 credits. 30 left."). The model
+  picked the wrong one and told the player "Fifteen credits left." with 30 remaining. Every figure
+  is now named, and the failure paths use the same `failed: reason key=value` form as the rest.
+- The probe retries rate-limited turns instead of scoring them, can run a subset or repeat a
+  scenario, and asks for the post-tool response explicitly the way the client does. It also reports
+  refusal length and replies that are a contract example verbatim, both as notes rather than
+  failures.
+
+The "19 of 19" recorded against 5.1.1 did not reproduce: the same prompt scored 15 of 19, and two
+of those four were rate limits rather than behaviour. One run of a stochastic model is a sample,
+not a result - which is why the two real bugs above sat in a release believed to be clean.
+
 ## 5.1.1
 Closes the last way a second line could reach the speaker.
 
