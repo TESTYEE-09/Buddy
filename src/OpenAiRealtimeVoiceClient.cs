@@ -330,10 +330,24 @@ namespace LethalAICrewmate
 
         private static async Task TrySendCancelAsync()
         {
+            // The flag check runs while the send lock is held, serializing the cancel against the
+            // next response.create: a turn cannot be created mid-cancel. If the just-cancelled
+            // response finished before this task was scheduled the flag has been reset and the
+            // newer turn must not be cancelled. Never clear the input audio buffer from here
+            // either: the following live turn streams audio into that buffer, so a stale cancel
+            // must not wipe it. Uncommitted audio from an aborted turn is cleared by that turn's
+            // own abort path.
             try
             {
-                await SendAsync("{\"type\":\"response.cancel\"}", _sessionCancel.Token).ConfigureAwait(false);
-                await SendAsync("{\"type\":\"input_audio_buffer.clear\"}", _sessionCancel.Token).ConfigureAwait(false);
+                await SendLock.WaitAsync(_sessionCancel.Token).ConfigureAwait(false);
+                try
+                {
+                    lock (Gate) if (!_responseCancelRequested) return;
+                    byte[] cancel = Encoding.UTF8.GetBytes("{\"type\":\"response.cancel\"}");
+                    await _socket.SendAsync(new ArraySegment<byte>(cancel), WebSocketMessageType.Text, true, _sessionCancel.Token)
+                        .ConfigureAwait(false);
+                }
+                finally { SendLock.Release(); }
             }
             catch (Exception ex)
             {

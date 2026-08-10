@@ -235,7 +235,11 @@ namespace LethalAICrewmate
             int position = Microphone.GetPosition(_clientMicDevice);
             if (position < 0) return;
             if (position < _clientLastSampleFrame)
-                throw new InvalidOperationException("Client microphone position wrapped during non-looping Buddy capture.");
+            {
+                Plugin.Log?.LogWarning("Client microphone position wrapped; aborting Buddy capture.");
+                AbortClientCapture(null);
+                return;
+            }
 
             int available = position - _clientLastSampleFrame;
             int preferred = StreamingMicCapture.RecommendedSourceFrames(_clientClip);
@@ -249,7 +253,11 @@ namespace LethalAICrewmate
                 available -= frames;
                 if (pcm == null || pcm.Length < 4) continue;
                 if (_clientSentBytes + pcm.Length > MaxVoiceBytes)
-                    throw new InvalidOperationException("Client Buddy voice stream exceeded the bounded upload size.");
+                {
+                    Plugin.Log?.LogWarning("Client Buddy voice stream exceeded the bounded upload size.");
+                    AbortClientCapture(null);
+                    return;
+                }
 
                 _clientInputSquares += inputRms * inputRms * frames;
                 _clientInputFrames += frames;
@@ -266,6 +274,7 @@ namespace LethalAICrewmate
             try
             {
                 FlushClientAudio(true);
+                if (!_clientRecording) return;
                 float duration = Time.unscaledTime - _clientStartedAt;
                 try { Microphone.End(_clientMicDevice); } catch { }
                 VoiceCoexistence.EndBuddyCapture();

@@ -133,7 +133,11 @@ namespace LethalAICrewmate
             int position = Microphone.GetPosition(_micDevice);
             if (position < 0) return;
             if (position < _lastSampleFrame)
-                throw new InvalidOperationException("Microphone position wrapped during non-looping Buddy capture.");
+            {
+                Plugin.Log?.LogWarning("Microphone position wrapped; aborting Buddy capture.");
+                AbortRecord("Buddy's microphone reset mid-capture. Try again.");
+                return;
+            }
 
             int available = position - _lastSampleFrame;
             int preferred = StreamingMicCapture.RecommendedSourceFrames(_clip);
@@ -150,7 +154,11 @@ namespace LethalAICrewmate
                 _inputSquares += inputRms * inputRms * frames;
                 _inputFrames += frames;
                 if (!OpenAiRealtimeVoiceClient.AppendStreamingVoice(_streamId, pcm))
-                    throw new InvalidOperationException("Realtime input stream stopped accepting microphone audio.");
+                {
+                    Plugin.Log?.LogWarning("Realtime input stream stopped accepting microphone audio.");
+                    AbortRecord("Buddy's live voice stream stopped. Try again.");
+                    return;
+                }
 
                 Plugin.Log?.LogDebug($"Buddy live mic chunk bytes={pcm.Length} inRms={inputRms:F5} outRms={outputRms:F4}.");
             }
@@ -162,6 +170,7 @@ namespace LethalAICrewmate
             try
             {
                 FlushStreamingAudio(true);
+                if (!_recording) return;
                 float duration = Time.unscaledTime - _startedAt;
                 try { Microphone.End(_micDevice); } catch { }
                 VoiceCoexistence.EndBuddyCapture();

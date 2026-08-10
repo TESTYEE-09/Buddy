@@ -62,6 +62,19 @@ internal static class StreamingVoiceRegressionChecks
                 encoder.Contains("targetSamples &= ~1", StringComparison.Ordinal),
                 "live microphone transport must remain bounded 16 kHz PCM in stable 100 ms chunks");
 
+        Require(realtime.Contains("if (!_responseCancelRequested) return", StringComparison.Ordinal) &&
+                realtime.Contains("await _socket.SendAsync(new ArraySegment<byte>(cancel)", StringComparison.Ordinal) &&
+                Count(realtime, "input_audio_buffer.clear") == 3,
+                "a stale cancellation must re-check its flag under the send lock and never clear the next turn's input buffer");
+
+        Require(remoteVoice.Contains("wrapped; aborting Buddy capture", StringComparison.Ordinal) &&
+                remoteVoice.Contains("exceeded the bounded upload size.", StringComparison.Ordinal) &&
+                remoteVoice.Contains("if (!_clientRecording) return;", StringComparison.Ordinal) &&
+                hostVoice.Contains("wrapped; aborting Buddy capture", StringComparison.Ordinal) &&
+                hostVoice.Contains("stopped accepting microphone audio.", StringComparison.Ordinal) &&
+                hostVoice.Contains("if (!_recording) return;", StringComparison.Ordinal),
+                "host and remote PTT must abort the capture gracefully instead of throwing mid-stream every frame");
+
         Require(net.Contains("ProtocolVersion = 8", StringComparison.Ordinal),
                 "the incompatible live PTT wire format must stay behind its bumped multiplayer protocol gate");
     }

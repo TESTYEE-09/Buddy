@@ -1,4 +1,21 @@
 # Changelog
+## 3.8.0
+
+- Buddy's push-to-talk is now live speech streaming instead of a recorded upload. Microphone audio
+  is streamed to the Realtime session in bounded 100 ms chunks while the key is held, and releasing
+  the key only commits the buffer and starts the reply. Buddy starts answering a bound sooner and
+  no longer waits for the whole WAV to finish recording.
+- Multiplayer voice uses the same live transport. Clients stream 16 kHz PCM chunks to the host over
+  one ordered fragmented pipeline; the host validates identity, range and chunk order, keeps
+  rate/size limits, and remains the only peer with the API key. A bumped protocol version keeps the
+  new wire format out of older lobbies.
+- Closes a stale-cancellation race: interrupting Buddy while he is mid-reply could cancel the next
+  push-to-talk turn or wipe its freshly streamed audio. Cancellation now re-checks its target under
+  the send lock and can no longer touch a newer turn.
+- Push-to-talk recovers gracefully instead of spamming errors if the microphone position wraps or
+  the live stream is interrupted mid-hold: the capture is aborted cleanly with a tip instead of
+  throwing every frame until the key is released.
+
 ## 3.7.8
 
 - Fixes Buddy still being cut off mid-sentence. 3.7.7 could recover from a starved audio buffer but
