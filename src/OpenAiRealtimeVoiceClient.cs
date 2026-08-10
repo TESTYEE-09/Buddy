@@ -150,13 +150,29 @@ namespace LethalAICrewmate
             lock (Gate)
             {
                 live = _liveInput;
-                if (live == null || live.Id != streamId) return false;
+                // Every one of these refusals surfaces the same player-facing "live voice stream
+                // stopped" line, so without naming the cause here the report is undiagnosable from
+                // an ordinary log. Each branch says which of the four it was.
+                if (live == null)
+                {
+                    Plugin.Log?.LogWarning($"Realtime live input {streamId} rejected: no live input is reserved (session reset or turn aborted mid-capture).");
+                    return false;
+                }
+                if (live.Id != streamId)
+                {
+                    Plugin.Log?.LogWarning($"Realtime live input {streamId} rejected: superseded by stream {live.Id}.");
+                    return false;
+                }
             }
 
             bool overflow = false;
             lock (live.Gate)
             {
-                if (live.Cancelled || live.Ended) return false;
+                if (live.Cancelled || live.Ended)
+                {
+                    Plugin.Log?.LogWarning($"Realtime live input {streamId} rejected: stream already {(live.Cancelled ? "cancelled" : "ended")} (its turn failed or was aborted while the key was still held).");
+                    return false;
+                }
                 if (live.BufferedBytes + pcm24k.Length > MaxLiveInputBytes)
                 {
                     live.Cancelled = true;
@@ -179,7 +195,7 @@ namespace LethalAICrewmate
             // order avoids a future Append/End deadlock if a caller moves off Unity's main thread.
             lock (Gate)
                 if (_liveInput == live) _liveInput = null;
-            Plugin.Log?.LogWarning("Realtime live input exceeded the bounded audio queue and was aborted.");
+            Plugin.Log?.LogWarning($"Realtime live input {streamId} rejected: exceeded the {MaxLiveInputBytes} byte queue bound, so the worker never drained it (the turn was still blocked connecting or on a previous reply).");
             return false;
         }
 

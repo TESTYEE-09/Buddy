@@ -63,16 +63,22 @@ namespace LethalAICrewmate
 
         /// <summary>
         /// Tool-turn flush. A model preamble spoken before a tool call claims an action that was
-        /// never confirmed, so drop it while it is still silent (or younger than half a second, where
-        /// a listener has heard at most the first word). Once the preamble is clearly audible,
-        /// cutting it mid-sentence reads as a broken mod; the short line is preferable, so let it
-        /// finish and the post-result reply follows it.
+        /// never confirmed, so drop it while it is still buffered and silent.
+        ///
+        /// Once a single sample has reached the speaker there is no threshold that makes cutting
+        /// safe: 4.1.0 spared only preambles older than half a second, which left every preamble
+        /// under that age to be chopped mid-word — and because playback does not start until the
+        /// cushion fills while the tool executes in parallel, that short window is where most tool
+        /// turns actually land. That is the "his replies get cut short" report. Truthfulness is
+        /// already preserved without cutting: the unconfirmed transcript is discarded by the caller
+        /// and the model re-answers from the real tool result, so an audible preamble simply
+        /// finishes and the corrected reply follows it.
         /// </summary>
         internal static void FlushUnplayedPreamble()
         {
             lock (Gate)
             {
-                if (_playing && Time.unscaledTime - _playStartedAt >= 0.5f)
+                if (_playing)
                 {
                     Plugin.Log?.LogInfo("Buddy voice stream: pre-tool preamble already audible; letting it finish.");
                     return;
@@ -208,6 +214,13 @@ namespace LethalAICrewmate
                 {
                     _source.Stop();
                     _playing = false;
+                    _playStartedAt = -999f;
+                    // The final audio callback of a finished line always drains the ring, so it set
+                    // _ranDry without any fault having occurred. Leaving it set makes the first
+                    // Write of the *next* response report a starvation that never happened, which
+                    // widens the cushion every tool turn until it pins at the maximum and Buddy
+                    // stalls for a second and a half before every reply.
+                    lock (Gate) _ranDry = false;
                 }
             }
             catch (Exception ex)

@@ -1,4 +1,30 @@
 # Changelog
+## 4.2.0
+
+- **Buddy's replies no longer get cut off mid-word.** 4.1.0's "softer" preamble flush only spared a
+  preamble that had already been audible for half a second; anything younger was still hard-cut, ring
+  buffer wiped and audio source stopped. Because playback does not begin until the cushion fills while
+  the tool runs in parallel, almost every tool turn landed inside that window, so the fix released as
+  the cure was still chopping the common case. Once any audio has reached the speaker the line now
+  always finishes. Truthfulness is unchanged: the unconfirmed transcript is still discarded and Buddy
+  still re-answers from the real tool result, so a spoken preamble is simply followed by the correction.
+- **Fixed a false starvation that stalled every reply.** The last audio callback of any finished line
+  drains the ring by definition, which set the underrun flag with nothing actually wrong. The flag was
+  never cleared when playback stopped normally, so the next response's first chunk reported a buffering
+  fault that never happened and widened the cushion. Over a few tool turns it pinned at the 1.5s maximum
+  and Buddy sat silent for a second and a half before speaking. The flag is now cleared when a line ends.
+- **"Buddy's live voice stream stopped" now says why.** Four unrelated causes - no reservation, a
+  superseded stream, a stream whose turn already failed, and overflowing the input queue bound - all
+  surfaced that one line with nothing in the log to tell them apart. Each now logs its own reason and
+  the stream id, so the next occurrence is diagnosable from an ordinary log.
+- **The character arc moves roughly twice as fast and each stage bites harder.** Feral needed about
+  seven quota cycles and most crews never saw it, so the back half of the arc was written but unplayed;
+  the thresholds drop from 3/8/15/28 to 3/6/10/16. The opening stage still costs three points, so Buddy
+  is never ominous the moment he spawns. Every stage past that is rewritten more possessive and more
+  openly wrong - Cold now counts the living out loud, Feral talks about the crew as things it keeps.
+  All existing safety rails are untouched: no attacking, no sabotage, no fabricated evidence, no
+  overriding safety, and hunting stays gated behind Feral plus its own explicit host opt-in.
+
 ## 4.1.0
 
 - **Buddy can fetch the scrap you name.** The fetch tool now takes an optional `item_name` straight from
