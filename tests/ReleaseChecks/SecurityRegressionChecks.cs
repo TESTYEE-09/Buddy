@@ -326,11 +326,11 @@ internal static class SecurityRegressionChecks
                 workflow.Contains("versioned assets are immutable", StringComparison.OrdinalIgnoreCase) &&
                 !workflow.Contains("--clobber", StringComparison.Ordinal),
                 "release assets must come from a matching immutable version tag and never be overwritten");
-        Require(!workflow.Contains("actions/checkout@v4", StringComparison.Ordinal) &&
-                !workflow.Contains("actions/setup-dotnet@v4", StringComparison.Ordinal) &&
-                !workflow.Contains("actions/upload-artifact@v4", StringComparison.Ordinal) &&
-                !workflow.Contains("actions/download-artifact@v4", StringComparison.Ordinal),
-                "release workflow actions must be pinned to reviewed commit SHAs");
+        Require(workflow.Contains("actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09", StringComparison.Ordinal) &&
+                workflow.Contains("actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1", StringComparison.Ordinal) &&
+                workflow.Contains("actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a", StringComparison.Ordinal) &&
+                workflow.Contains("actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131", StringComparison.Ordinal),
+                "release workflow actions must be pinned to reviewed Node 24 commit SHAs");
     }
 
     /// <summary>
