@@ -1,4 +1,27 @@
 # Changelog
+## 5.1.3
+Public-release hardening driven by three independent audits and live Realtime evaluation.
+
+- Releases now publish only from a matching immutable `v*` tag. Existing version assets cannot be
+  overwritten, and third-party GitHub Actions are pinned to reviewed commit SHAs.
+- A timed-out tool waiting in Unity's main-thread queue is atomically cancelled, so it cannot run
+  later after Buddy has already reported failure.
+- Realtime now preserves every function call in a multi-call response, executes at most six per
+  turn, and returns a result for every call ID instead of silently dropping earlier actions.
+- Disabling voice, remote voice, Buddy availability, or public-lobby permission cancels both active
+  captures and ended-but-not-yet-committed remote streams. Public-lobby remote voice requires a
+  separate explicit host opt-in, off by default.
+- Tool-result follow-up respects `SpokenReplies=false` and remains text-only when speech is disabled.
+- Item spawning, store purchases and moon routing use exact-first, unique-partial matching. Missing,
+  duplicate and ambiguous names are rejected instead of selecting the first candidate.
+- Paid moon routing now resolves the terminal's real route price, rejects insufficient credits and
+  passes the post-purchase balance to the game's routing RPC instead of routing for free.
+- Turning off remote voice during capture prevents the buffered audio from being committed to
+  OpenAI. Purchase status exposes only the remaining balance, avoiding cost/balance confusion.
+- The system prompt and tool descriptions now distinguish conversation from orders, polite fetches
+  from questions, purchases from begged item spawns, and targeted scouting from missing information.
+  The expanded 24-case live suite validates tool names and exact arguments.
+
 ## 5.1.2
 Three things the live model actually did wrong, found by re-running the probe instead of trusting
 the last run's score.

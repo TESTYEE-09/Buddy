@@ -51,7 +51,7 @@ The Realtime session stays connected during play for conversational continuity, 
 ## Voice and multiplayer
 
 - Buddy's voice is generated once by the host and synchronized to compatible clients.
-- Remote push-to-talk audio is sender-bound, version-gated, rate/size/range limited and WAV validated.
+- Remote push-to-talk audio is sender-bound, version/lobby-gated and rate/size/range limited. Public-lobby access is a separate host opt-in that defaults off.
 - Normal Lethal Company voice chat is restored after Buddy push-to-talk releases the microphone.
 - Clients never receive the API key.
 - In orbit Buddy is a voice terminal without a body. His body appears outside only after the ship has landed and stopped.
@@ -84,7 +84,7 @@ Full documentation and source: https://github.com/TESTYEE-09/Buddy
 
 ## Project status
 
-Active development is **paused** as of August 2026, with 5.1.2 as the intended stable release.
+Active development is **paused** as of August 2026, with 5.1.3 as the intended stable release.
 The mod is feature-complete for what it set out to do and is not abandoned - it is simply not
 being worked on day to day.
 

@@ -1,8 +1,8 @@
-# HANDOFF — Buddy v4.1.0
+# HANDOFF — Buddy v5.1.3
 
 ## Current status
 
-Buddy is a BepInEx 5 mod for **Lethal Company v81** adding a host-authoritative AI crewmate named Buddy. The released baseline is v4.1.0. It uses voice-only conversational input with concise 2-14 word spoken replies.
+Buddy is a BepInEx 5 mod for **Lethal Company v81** adding a host-authoritative AI crewmate named Buddy. The release candidate is v5.1.3. It uses voice-only conversational input with concise 2-14 word spoken replies.
 
 Release gates remain:
 
@@ -81,4 +81,5 @@ Generated DLLs and ZIPs are ignored by Git. CI validates the release package, so
 3. Run build, release checks and `pack.ps1`.
 4. Commit the release changes and push the release branch to `main`.
 5. Wait for the main workflow to pass.
-6. Verify the generated GitHub release ZIP and `SHA256SUMS.txt`.
+6. Create and push the matching immutable version tag (for example `v5.1.3`).
+7. Verify the generated GitHub release ZIP and `SHA256SUMS.txt`.

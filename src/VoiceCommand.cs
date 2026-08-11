@@ -28,6 +28,8 @@ namespace LethalAICrewmate
         {
             try
             {
+                if (Plugin.VoiceEnabled?.Value != true)
+                    OpenAiRealtimeVoiceClient.AbortAllStreamingVoices();
                 if (_recording)
                 {
                     if (Plugin.VoiceEnabled?.Value != true || !CrewmateSpawner.IsHost() ||

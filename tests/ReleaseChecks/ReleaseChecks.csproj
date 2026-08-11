@@ -20,5 +20,7 @@
     <Compile Include="..\..\src\BuddySocialPolicy.cs" Link="BuddySocialPolicy.cs" />
     <Compile Include="..\..\src\BuddyMalicePolicy.cs" Link="BuddyMalicePolicy.cs" />
     <Compile Include="..\..\src\PromptSafety.cs" Link="PromptSafety.cs" />
+    <Compile Include="..\..\src\DeferredActionGate.cs" Link="DeferredActionGate.cs" />
+    <Compile Include="..\..\src\DeterministicNameMatchPolicy.cs" Link="DeterministicNameMatchPolicy.cs" />
   </ItemGroup>
 </Project>

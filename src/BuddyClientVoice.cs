@@ -61,6 +61,15 @@ namespace LethalAICrewmate
         private static double _clientInputSquares;
         private static long _clientInputFrames;
 
+        internal static bool IsRemoteVoiceAllowed()
+        {
+            if (Plugin.VoiceEnabled?.Value != true || Plugin.AllowRemoteVoice?.Value != true)
+                return false;
+            LobbyVisibility visibility = LobbySafety.GetVisibility();
+            return LobbyVisibilityPolicy.AllowsRemoteVoice(
+                visibility, enabled: true, publicOptIn: Plugin.AllowRemoteVoiceInPublicLobby?.Value == true);
+        }
+
         internal static void Tick()
         {
             try
@@ -94,6 +103,7 @@ namespace LethalAICrewmate
                 if (incoming != null && incoming.StreamId != 0)
                     OpenAiRealtimeVoiceClient.AbortStreamingVoice(incoming.StreamId);
             IncomingBySender.Clear();
+            OpenAiRealtimeVoiceClient.AbortRemoteStreamingVoices();
             LastStartBySender.Clear();
 
             if (_clientRecording)
@@ -403,7 +413,7 @@ namespace LethalAICrewmate
             try
             {
                 var nm = NetworkManager.Singleton;
-                if (nm == null || !nm.IsServer || Plugin.AllowRemoteVoice?.Value != true || senderId == NetworkManager.ServerClientId ||
+                if (nm == null || !nm.IsServer || !IsRemoteVoiceAllowed() || senderId == NetworkManager.ServerClientId ||
                     nm.CustomMessagingManager == null || !IsConnectedRemote(nm, senderId) || !NetMessenger.IsCompatibleClient(senderId))
                     return;
                 if (!CrewmateSpawner.CanTalkToBuddy) return;
@@ -435,7 +445,8 @@ namespace LethalAICrewmate
 
                 LlmClient.NotePlayerInteraction();
                 if (!OpenAiRealtimeVoiceClient.TryBeginStreamingVoice(
-                    (int)player.playerClientId, player.playerUsername ?? ("Client " + senderId), out ulong streamId))
+                    (int)player.playerClientId, player.playerUsername ?? ("Client " + senderId), out ulong streamId,
+                    isRemote: true))
                 {
                     SendClientHint(senderId, "Buddy is already listening to someone else.");
                     return;
@@ -463,11 +474,16 @@ namespace LethalAICrewmate
             try
             {
                 var nm = NetworkManager.Singleton;
-                if (nm == null || !nm.IsServer || Plugin.AllowRemoteVoice?.Value != true || senderId == NetworkManager.ServerClientId ||
+                if (nm == null || !nm.IsServer || senderId == NetworkManager.ServerClientId ||
                     !IsConnectedRemote(nm, senderId) || !NetMessenger.IsCompatibleClient(senderId))
                     return;
                 if (!IncomingBySender.TryGetValue(senderId, out var incoming) || incoming == null)
                     return;
+                if (!IsRemoteVoiceAllowed())
+                {
+                    AbortIncoming(senderId, incoming, null);
+                    return;
+                }
 
                 reader.ReadValueSafe(out ulong transferId);
                 reader.ReadValueSafe(out int offset);
@@ -513,6 +529,11 @@ namespace LethalAICrewmate
                     return;
                 if (!IncomingBySender.TryGetValue(senderId, out var incoming) || incoming == null)
                     return;
+                if (!IsRemoteVoiceAllowed() || !CrewmateSpawner.CanTalkToBuddy)
+                {
+                    AbortIncoming(senderId, incoming, null);
+                    return;
+                }
 
                 reader.ReadValueSafe(out ulong transferId);
                 reader.ReadValueSafe(out int totalBytes);
@@ -561,6 +582,15 @@ namespace LethalAICrewmate
 
         private static void ExpireHostTransfers()
         {
+            if (!IsRemoteVoiceAllowed() || !CrewmateSpawner.CanTalkToBuddy)
+            {
+                var disabled = new List<ulong>(IncomingBySender.Keys);
+                foreach (ulong id in disabled)
+                    if (IncomingBySender.TryGetValue(id, out var incoming))
+                        AbortIncoming(id, incoming, null);
+                OpenAiRealtimeVoiceClient.AbortRemoteStreamingVoices();
+                return;
+            }
             if (IncomingBySender.Count == 0) return;
             float now = Time.unscaledTime;
             var stale = new List<ulong>();

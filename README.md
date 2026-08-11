@@ -6,11 +6,11 @@
 
 He can follow or wait, scout ahead, fetch scrap, return items to the ship, inspect ship and crew state, check moons and the store, buy equipment, and operate supported facility and ship controls. You do not need to memorize exact phrases or command syntax.
 
-Typed Lethal Company chat remains normal game chat and **does not trigger Buddy or use API credit**. Hold **B** to talk to him. Every compatible player can use voice.
+Typed Lethal Company chat remains normal game chat and **does not trigger Buddy or use API credit**. Hold **B** to talk to him. Compatible remote players can use voice when the host's lobby policy allows it.
 
 ## Project status
 
-Active development is **paused** as of August 2026, with 5.1.2 as the intended stable release.
+Active development is **paused** as of August 2026, with 5.1.3 as the intended stable release.
 The mod is feature-complete for what it set out to do and is not abandoned - it is simply not
 being worked on day to day.
 
@@ -70,7 +70,7 @@ The Realtime session stays connected during play for conversational continuity, 
 ## Voice and multiplayer
 
 - Buddy's voice is generated once by the host and synchronized to compatible clients.
-- Remote push-to-talk audio is sender-bound, version-gated, rate/size/range limited and WAV validated.
+- Remote push-to-talk audio is sender-bound, version/lobby-gated and rate/size/range limited. Public-lobby access is a separate host opt-in that defaults off.
 - Normal Lethal Company voice chat resumes after Buddy push-to-talk releases the microphone.
 - Clients never receive the API key.
 - In orbit Buddy is a voice terminal without a body. His body appears outside only after the ship has landed and stopped.
@@ -120,6 +120,7 @@ ReasoningEffort = low      ; minimal | low | medium | high
 
 [Security]
 AllowRemoteVoice = true
+AllowRemoteVoiceInPublicLobby = false
 
 [Logging]
 SaveResponses = false

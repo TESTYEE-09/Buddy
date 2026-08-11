@@ -14,7 +14,7 @@ namespace LethalAICrewmate
     {
         public const string ModGuid = "com.lethalaicrewmate.buddy";
         public const string ModName = "Buddy";
-public const string ModVersion = "5.1.2";
+public const string ModVersion = "5.1.3";
 
         internal static Plugin Instance;
         internal static ManualLogSource Log;
@@ -37,6 +37,7 @@ public const string ModVersion = "5.1.2";
         internal static ConfigEntry<bool> KeepGameVoiceDuringPtt;
         internal static ConfigEntry<bool> VoiceEnabled;
         internal static ConfigEntry<bool> AllowRemoteVoice;
+        internal static ConfigEntry<bool> AllowRemoteVoiceInPublicLobby;
         internal static ConfigEntry<KeyCode> VoiceKey;
         internal static ConfigEntry<KeyCode> VoiceAlternateKey;
         internal static ConfigEntry<float> VoiceMaxSeconds;
@@ -184,12 +185,14 @@ public const string ModVersion = "5.1.2";
                 "Track who is speaking so Buddy waits his turn, answers the person who actually addressed him, and stays near whoever currently needs him.");
 
             VoiceEnabled = Config.Bind("Voice", "Enabled", true,
-                "Push-to-talk for every modded player. Clients relay bounded mic audio to the host; only the host calls OpenAI Realtime.");
+                "Master Buddy push-to-talk switch. Permitted clients relay bounded mic audio to the host; only the host calls OpenAI Realtime.");
             RealtimeVoiceName = Config.Bind("Voice", "RealtimeVoiceName", BuddyAiArchitecture.DefaultRealtimeVoice,
                 "Buddy's OpenAI Realtime voice. Valid values: " + string.Join(", ", BuddyAiArchitecture.RealtimeVoices) +
                 ". The change applies from the next spoken reply.");
             AllowRemoteVoice = Config.Bind("Security", "AllowRemoteVoice", true,
-                "Allow matching modded players to upload bounded push-to-talk audio to the host for the Realtime turn.");
+                "Allow matching modded players in private/friends lobbies to upload bounded push-to-talk audio to the host for the Realtime turn.");
+            AllowRemoteVoiceInPublicLobby = Config.Bind("Security", "AllowRemoteVoiceInPublicLobby", false,
+                "Explicitly allow matching strangers in a public lobby to use the host's paid Realtime voice session. Off by default for privacy and budget safety.");
             VoiceKey = Config.Bind("Voice", "PushToTalkKey", KeyCode.B,
                 "Hold this key to record mic audio for Buddy. B avoids the game's common V push-to-talk binding; on clients the clip is relayed to the host.");
             VoiceAlternateKey = Config.Bind("Voice", "AlternatePushToTalkKey", KeyCode.None,
@@ -344,4 +347,3 @@ public const string ModVersion = "5.1.2";
         }
     }
 }
-

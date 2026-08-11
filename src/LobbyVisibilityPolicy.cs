@@ -26,5 +26,12 @@ namespace LethalAICrewmate
 
         internal static bool AllowsRestrictedRemoteFeatures(LobbyVisibility visibility) =>
             visibility == LobbyVisibility.Friends || visibility == LobbyVisibility.InviteOnly;
+
+        internal static bool AllowsRemoteVoice(LobbyVisibility visibility, bool enabled, bool publicOptIn)
+        {
+            if (!enabled) return false;
+            if (AllowsRestrictedRemoteFeatures(visibility)) return true;
+            return visibility == LobbyVisibility.Public && publicOptIn;
+        }
     }
 }

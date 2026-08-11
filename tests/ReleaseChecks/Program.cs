@@ -58,6 +58,31 @@ static class Program
         Check(!TransportValidation.IsExactChunk(15000, 7000, 7000, 6000), "reject short middle chunk");
         Check(!TransportValidation.IsExactChunk(15000, 7000, 21000, 1), "reject out-of-range chunk");
 
+        var cancelledDispatch = new DeferredActionGate();
+        Check(cancelledDispatch.TryCancel() && !cancelledDispatch.TryBegin(),
+              "a timed-out deferred tool can never execute later");
+        var startedDispatch = new DeferredActionGate();
+        Check(startedDispatch.TryBegin() && !startedDispatch.TryCancel(),
+              "a tool already executing cannot be reported as cancelled");
+
+        string[] spawnItems = { "Flashlight", "Pro flashlight", "Walkie-talkie" };
+        Check(DeterministicNameMatchPolicy.Resolve(null, spawnItems) == DeterministicNameMatchPolicy.Missing,
+              "missing spawn item arguments are rejected");
+        Check(DeterministicNameMatchPolicy.Resolve("the flashlight item", spawnItems) == 0,
+              "normalized exact spawn item names resolve deterministically");
+        Check(DeterministicNameMatchPolicy.Resolve("walkie", spawnItems) == 2,
+              "one unambiguous partial spawn item name is accepted");
+        Check(DeterministicNameMatchPolicy.Resolve("flash", spawnItems) == DeterministicNameMatchPolicy.Ambiguous,
+              "ambiguous partial spawn item names are rejected");
+        Check(DeterministicNameMatchPolicy.Resolve("flashlight", new[] { "Flashlight", "the flashlight item" }) ==
+              DeterministicNameMatchPolicy.Ambiguous,
+              "duplicate normalized exact names are rejected");
+        Check(DeterministicNameMatchPolicy.Resolve("pro flashlight", spawnItems) == 1,
+              "a specific store item wins over a shorter contained name");
+        Check(DeterministicNameMatchPolicy.Resolve("exper", new[] { "41 Experimentation", "419 Experiment" }) ==
+              DeterministicNameMatchPolicy.Ambiguous,
+              "ambiguous moon abbreviations are rejected");
+
         Check(LobbyVisibilityPolicy.Parse(" public ") == LobbyVisibility.Public, "parse public lobby visibility");
         Check(LobbyVisibilityPolicy.Parse("FRIENDS") == LobbyVisibility.Friends, "parse friends lobby visibility");
         Check(LobbyVisibilityPolicy.Parse("inviteOnly") == LobbyVisibility.InviteOnly, "parse invite-only lobby visibility");
@@ -67,6 +92,13 @@ static class Program
         Check(LobbyVisibilityPolicy.AllowsRestrictedRemoteFeatures(LobbyVisibility.Friends) &&
               LobbyVisibilityPolicy.AllowsRestrictedRemoteFeatures(LobbyVisibility.InviteOnly),
               "allow restricted features only in known private lobbies");
+        Check(!LobbyVisibilityPolicy.AllowsRemoteVoice(LobbyVisibility.Public, true, false) &&
+              LobbyVisibilityPolicy.AllowsRemoteVoice(LobbyVisibility.Public, true, true),
+              "public-lobby remote voice requires its separate explicit opt-in");
+        Check(LobbyVisibilityPolicy.AllowsRemoteVoice(LobbyVisibility.Friends, true, false) &&
+              !LobbyVisibilityPolicy.AllowsRemoteVoice(LobbyVisibility.Unknown, true, true) &&
+              !LobbyVisibilityPolicy.AllowsRemoteVoice(LobbyVisibility.Friends, false, true),
+              "private remote voice works when enabled while unknown visibility and master disable fail closed");
 
         Check(BuddyCharacterArc.StageFor(0, 0, 0) == BuddyArcStage.Coworker, "character arc starts as an ordinary coworker");
         Check(BuddyCharacterArc.StageFor(0, 2, 0) == BuddyArcStage.Coworker, "character arc does not turn ominous immediately");

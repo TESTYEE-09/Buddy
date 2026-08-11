@@ -39,6 +39,7 @@ namespace LethalAICrewmate
         // prompt cache for the rest of the session; they are pushed only when they actually change.
         private static string _appliedSessionConfig;
         private static LiveVoiceInput _liveInput;
+        private static readonly Dictionary<ulong, LiveVoiceInput> TrackedLiveInputs = new Dictionary<ulong, LiveVoiceInput>();
         private static ulong _nextLiveInputId = 1;
 
         private sealed class LiveVoiceInput
@@ -46,6 +47,7 @@ namespace LethalAICrewmate
             public readonly object Gate = new object();
             public readonly Queue<byte[]> Chunks = new Queue<byte[]>();
             public readonly SemaphoreSlim Signal = new SemaphoreSlim(0);
+            public readonly CancellationTokenSource CommitCancellation = new CancellationTokenSource();
             public ulong Id;
             public bool Ended;
             public bool Cancelled;
@@ -53,6 +55,7 @@ namespace LethalAICrewmate
             public DateTime StartedUtc;
             public DateTime ReleasedUtc;
             public bool FirstAudioLogged;
+            public bool IsRemote;
         }
 
         private sealed class VoiceTurn
@@ -69,6 +72,13 @@ namespace LethalAICrewmate
             public string MemoryInput;
         }
 
+        private sealed class PendingToolCall
+        {
+            public string Name;
+            public string CallId;
+            public string Arguments;
+        }
+
         internal static bool Enabled => true;
 
         internal static void Tick()
@@ -80,7 +90,7 @@ namespace LethalAICrewmate
             }
         }
 
-        internal static bool TryBeginStreamingVoice(int playerId, string playerName, out ulong streamId)
+        internal static bool TryBeginStreamingVoice(int playerId, string playerName, out ulong streamId, bool isRemote = false)
         {
             streamId = 0;
             if (!Enabled || !OpenAiSecrets.HasKey) return false;
@@ -109,9 +119,11 @@ namespace LethalAICrewmate
                 live = new LiveVoiceInput
                 {
                     Id = id,
-                    StartedUtc = DateTime.UtcNow
+                    StartedUtc = DateTime.UtcNow,
+                    IsRemote = isRemote
                 };
                 _liveInput = live;
+                TrackedLiveInputs[id] = live;
                 Pending.Enqueue(new VoiceTurn
                 {
                     Stream = live,
@@ -224,14 +236,33 @@ namespace LethalAICrewmate
             LiveVoiceInput live = null;
             lock (Gate)
             {
-                if (_liveInput != null && _liveInput.Id == streamId)
-                {
-                    live = _liveInput;
-                    _liveInput = null;
-                }
+                TrackedLiveInputs.TryGetValue(streamId, out live);
+                if (_liveInput == live) _liveInput = null;
             }
             if (live == null) return;
             CancelLiveInput(live);
+        }
+
+        internal static void AbortRemoteStreamingVoices()
+        {
+            AbortTrackedStreamingVoices(remoteOnly: true);
+        }
+
+        internal static void AbortAllStreamingVoices()
+        {
+            AbortTrackedStreamingVoices(remoteOnly: false);
+        }
+
+        private static void AbortTrackedStreamingVoices(bool remoteOnly)
+        {
+            var matches = new List<LiveVoiceInput>();
+            lock (Gate)
+            {
+                foreach (LiveVoiceInput live in TrackedLiveInputs.Values)
+                    if (live != null && (!remoteOnly || live.IsRemote)) matches.Add(live);
+                if (_liveInput != null && (!remoteOnly || _liveInput.IsRemote)) _liveInput = null;
+            }
+            foreach (LiveVoiceInput live in matches) CancelLiveInput(live);
         }
 
         private static void CancelLiveInput(LiveVoiceInput live)
@@ -239,12 +270,20 @@ namespace LethalAICrewmate
             if (live == null) return;
             lock (live.Gate)
             {
+                if (live.Cancelled) return;
                 live.Cancelled = true;
                 live.Ended = true;
                 live.Chunks.Clear();
                 live.BufferedBytes = 0;
+                try { live.CommitCancellation.Cancel(); } catch { }
                 live.Signal.Release();
             }
+        }
+
+        private static bool IsLiveInputCancelled(LiveVoiceInput live)
+        {
+            if (live == null) return true;
+            lock (live.Gate) return live.Cancelled;
         }
 
         internal static bool EnqueueWav(byte[] wav, int playerId, string playerName)
@@ -283,10 +322,20 @@ namespace LethalAICrewmate
 
         private static bool EnqueueTurn(VoiceTurn turn)
         {
+            LiveVoiceInput droppedStream = null;
             lock (Gate)
             {
                 if (Pending.Count >= MaxQueuedTurns)
-                    ResponseJournal.Discard(Pending.Dequeue().JournalId);
+                {
+                    VoiceTurn dropped = Pending.Dequeue();
+                    ResponseJournal.Discard(dropped.JournalId);
+                    droppedStream = dropped.Stream;
+                    if (droppedStream != null)
+                    {
+                        TrackedLiveInputs.Remove(droppedStream.Id);
+                        if (_liveInput == droppedStream) _liveInput = null;
+                    }
+                }
                 Pending.Enqueue(turn);
                 if (!_workerRunning)
                 {
@@ -294,22 +343,25 @@ namespace LethalAICrewmate
                     _ = RunWorkerAsync();
                 }
             }
+            CancelLiveInput(droppedStream);
+            droppedStream?.CommitCancellation.Dispose();
             return true;
         }
 
         internal static void ResetSession()
         {
-            LiveVoiceInput live = null;
+            var liveInputs = new List<LiveVoiceInput>();
             lock (Gate)
             {
                 while (Pending.Count > 0) ResponseJournal.Discard(Pending.Dequeue().JournalId);
-                live = _liveInput;
+                liveInputs.AddRange(TrackedLiveInputs.Values);
+                TrackedLiveInputs.Clear();
                 _liveInput = null;
                 _processingTurn = false;
                 _responseActive = false;
                 _responseCancelRequested = false;
             }
-CancelLiveInput(live);
+            foreach (LiveVoiceInput live in liveInputs) CancelLiveInput(live);
             MainThread.Enqueue(BuddyNetworkAudio.StopPlayback);
             try { _sessionCancel?.Cancel(); } catch { }
             try { _socket?.Abort(); } catch { }
@@ -321,11 +373,27 @@ CancelLiveInput(live);
         {
             MainThread.Enqueue(BuddyNetworkAudio.StopPlayback);
             bool cancelActiveResponse;
+            var droppedStreams = new List<LiveVoiceInput>();
             lock (Gate)
             {
-                while (Pending.Count > 0) ResponseJournal.Discard(Pending.Dequeue().JournalId);
+                while (Pending.Count > 0)
+                {
+                    VoiceTurn dropped = Pending.Dequeue();
+                    ResponseJournal.Discard(dropped.JournalId);
+                    if (dropped.Stream != null)
+                    {
+                        droppedStreams.Add(dropped.Stream);
+                        TrackedLiveInputs.Remove(dropped.Stream.Id);
+                        if (_liveInput == dropped.Stream) _liveInput = null;
+                    }
+                }
                 cancelActiveResponse = _responseActive;
                 if (cancelActiveResponse) _responseCancelRequested = true;
+            }
+            foreach (LiveVoiceInput dropped in droppedStreams)
+            {
+                CancelLiveInput(dropped);
+                dropped.CommitCancellation.Dispose();
             }
             if (cancelActiveResponse && _socket != null && _socket.State == WebSocketState.Open)
                 _ = TrySendCancelAsync();
@@ -393,7 +461,15 @@ CancelLiveInput(live);
                     }
                     finally
                     {
-                        lock (Gate) _processingTurn = false;
+                        lock (Gate)
+                        {
+                            _processingTurn = false;
+                            if (turn.Stream != null)
+                            {
+                                TrackedLiveInputs.Remove(turn.Stream.Id);
+                                turn.Stream.CommitCancellation.Dispose();
+                            }
+                        }
                     }
                 }
             }
@@ -461,8 +537,30 @@ CancelLiveInput(live);
                     await turn.Stream.Signal.WaitAsync(_sessionCancel.Token).ConfigureAwait(false);
                 }
 
+                if (IsLiveInputCancelled(turn.Stream))
+                {
+                    await SendAsync("{\"type\":\"input_audio_buffer.clear\"}", _sessionCancel.Token).ConfigureAwait(false);
+                    return;
+                }
                 await SendTurnContextAsync(turn.TurnContext).ConfigureAwait(false);
-                await SendAsync("{\"type\":\"input_audio_buffer.commit\"}", _sessionCancel.Token).ConfigureAwait(false);
+                if (IsLiveInputCancelled(turn.Stream))
+                {
+                    await SendAsync("{\"type\":\"input_audio_buffer.clear\"}", _sessionCancel.Token).ConfigureAwait(false);
+                    return;
+                }
+                using (var commitToken = CancellationTokenSource.CreateLinkedTokenSource(
+                    _sessionCancel.Token, turn.Stream.CommitCancellation.Token))
+                {
+                    try
+                    {
+                        await SendAsync("{\"type\":\"input_audio_buffer.commit\"}", commitToken.Token).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) when (turn.Stream.CommitCancellation.IsCancellationRequested)
+                    {
+                        await SendAsync("{\"type\":\"input_audio_buffer.clear\"}", _sessionCancel.Token).ConfigureAwait(false);
+                        return;
+                    }
+                }
                 if (turn.JournalId == 0)
                 {
                     turn.JournalId = ResponseJournal.NoteInput("voice", turn.PlayerName,
@@ -537,10 +635,9 @@ CancelLiveInput(live);
                 // reply costs a fraction of a second of extra latency for that guarantee.
                 var completedAudioChunks = new List<byte[]>();
                 string assistantTranscript = "";
-                string pendingToolName = null;
-                string pendingToolCallId = null;
-                string pendingToolArguments = null;
+                var pendingToolCalls = new List<PendingToolCall>();
                 int toolCalls = 0;
+                int toolResponseRounds = 0;
                 bool responseComplete = false;
                 byte[] receive = new byte[32768];
                 // Bounded by silence, not by wall clock: a response that is still streaming audio
@@ -599,9 +696,18 @@ CancelLiveInput(live);
                     }
                     else if (type == "response.function_call_arguments.done")
                     {
-                        pendingToolName = ReadJsonString(message, "name");
-                        pendingToolCallId = ReadJsonString(message, "call_id");
-                        pendingToolArguments = ReadJsonString(message, "arguments") ?? "{}";
+                        string name = ReadJsonString(message, "name");
+                        string callId = ReadJsonString(message, "call_id");
+                        if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(callId))
+                            throw new InvalidOperationException("Realtime returned a function call without a name or call ID.");
+                        if (pendingToolCalls.Exists(call => string.Equals(call.CallId, callId, StringComparison.Ordinal)))
+                            throw new InvalidOperationException("Realtime returned a duplicate function call ID.");
+                        pendingToolCalls.Add(new PendingToolCall
+                        {
+                            Name = name,
+                            CallId = callId,
+                            Arguments = ReadJsonString(message, "arguments") ?? "{}"
+                        });
                     }
                     else if (type == "response.done")
                     {
@@ -612,14 +718,10 @@ CancelLiveInput(live);
                             turn.JournalId = 0;
                             return;
                         }
-                        if (!string.IsNullOrWhiteSpace(pendingToolName) && !string.IsNullOrWhiteSpace(pendingToolCallId))
+                        if (pendingToolCalls.Count > 0)
                         {
-                            if (++toolCalls > 6) throw new InvalidOperationException("Realtime tool-call limit reached for one turn.");
-                            string result = await ExecuteRealtimeToolAsync(
-                                pendingToolName, pendingToolArguments, turn.PlayerId).ConfigureAwait(false);
-                            toolResult = string.IsNullOrWhiteSpace(toolResult)
-                                ? pendingToolName + ": " + result
-                                : toolResult + " | " + pendingToolName + ": " + result;
+                            if (++toolResponseRounds > 6)
+                                throw new InvalidOperationException("Realtime tool-response round limit reached for one turn.");
 
                             // Never play or display a model preamble emitted before the real action result.
                             audio.SetLength(0);
@@ -631,25 +733,40 @@ CancelLiveInput(live);
                             queuedAnyAudio = false;
                             playbackChunkBytes = firstChunkBytes;
 
-                            // Labelled as private status, not as a line to deliver. With a bare
-                            // {"result":"Fetching scrap for the ship."} the model reliably read the
-                            // string back word for word, which is why every action sounded like a
-                            // canned announcement: the sentence players heard was this hardcoded
-                            // one, not the model's own.
-                            string output = "{\"private_status\":\"" + LlmClient.Escape(result) +
-                                "\",\"note\":\"Status data. Never read aloud or paraphrase. Answer in your own words.\"}";
-                            string item = "{\"type\":\"conversation.item.create\",\"item\":{\"type\":\"function_call_output\",\"call_id\":\"" +
-                                LlmClient.Escape(pendingToolCallId) + "\",\"output\":\"" + LlmClient.Escape(output) + "\"}}";
-                            pendingToolName = null;
-                            pendingToolCallId = null;
-                            pendingToolArguments = null;
-                            await SendAsync(item, _sessionCancel.Token).ConfigureAwait(false);
+                            foreach (PendingToolCall call in pendingToolCalls)
+                            {
+                                string result;
+                                if (toolCalls >= 6)
+                                {
+                                    result = "failed: per_turn_tool_call_limit_reached";
+                                }
+                                else
+                                {
+                                    toolCalls++;
+                                    result = await ExecuteRealtimeToolAsync(
+                                        call.Name, call.Arguments, turn.PlayerId).ConfigureAwait(false);
+                                }
+                                toolResult = string.IsNullOrWhiteSpace(toolResult)
+                                    ? call.Name + ": " + result
+                                    : toolResult + " | " + call.Name + ": " + result;
+
+                                // Every call ID receives an output, including bounded rejections,
+                                // so a multi-call response cannot strand an earlier function call.
+                                string output = "{\"private_status\":\"" + LlmClient.Escape(result) +
+                                    "\",\"note\":\"Status data. Never read aloud or paraphrase. Answer in your own words.\"}";
+                                string item = "{\"type\":\"conversation.item.create\",\"item\":{\"type\":\"function_call_output\",\"call_id\":\"" +
+                                    LlmClient.Escape(call.CallId) + "\",\"output\":\"" + LlmClient.Escape(output) + "\"}}";
+                                await SendAsync(item, _sessionCancel.Token).ConfigureAwait(false);
+                            }
+                            pendingToolCalls.Clear();
                             // Ask for speech explicitly. Left to its own devices after a function
                             // result the model sometimes returned a text-only response, which the
                             // audio guard below then treated as a failed turn - the player asked
                             // for something, the action happened, and Buddy said nothing at all.
                             await CreateResponseAsync(
-                                "{\"type\":\"response.create\",\"response\":{\"output_modalities\":[\"audio\"]}}")
+                                expectAudio
+                                    ? "{\"type\":\"response.create\",\"response\":{\"output_modalities\":[\"audio\"]}}"
+                                    : "{\"type\":\"response.create\",\"response\":{\"output_modalities\":[\"text\"]}}")
                                 .ConfigureAwait(false);
                             continue;
                         }
@@ -832,17 +949,22 @@ CancelLiveInput(live);
             "{\"type\":\"function\",\"name\":\"list_moons\",\"description\":\"List the moons currently available in this game.\",\"parameters\":{\"type\":\"object\",\"properties\":{}}}," +
             "{\"type\":\"function\",\"name\":\"show_store\",\"description\":\"Read the current store and credit overview.\",\"parameters\":{\"type\":\"object\",\"properties\":{}}}," +
             "{\"type\":\"function\",\"name\":\"route_moon\",\"description\":\"Route the ship to a named moon when the speaker clearly asks to go there.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"moon\":{\"type\":\"string\"}},\"required\":[\"moon\"]}}," +
-            "{\"type\":\"function\",\"name\":\"buy_item\",\"description\":\"Buy a named store item when the speaker clearly asks for a purchase. Works in orbit, on the ship and on the moon surface - not from inside the facility. Quantity defaults to one.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"item\":{\"type\":\"string\"},\"quantity\":{\"type\":\"integer\"}},\"required\":[\"item\"]}}," +
+            "{\"type\":\"function\",\"name\":\"buy_item\",\"description\":\"Buy a named store item only when the speaker explicitly says buy, purchase, order, or refers to the store. Never use this for 'can I have', 'give me', 'get me one', pleading, or begging; genuine begging uses spawn_item and costs no credits. Works in orbit, on the ship and on the moon surface - not from inside the facility. Quantity defaults to one.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"item\":{\"type\":\"string\"},\"quantity\":{\"type\":\"integer\"}},\"required\":[\"item\"]}}," +
             "{\"type\":\"function\",\"name\":\"control_facility_object\",\"description\":\"Enable/open or disable/close a coded facility door, turret, or landmine. The object's number IS its code: 'door D6' means code D6, so pass the speaker's identifier as the code. Only ask for a code when the speaker gave no identifier.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"code\":{\"type\":\"string\"},\"kind\":{\"type\":\"string\",\"enum\":[\"door\",\"turret\",\"landmine\"]},\"enabled\":{\"type\":\"boolean\"}},\"required\":[\"kind\",\"enabled\"]}}," +
             "{\"type\":\"function\",\"name\":\"set_hangar_doors\",\"description\":\"Open or close the ship hangar doors on an explicit request.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"open\":{\"type\":\"boolean\"}},\"required\":[\"open\"]}}," +
             "{\"type\":\"function\",\"name\":\"set_ship_lights\",\"description\":\"Turn the ship room lights on or off on an explicit request.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"on\":{\"type\":\"boolean\"}},\"required\":[\"on\"]}}," +
-            "{\"type\":\"function\",\"name\":\"spawn_item\",\"description\":\"Spawn a normal grabbable item in front of the current speaker ONLY when they explicitly plead - 'please', 'can I please have', 'I'm begging you'. Plain requests and demands are refused with one line and no tool call. Enemy and arbitrary prefab spawning is unavailable.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"item\":{\"type\":\"string\"},\"quantity\":{\"type\":\"integer\"}},\"required\":[\"item\"]}}";
+            "{\"type\":\"function\",\"name\":\"spawn_item\",\"description\":\"Put a normal grabbable item in the current speaker's hands ONLY when they explicitly plead - 'please', 'can I please have', 'I'm begging you'. This takes precedence over buy_item: a plea to have, get, receive, or be given an item is spawning, not purchasing, and costs no credits. Plain requests and demands are refused with one line and no tool call. Enemy and arbitrary prefab spawning is unavailable.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"item\":{\"type\":\"string\"},\"quantity\":{\"type\":\"integer\"}},\"required\":[\"item\"]}}";
 
         private static async Task<string> ExecuteRealtimeToolAsync(string name, string arguments, int playerId)
         {
             var completion = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var dispatch = new DeferredActionGate();
             MainThread.Enqueue(() =>
             {
+                // A socket-thread timeout may cancel this work while it is still waiting in the
+                // Unity queue. Once execution has begun, wait for the real result: reporting a
+                // failure while a purchase/spawn/control action completes would be a false status.
+                if (!dispatch.TryBegin()) return;
                 try
                 {
                     string result = BuddyRealtimeTools.Execute(name, arguments, playerId);
@@ -856,9 +978,14 @@ CancelLiveInput(live);
                 }
             });
             Task finished = await Task.WhenAny(completion.Task, Task.Delay(3000)).ConfigureAwait(false);
-            return finished == completion.Task
-                ? await completion.Task.ConfigureAwait(false)
-                : "Tool failed: the game did not answer in time.";
+            if (finished == completion.Task)
+                return await completion.Task.ConfigureAwait(false);
+            if (dispatch.TryCancel())
+                return "Tool failed: the game did not answer in time; the action was cancelled.";
+
+            // The main thread claimed the action at the timeout boundary. It may already have
+            // changed game state, so only its actual completion can produce a truthful response.
+            return await completion.Task.ConfigureAwait(false);
         }
 
         /// <summary>

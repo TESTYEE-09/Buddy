@@ -31,11 +31,14 @@ Three environment variables, all optional:
 
 | Variable | Default | Use |
 | --- | --- | --- |
-| `BUDDY_PROBE_ONLY` | all | Comma-separated scenario ids. Iterating on one contract line costs a full 19-turn run otherwise. Unknown ids exit 2 rather than silently running nothing. |
+| `BUDDY_PROBE_ONLY` | all | Comma-separated scenario ids. Iterating on one contract line costs a full 25-turn run otherwise. Unknown ids exit 2 rather than silently running nothing. |
 | `BUDDY_PROBE_REPEAT` | `1` | Run each selected scenario N times. |
 | `BUDDY_PROBE_GAP_MS` | `12000` | Pause between turns. |
 
 A filtered or repeated run leaves `probe-results.json` alone; that file is the record of a full run.
+The full 25-scenario run checks whether a tool was called, whether conversation/negation/hypotheticals
+stayed non-actionable, whether required arguments carry the exact intended values, and whether a
+two-action request completes every function call instead of dropping one.
 
 ### One run is not a measurement
 
@@ -47,8 +50,8 @@ Never hardcode the key. Pass it in the environment, and never commit it — this
 
 ## Cost and rate limits
 
-Output is text-only, which is what keeps it cheap: audio tokens dominate otherwise. A full 19
-scenario run is roughly 120k input tokens (much of it cached) and 1.5k output — cents, not dollars.
+Output is text-only, which is what keeps it cheap: audio tokens dominate otherwise. A full 25
+scenario run is roughly 165k input tokens (much of it cached) and under 2k output — cents, not dollars.
 
 The account limit that bites is **tokens per minute**, not spend. At 40k TPM a full run trips
 `rate_limit_exceeded` about halfway through and the affected responses come back with

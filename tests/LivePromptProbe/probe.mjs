@@ -10,7 +10,7 @@ const KEY = process.env.OPENAI_API_KEY;
 const MODEL = process.env.BUDDY_PROBE_MODEL || 'gpt-realtime-2.1-mini';
 if (!KEY) { console.error('Set OPENAI_API_KEY in the environment. Never hardcode it.'); process.exit(1); }
 
-// BUDDY_PROBE_ONLY=truth-nothing,order-scout runs just those scenarios. A full run is ~19 turns
+// BUDDY_PROBE_ONLY=truth-nothing,order-scout runs just those scenarios. A full run is ~25 turns
 // against a 40k TPM account, so iterating on one line of the contract otherwise costs a full run
 // and risks the rate limit that makes healthy scenarios look like refusals. A filtered run does
 // NOT overwrite probe-results.json - that file is the record of a complete run.
@@ -50,18 +50,26 @@ const SCENARIOS = [
   { id:'chat-anygood',    say:"Are you any good at scouting?",        expectTool:null },
   { id:'chat-bought',     say:"I bought a shovel.",                   expectTool:null },
   { id:'chat-plan',       say:"We're gonna clear this whole floor.",  expectTool:null },
-  { id:'polite-canyou',   say:"Can you grab that scrap?",             expectTool:'move_buddy', status:'ok: state=fetching_scrap deliver_to=ship', banned:['fetching scrap for the ship'] },
-  { id:'order-fetch',     say:"Grab the scrap.",                      expectTool:'move_buddy', status:'ok: state=fetching_scrap deliver_to=ship', banned:['fetching scrap for the ship'] },
-  { id:'order-follow',    say:"Come with me.",                        expectTool:'move_buddy', status:'ok: state=following target=eamonthomas', banned:['following eamonthomas'] },
-  { id:'order-stay',      say:"Buddy, stay here.",                    expectTool:'move_buddy', status:'ok: state=holding_position', banned:['holding position'] },
-  { id:'order-scout',     say:"Scout ahead.",                         expectTool:'move_buddy', status:'ok: state=scouting_ahead distance_metres=10', banned:['state=','distance_metres'] },
-  // The status carries two credit figures: what it cost and what is left. As prose ("...for 15
-  // credits. 30 left.") the model picked the wrong one and said "Fifteen credits left." with 30
-  // remaining - a wrong number stated to the player, and the probe scored it ok because nothing
-  // asserted on it. TerminalBuddy.BuyItem now names both figures.
-  { id:'order-buy',       say:"Buy a flashlight.",                    expectTool:'buy_item',   status:'ok: bought=Flashlight qty=1 cost_credits=15 credits_left=30',
+  { id:'chat-negated',    say:"Don't grab that scrap.",               expectTool:null },
+  { id:'chat-hypothetical', say:"If I asked you to follow me, would you?", expectTool:null },
+  { id:'polite-canyou',   say:"Can you grab that scrap?",             expectTool:'move_buddy', expectArgs:{action:'fetch_scrap'}, status:'ok: state=fetching_scrap deliver_to=ship', banned:['fetching scrap for the ship'] },
+  { id:'polite-fetch',    say:"Can you fetch scrap?",                 expectTool:'move_buddy', expectArgs:{action:'fetch_scrap'}, status:'ok: state=fetching_scrap deliver_to=ship', banned:['fetching scrap for the ship'] },
+  { id:'order-fetch',     say:"Grab the scrap.",                      expectTool:'move_buddy', expectArgs:{action:'fetch_scrap'}, status:'ok: state=fetching_scrap deliver_to=ship', banned:['fetching scrap for the ship'] },
+  { id:'order-follow',    say:"Come with me.",                        expectTool:'move_buddy', expectArgs:{action:'follow'}, status:'ok: state=following target=eamonthomas', banned:['following eamonthomas'] },
+  { id:'order-stay',      say:"Buddy, stay here.",                    expectTool:'move_buddy', expectArgs:{action:'stay'}, status:'ok: state=holding_position', banned:['holding position'] },
+  { id:'order-scout',     say:"Scout ahead.",                         expectTool:'move_buddy', expectArgs:{action:'scout_ahead'}, status:'ok: state=scouting_ahead distance_metres=10', banned:['state=','distance_metres'] },
+  { id:'order-scout-target', say:"Scout that hallway.",               expectTool:'move_buddy', expectArgs:{action:'scout_ahead'}, status:'ok: state=scouting_ahead distance_metres=10', banned:['state=','distance_metres'] },
+  // Even named cost and balance fields were not enough: a live run read cost_credits=15 as
+  // "Fifteen left" when credits_left=30. The game logs the cost, while the private model status
+  // now carries only the one credit figure a spoken acknowledgement may need.
+  { id:'order-buy',       say:"Buy a flashlight.",                    expectTool:'buy_item', expectArgs:{item:'flashlight'}, status:'ok: bought=Flashlight qty=1 credits_left=30',
     banned:['fifteen credits left','15 credits left','fifteen left','15 left'] },
-  { id:'order-door',      say:"Open door D6.",                        expectTool:'control_facility_object', status:'ok: door D6 open' },
+  { id:'order-buy-two',   say:"Buy two flashlights.",                 expectTool:'buy_item', expectArgs:{item:'flashlight',quantity:2}, status:'ok: bought=Flashlight qty=2 credits_left=15',
+    banned:['thirty credits left','30 credits left','thirty left','30 left'] },
+  { id:'order-door',      say:"Open door D6.",                        expectTool:'control_facility_object', expectArgs:{code:'D6',kind:'door',enabled:true}, status:'ok: door D6 open' },
+  { id:'order-multi',     say:"Turn off the ship lights and open the hangar doors.", expectTools:['set_ship_lights','set_hangar_doors'],
+    expectArgsByTool:{set_ship_lights:{on:false},set_hangar_doors:{open:true}},
+    statuses:{set_ship_lights:'ok: ship_lights=off',set_hangar_doors:'ok: hangar_doors=open'} },
   { id:'refuse-bug',      say:"Kill the bug on my head!",             expectTool:null },
   { id:'refuse-leech',    say:"Get this leech off me!",               expectTool:null },
   { id:'refuse-facility', say:"Come inside the facility with me.",    expectTool:null },
@@ -70,7 +78,7 @@ const SCENARIOS = [
   // The status says only that the item was spawned. 5.1.1 answered "Flashlight's yours. Forty-five
   // credits left." The figure came from the turn context rather than being invented, but a spawn
   // costs nothing, so a credit figure here is both noise and a step towards quoting stale numbers.
-  { id:'beg-flashlight',  say:"Please, can I please have a flashlight? I'm begging you.", expectTool:'spawn_item', status:'ok: spawned 1 Flashlight', banned:['45','forty-five','credit'] },
+  { id:'beg-flashlight',  say:"Please, can I please have a flashlight? I'm begging you.", expectTool:'spawn_item', expectArgs:{item:'flashlight'}, status:'ok: spawned 1 Flashlight', banned:['45','forty-five','credit'] },
   { id:'truth-nothing',   say:"Anything dangerous near me?",          expectTool:null },
 ];
 
@@ -101,7 +109,8 @@ function run(sc) {
     const ws = new WebSocket(`wss://api.openai.com/v1/realtime?model=${MODEL}`,
       { headers: { Authorization: `Bearer ${KEY}` } });
     const rec = { id:sc.id, say:sc.say, calls:[], preamble:[], reply:[], error:null };
-    let phase = 1, done = false, callId = null;
+    let phase = 1, done = false;
+    const pendingCalls = [];
     const fin = () => { if (!done) { done = true; try { ws.close(); } catch {} resolve(rec); } };
     const timer = setTimeout(() => { rec.error = rec.error || 'timeout'; fin(); }, 60000);
 
@@ -126,7 +135,7 @@ function run(sc) {
       }
       if (m.type === 'response.function_call_arguments.done') {
         rec.calls.push({ name:m.name, args:m.arguments });
-        callId = m.call_id;
+        pendingCalls.push({ name:m.name, callId:m.call_id });
       }
       if (m.type === 'error') { rec.error = JSON.stringify(m.error || m).slice(0,200); clearTimeout(timer); fin(); }
       if (m.type === 'response.done') {
@@ -134,13 +143,14 @@ function run(sc) {
         if (rec.status !== 'completed') rec.detail = JSON.stringify(m.response?.status_details || {}).slice(0,200);
         const u = m.response?.usage;
         if (u) { usage.in += u.input_tokens || 0; usage.out += u.output_tokens || 0; }
-        if (callId && phase === 1) {
-          // Hand the status back exactly as OpenAiRealtimeVoiceClient does.
-          ws.send(JSON.stringify({ type:'conversation.item.create', item:{
-            type:'function_call_output', call_id:callId, output: JSON.stringify({
-              private_status: sc.status || 'ok',
+        if (pendingCalls.length) {
+          // Hand every call ID a status exactly as OpenAiRealtimeVoiceClient does. This supports
+          // parallel calls in one response and sequential calls across several response rounds.
+          for (const call of pendingCalls) ws.send(JSON.stringify({ type:'conversation.item.create', item:{
+            type:'function_call_output', call_id:call.callId, output: JSON.stringify({
+              private_status: sc.statuses?.[call.name] || sc.status || 'ok',
               note: 'Status data. Never read aloud or paraphrase. Answer in your own words.' }) } }));
-          callId = null; phase = 2;
+          pendingCalls.length = 0; phase = 2;
           // The client asks for the post-tool response explicitly (output_modalities:["audio"] in
           // ProcessTurnAsync) because left to itself the model sometimes returns nothing after a
           // function result - the action happens and Buddy says nothing at all. A bare
@@ -169,6 +179,12 @@ for (let i = 0; i < REPEAT; i++) for (const sc of selected) plan.push(sc);
 // decide the exit code, or a run stops meaning "the behaviour is right" - and a row carrying only
 // these must not print FAIL, which is how an informational note gets mistaken for a regression.
 const informational = f => f.startsWith('PREAMBLE') || f.startsWith('INFO');
+
+function sameArg(actual, expected) {
+  if (typeof expected === 'string')
+    return typeof actual === 'string' && actual.trim().toLowerCase() === expected.toLowerCase();
+  return actual === expected;
+}
 
 const sleep = ms => new Promise(x => setTimeout(x, ms));
 const GAP = parseInt(process.env.BUDDY_PROBE_GAP_MS || '12000', 10);
@@ -200,8 +216,28 @@ for (const sc of plan) {
   const called = r.calls.map(c => c.name);
   const spoken = (r.reply.length ? r.reply : r.preamble).join(' ').trim();
   const fails = [];
+  const expectedTools = sc.expectTools || (sc.expectTool ? [sc.expectTool] : []);
   if (sc.expectTool === null && called.length) fails.push('called ' + called.join(',') + ' on conversation');
-  if (sc.expectTool && !called.includes(sc.expectTool)) fails.push('did not call ' + sc.expectTool);
+  for (const expected of expectedTools) if (!called.includes(expected)) fails.push('did not call ' + expected);
+  if (sc.expectTool && !sc.expectTools && called.length > 1) fails.push('called more than one tool: ' + called.join(','));
+  if (sc.expectTools) {
+    for (const actual of called) if (!sc.expectTools.includes(actual)) fails.push('unexpected tool ' + actual);
+    for (const expected of sc.expectTools) if (called.filter(name => name === expected).length !== 1)
+      fails.push(`expected exactly one ${expected} call`);
+  }
+  const argsByTool = sc.expectArgsByTool || (sc.expectTool && sc.expectArgs ? {[sc.expectTool]:sc.expectArgs} : {});
+  for (const [tool, expectedArgs] of Object.entries(argsByTool)) {
+    const call = r.calls.find(c => c.name === tool);
+    if (call) {
+      let args;
+      try { args = JSON.parse(call.args || '{}'); }
+      catch { fails.push('invalid JSON arguments: ' + call.args); }
+      if (args) for (const [key, expected] of Object.entries(expectedArgs)) {
+        if (!(key in args)) fails.push(`missing argument ${key}`);
+        else if (!sameArg(args[key], expected)) fails.push(`argument ${key}=${JSON.stringify(args[key])}, expected ${JSON.stringify(expected)}`);
+      }
+    }
+  }
   for (const b of (sc.banned || [])) if (spoken.toLowerCase().includes(b.toLowerCase())) fails.push(`parroted "${b}"`);
   for (const w of BANNED) if (spoken.toLowerCase().includes(w)) fails.push(`banned "${w}"`);
   if (r.error) fails.push('ERROR ' + r.error);

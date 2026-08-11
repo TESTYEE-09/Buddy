@@ -32,8 +32,8 @@ The model is not given tools for filesystem access, shell commands, process exec
 - The host is authoritative for Buddy spawning, AI requests, movement, game tools and provider calls.
 - Clients accept Buddy state only from `NetworkManager.ServerClientId` after the exact version/protocol compatibility handshake.
 - Buddy does not spawn if a connected remote player is unmodded, incompatible or still inside the handshake grace period.
-- `AllowRemoteVoice` is the host switch for compatible clients to relay push-to-talk audio. It does not depend on unreliable Steam lobby-visibility detection.
-- Remote voice is transport-sender-bound, exact-version-gated, Buddy-range-gated before allocation, rate-limited, size-limited, transfer-capped and WAV/RMS-validated.
+- `AllowRemoteVoice` is the host switch for compatible clients to relay push-to-talk audio in friends/private lobbies. Public lobbies require the separate `AllowRemoteVoiceInPublicLobby` opt-in, which defaults off; unknown visibility fails closed.
+- Remote voice is transport-sender-bound, exact-version-gated, lobby-policy-gated, Buddy-range-gated before allocation, rate-limited, size-limited, transfer-capped and RMS-validated. Disabling either voice switch cancels ended-but-uncommitted audio as well as an active capture.
 - Typed chat never triggers Buddy or authorizes a game action. Remote voice remains sender-bound, exact-version-gated, range-gated, rate-limited and audio-validated.
 - The final-stage hostile-spawn director is not a model tool and cannot be requested by voice, chat or network messages.
 

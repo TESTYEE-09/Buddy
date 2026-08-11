@@ -34,6 +34,7 @@ internal static class StreamingVoiceRegressionChecks
         Require(hostVoice.Contains("FlushStreamingAudio(false)", StringComparison.Ordinal) &&
                 hostVoice.Contains("AppendStreamingVoice(_streamId, pcm)", StringComparison.Ordinal) &&
                 hostVoice.Contains("EndStreamingVoice(_streamId)", StringComparison.Ordinal) &&
+                hostVoice.Contains("AbortAllStreamingVoices", StringComparison.Ordinal) &&
                 !hostVoice.Contains("EncodeAdaptiveMonoWav", StringComparison.Ordinal),
                 "host PTT must stream microphone chunks before release instead of uploading a completed WAV");
 
@@ -62,9 +63,14 @@ internal static class StreamingVoiceRegressionChecks
                 encoder.Contains("targetSamples &= ~1", StringComparison.Ordinal),
                 "live microphone transport must remain bounded 16 kHz PCM in stable 100 ms chunks");
 
+        int cancelStart = realtime.IndexOf("private static async Task TrySendCancelAsync", StringComparison.Ordinal);
+        int cancelEnd = realtime.IndexOf("private static async Task RunWorkerAsync", StringComparison.Ordinal);
+        string cancelMethod = cancelStart >= 0 && cancelEnd > cancelStart
+            ? realtime.Substring(cancelStart, cancelEnd - cancelStart)
+            : "";
         Require(realtime.Contains("if (!_responseCancelRequested) return", StringComparison.Ordinal) &&
                 realtime.Contains("await _socket.SendAsync(new ArraySegment<byte>(cancel)", StringComparison.Ordinal) &&
-                Count(realtime, "input_audio_buffer.clear") == 3,
+                !cancelMethod.Contains("input_audio_buffer.clear", StringComparison.Ordinal),
                 "a stale cancellation must re-check its flag under the send lock and never clear the next turn's input buffer");
 
         Require(remoteVoice.Contains("wrapped; aborting Buddy capture", StringComparison.Ordinal) &&

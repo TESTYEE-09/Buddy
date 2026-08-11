@@ -54,6 +54,14 @@ internal static class SecurityRegressionChecks
                     realtime.Contains("EnsureSessionConfigAsync", StringComparison.Ordinal) &&
                     !realtime.Contains("BuildTurnInstructions", StringComparison.Ordinal),
                     "instructions and tools must be pushed only on change so the prompt cache survives the session");
+            Require(realtime.Contains("var pendingToolCalls = new List<PendingToolCall>()", StringComparison.Ordinal) &&
+                    realtime.Contains("foreach (PendingToolCall call in pendingToolCalls)", StringComparison.Ordinal) &&
+                    realtime.Contains("LlmClient.Escape(call.CallId)", StringComparison.Ordinal) &&
+                    !realtime.Contains("string pendingToolCallId", StringComparison.Ordinal),
+                    "every function call in a multi-call Realtime response must receive an output");
+            Require(realtime.Contains("expectAudio", StringComparison.Ordinal) &&
+                    realtime.Contains("output_modalities\\\":[\\\"text", StringComparison.Ordinal),
+                    "tool-result follow-up must remain text-only when spoken replies are disabled");
 
         // Streamed speech must reach one continuous buffer. The old per-chunk AudioClip queue
         // dropped the middle of a sentence whenever generation outran playback.
@@ -146,6 +154,18 @@ internal static class SecurityRegressionChecks
                 prompt.Contains("These are conversation, never actions", StringComparison.Ordinal) &&
                 prompt.Contains("Wait to be told", StringComparison.Ordinal),
                 "the contract must stop conversation about a job from triggering the job");
+        Require(prompt.Contains("'Can you fetch scrap?' -> a polite order", StringComparison.Ordinal) &&
+                prompt.Contains("'Scout that hallway.' -> call scout with the default distance", StringComparison.Ordinal),
+                "natural polite and targeted movement orders must not be contradicted by prompt examples");
+        Require(prompt.Contains("means spawn_item, never buy_item", StringComparison.Ordinal) &&
+                realtime.Contains("This takes precedence over buy_item", StringComparison.Ordinal) &&
+                realtime.Contains("explicitly says buy, purchase, order", StringComparison.Ordinal),
+                "begging for an item must spawn it while explicit store purchases must still buy it");
+        Require(prompt.Contains("Broad words such as 'all' are normal emphasis", StringComparison.Ordinal),
+                "ordinary conversational emphasis must not trigger a banned clarification handoff");
+        Require(prompt.Contains("Never copy a stock line from these instructions", StringComparison.Ordinal) &&
+                !prompt.Contains("'Right behind you.' 'Parked.' 'Going.' 'Fine.'", StringComparison.Ordinal),
+                "the contract must describe acknowledgement style without feeding the model canned action lines");
         Require(realtime.Contains("private_status", StringComparison.Ordinal) &&
                 realtime.Contains("Never read aloud or paraphrase", StringComparison.Ordinal) &&
                 !realtime.Contains("\"{\\\"result\\\":\\\"\"", StringComparison.Ordinal),
@@ -170,16 +190,26 @@ internal static class SecurityRegressionChecks
         Require(prompt.Contains("never say a thing is listed, shown, reported or according to anything",
                                 StringComparison.Ordinal),
                 "the contract must forbid the wording that reveals Buddy is reading a data block");
-        // TerminalBuddy.BuyItem was the last tool status still written as prose, and it carried two
-        // credit figures in one sentence: "Bought 1 Flashlight for 15 credits. 30 left." The model
-        // read the cost as the balance and told the player "Fifteen credits left." with 30 left.
-        // A status is data; every figure in it has to be named.
+        // TerminalBuddy.BuyItem once carried both cost and balance. Even after both were named, a
+        // live probe read cost_credits=15 as "Fifteen left" when credits_left=30. Only the balance
+        // belongs in model-facing status; the exact cost remains in the diagnostic log.
         string terminalPath = Path.Combine(root, "src", "TerminalBuddy.cs");
         Require(File.Exists(terminalPath), "release checks must locate TerminalBuddy.cs");
         string terminal = File.ReadAllText(terminalPath);
-        Require(terminal.Contains("cost_credits={totalCost} credits_left={newCredits}", StringComparison.Ordinal) &&
+        Require(terminal.Contains("qty={quantity} credits_left={newCredits}", StringComparison.Ordinal) &&
+                !terminal.Contains("cost_credits={totalCost}", StringComparison.Ordinal) &&
                 !terminal.Contains("credits. {newCredits} left.", StringComparison.Ordinal),
-                "the buy status must name each credit figure, never leave them to be picked out of prose");
+                "the model-facing buy status must expose only the unambiguous remaining balance");
+        Require(terminal.Contains("failed: missing_or_invalid_item_name", StringComparison.Ordinal) &&
+                terminal.Contains("failed: ambiguous_item_name", StringComparison.Ordinal),
+                "item spawning must reject missing and ambiguous model arguments instead of selecting the first item");
+        Require(terminal.Contains("failed: ambiguous_store_item", StringComparison.Ordinal) &&
+                terminal.Contains("failed: ambiguous_moon", StringComparison.Ordinal),
+                "purchases and routing must reject ambiguous names instead of spending credits on the first match");
+        Require(terminal.Contains("TryFindRouteCost(term, bestIdx, out int routeCost)", StringComparison.Ordinal) &&
+                terminal.Contains("int newCredits = term.groupCredits - routeCost", StringComparison.Ordinal) &&
+                terminal.Contains("ChangeLevelServerRpc(bestIdx, newCredits)", StringComparison.Ordinal),
+                "paid moon routing must deduct the terminal's real route price before changing level");
 
         // Every word Buddy says is the model's. Hardcoded dialogue is what made him sound like a
         // toy: the same danger callout every time, the same two arc lines forever, and an action
@@ -265,6 +295,17 @@ internal static class SecurityRegressionChecks
         string clientVoice = File.ReadAllText(clientVoicePath);
         Require(clientVoice.Contains("inShipPhase == true) return player != null", StringComparison.Ordinal),
                 "remote crewmates must be able to use the voice terminal while Buddy has no orbit body");
+        Require(Count(clientVoice, "IsRemoteVoiceAllowed()") >= 4 &&
+                clientVoice.Contains("Plugin.VoiceEnabled?.Value != true", StringComparison.Ordinal) &&
+                clientVoice.Contains("AllowRemoteVoiceInPublicLobby", StringComparison.Ordinal) &&
+                clientVoice.Contains("AbortRemoteStreamingVoices", StringComparison.Ordinal),
+                "master voice, remote voice and public-lobby policy must gate active and ended remote streams");
+        Require(realtime.Contains("TrackedLiveInputs", StringComparison.Ordinal) &&
+                realtime.Contains("CommitCancellation", StringComparison.Ordinal) &&
+                realtime.Contains("AbortRemoteStreamingVoices", StringComparison.Ordinal) &&
+                realtime.Contains("AbortAllStreamingVoices", StringComparison.Ordinal) &&
+                realtime.Contains("IsLiveInputCancelled(turn.Stream)", StringComparison.Ordinal),
+                "ended remote audio must stay cancellable until the OpenAI commit finishes");
 
         string dangerPath = Path.Combine(root, "src", "BuddyDangerCallout.cs");
         string danger = File.ReadAllText(dangerPath);
@@ -280,6 +321,16 @@ internal static class SecurityRegressionChecks
                 workflow.Contains("persist-credentials: false", StringComparison.Ordinal) &&
                 workflow.Contains("Scan release-branch Git history", StringComparison.Ordinal),
                 "build CI must be read-only, discard checkout credentials and scan history");
+        Require(workflow.Contains("startsWith(github.ref, 'refs/tags/v')", StringComparison.Ordinal) &&
+                workflow.Contains("--verify-tag", StringComparison.Ordinal) &&
+                workflow.Contains("versioned assets are immutable", StringComparison.OrdinalIgnoreCase) &&
+                !workflow.Contains("--clobber", StringComparison.Ordinal),
+                "release assets must come from a matching immutable version tag and never be overwritten");
+        Require(!workflow.Contains("actions/checkout@v4", StringComparison.Ordinal) &&
+                !workflow.Contains("actions/setup-dotnet@v4", StringComparison.Ordinal) &&
+                !workflow.Contains("actions/upload-artifact@v4", StringComparison.Ordinal) &&
+                !workflow.Contains("actions/download-artifact@v4", StringComparison.Ordinal),
+                "release workflow actions must be pinned to reviewed commit SHAs");
     }
 
     /// <summary>
@@ -399,5 +450,17 @@ internal static class SecurityRegressionChecks
     {
         if (!condition)
             throw new InvalidOperationException("Security regression check failed: " + message);
+    }
+
+    private static int Count(string text, string needle)
+    {
+        int count = 0;
+        int at = 0;
+        while ((at = text.IndexOf(needle, at, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            at += needle.Length;
+        }
+        return count;
     }
 }

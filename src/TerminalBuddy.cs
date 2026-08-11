@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
-using System.Text.RegularExpressions;
 using GameNetcodeStuff;
 using Unity.Netcode;
 using UnityEngine;
@@ -52,19 +51,22 @@ namespace LethalAICrewmate
             PlayerControllerB player = ResolvePlayer(requestingPlayerId);
             if (player == null) return "I can't find who asked for that.";
 
-            string wanted = NormalizeItemName(query);
-            Item found = null;
+            var safeItems = new List<Item>();
+            var safeNames = new List<string>();
             foreach (Item candidate in sor.allItemsList.itemsList)
             {
                 if (candidate == null || candidate.spawnPrefab == null || string.IsNullOrWhiteSpace(candidate.itemName)) continue;
-                string candidateName = NormalizeItemName(candidate.itemName);
-                if (candidateName == wanted || candidateName.Contains(wanted) || wanted.Contains(candidateName))
-                {
-                    found = candidate;
-                    break;
-                }
+                safeItems.Add(candidate);
+                safeNames.Add(candidate.itemName);
             }
-            if (found == null) return $"I don't recognize a safe item named '{query}'.";
+            int match = DeterministicNameMatchPolicy.Resolve(query, safeNames);
+            if (match == DeterministicNameMatchPolicy.Missing)
+                return string.IsNullOrEmpty(DeterministicNameMatchPolicy.Normalize(query))
+                    ? "failed: missing_or_invalid_item_name"
+                    : $"I don't recognize a safe item named '{query}'.";
+            if (match == DeterministicNameMatchPolicy.Ambiguous)
+                return $"failed: ambiguous_item_name name='{query}'";
+            Item found = safeItems[match];
 
             Vector3 forward = player.transform.forward;
             forward.y = 0f;
@@ -111,17 +113,6 @@ namespace LethalAICrewmate
             return playerId >= 0 && playerId < players.Length ? players[playerId] : null;
         }
 
-        private static string NormalizeItemName(string value)
-        {
-            string clean = (value ?? "").ToLowerInvariant().Trim();
-            clean = Regex.Replace(clean, @"^(?:an?|the|some)\s+", "", RegexOptions.IgnoreCase);
-            clean = Regex.Replace(clean, @"\b(?:item|object|thing)\b", "", RegexOptions.IgnoreCase);
-            clean = Regex.Replace(clean, @"[^a-z0-9]+", "");
-            if (clean.Length > 3 && clean.EndsWith("s", StringComparison.Ordinal))
-                clean = clean.Substring(0, clean.Length - 1);
-            return clean;
-        }
-
         public static string RouteMoon(string moonQuery)
         {
             if (string.IsNullOrWhiteSpace(moonQuery)) return "Which moon?";
@@ -131,41 +122,39 @@ namespace LethalAICrewmate
             var sor = StartOfRound.Instance;
             var term = UnityEngine.Object.FindObjectOfType<Terminal>();
             if (sor?.levels == null) return "No moon list.";
+            if (term?.terminalNodes?.allKeywords == null) return "failed: route_price_unavailable";
 
-            moonQuery = moonQuery.ToLowerInvariant().Replace("-", " ").Trim();
-            int bestIdx = -1;
-            string bestName = null;
+            var levelNames = new List<string>();
+            var levelIndices = new List<int>();
             for (int i = 0; i < sor.levels.Length; i++)
             {
                 var lvl = sor.levels[i];
                 if (lvl == null) continue;
-                string n = (lvl.PlanetName ?? lvl.name ?? "").ToLowerInvariant().Trim();
-                if (string.IsNullOrEmpty(n)) continue;
-                if (n.Contains(moonQuery) || moonQuery.Contains(n) ||
-                    n.Replace(" ", "").Contains(moonQuery.Replace(" ", "")))
-                {
-                    bestIdx = i;
-                    bestName = lvl.PlanetName ?? lvl.name;
-                    break;
-                }
-                // also match bare names like "titan", "assurance"
-                if (n.Contains(moonQuery))
-                {
-                    bestIdx = i;
-                    bestName = lvl.PlanetName ?? lvl.name;
-                    break;
-                }
+                string name = lvl.PlanetName ?? lvl.name;
+                if (string.IsNullOrWhiteSpace(name)) continue;
+                levelNames.Add(name);
+                levelIndices.Add(i);
             }
 
-            if (bestIdx < 0)
+            int match = DeterministicNameMatchPolicy.Resolve(moonQuery, levelNames);
+            if (match == DeterministicNameMatchPolicy.Missing)
                 return $"Don't know moon '{moonQuery}'.";
+            if (match == DeterministicNameMatchPolicy.Ambiguous)
+                return $"failed: ambiguous_moon name='{moonQuery}'";
+
+            int bestIdx = levelIndices[match];
+            string bestName = levelNames[match];
+            if (!TryFindRouteCost(term, bestIdx, out int routeCost))
+                return $"failed: route_price_unavailable moon={bestName}";
+            if (term.groupCredits < routeCost)
+                return $"failed: insufficient_credits need_credits={routeCost} credits_have={term.groupCredits} moon={bestName}";
 
             try
             {
-                int credits = term != null ? term.groupCredits : 0;
-                sor.ChangeLevelServerRpc(bestIdx, credits);
-                Plugin.Log?.LogInfo($"Routed to level index {bestIdx} ({bestName})");
-                return $"Routing to {bestName}.";
+                int newCredits = term.groupCredits - routeCost;
+                sor.ChangeLevelServerRpc(bestIdx, newCredits);
+                Plugin.Log?.LogInfo($"Routed to level index {bestIdx} ({bestName}) for {routeCost} credits");
+                return $"ok: routed={bestName} credits_left={newCredits}";
             }
             catch (Exception ex)
             {
@@ -196,24 +185,20 @@ namespace LethalAICrewmate
                 if (list == null || list.Length == 0)
                     return "Store data is unavailable; use the terminal manually.";
 
-                int match = -1;
-                string matchName = null;
+                var storeNames = new string[list.Length];
                 for (int i = 0; i < list.Length; i++)
                 {
                     var item = list[i];
                     if (item == null) continue;
-                    string n = (item.itemName ?? "").ToLowerInvariant().Trim();
-                    if (string.IsNullOrEmpty(n)) continue;
-                    if (n.Contains(itemQuery) || itemQuery.Contains(n))
-                    {
-                        match = i;
-                        matchName = item.itemName;
-                        break;
-                    }
+                    storeNames[i] = item.itemName;
                 }
 
-                if (match < 0)
+                int match = DeterministicNameMatchPolicy.Resolve(itemQuery, storeNames);
+                if (match == DeterministicNameMatchPolicy.Missing)
                     return $"failed: no_store_item_matching name='{itemQuery}'";
+                if (match == DeterministicNameMatchPolicy.Ambiguous)
+                    return $"failed: ambiguous_store_item name='{itemQuery}'";
+                string matchName = list[match].itemName;
 
                 int salePercent = 100;
                 if (term.itemSalesPercentages != null && match < term.itemSalesPercentages.Length)
@@ -231,16 +216,37 @@ namespace LethalAICrewmate
                 int newCredits = term.groupCredits - totalCost;
                 term.BuyItemsServerRpc(bought, newCredits, dropshipCount);
                 Plugin.Log?.LogInfo($"Bought {quantity}x store index {match} ({matchName}) for {totalCost}");
-                // Token form, not prose. "Bought 1 Flashlight for 15 credits. 30 left." made the
-                // model pick the wrong number out of the sentence and tell the player "Fifteen
-                // credits left." when 30 remained. Naming each figure removes the guess.
-                return $"ok: bought={matchName} qty={quantity} cost_credits={totalCost} credits_left={newCredits}";
+                // Give the post-tool response only the figure the player may need. Even with named
+                // fields, a live Realtime probe confused cost_credits=15 with credits_left=30 and
+                // said "Fifteen left." The transaction log above retains the cost for diagnostics;
+                // omitting it here makes the spoken balance unambiguous.
+                return $"ok: bought={matchName} qty={quantity} credits_left={newCredits}";
             }
             catch (Exception ex)
             {
                 Plugin.Log?.LogWarning($"BuyItem: {ex.Message}");
                 return "failed: purchase_error";
             }
+        }
+
+        private static bool TryFindRouteCost(Terminal terminal, int levelIndex, out int routeCost)
+        {
+            routeCost = -1;
+            var keywords = terminal?.terminalNodes?.allKeywords;
+            if (keywords == null) return false;
+            foreach (var keyword in keywords)
+            {
+                if (keyword == null || !string.Equals(keyword.word, "route", StringComparison.OrdinalIgnoreCase) ||
+                    keyword.compatibleNouns == null) continue;
+                foreach (var compatible in keyword.compatibleNouns)
+                {
+                    var node = compatible?.result;
+                    if (node == null || node.buyRerouteToMoon != levelIndex || node.itemCost < 0) continue;
+                    if (routeCost >= 0 && routeCost != node.itemCost) return false;
+                    routeCost = node.itemCost;
+                }
+            }
+            return routeCost >= 0;
         }
 
         public static string BuildShipStatus(string query)

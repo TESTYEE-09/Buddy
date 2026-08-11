@@ -111,13 +111,19 @@ namespace LethalAICrewmate
                 {
                     Text = "Push-to-talk enabled",
                     Value = Plugin.VoiceEnabled?.Value == true,
-                    OnValueChanged = (_, value) => Set(Plugin.VoiceEnabled, value)
+                    OnValueChanged = (_, value) => SetVoicePermission(Plugin.VoiceEnabled, value)
                 },
                 new ToggleComponent
                 {
                     Text = "Allow matching friends to speak to Buddy",
                     Value = Plugin.AllowRemoteVoice?.Value == true,
-                    OnValueChanged = (_, value) => Set(Plugin.AllowRemoteVoice, value)
+                    OnValueChanged = (_, value) => SetVoicePermission(Plugin.AllowRemoteVoice, value)
+                },
+                new ToggleComponent
+                {
+                    Text = "Allow remote Buddy voice in public lobbies",
+                    Value = Plugin.AllowRemoteVoiceInPublicLobby?.Value == true,
+                    OnValueChanged = (_, value) => SetVoicePermission(Plugin.AllowRemoteVoiceInPublicLobby, value)
                 },
                 new ToggleComponent
                 {
@@ -198,6 +204,16 @@ namespace LethalAICrewmate
             if (entry == null) return;
             entry.Value = value;
             Plugin.SaveConfiguration();
+        }
+
+        private static void SetVoicePermission(BepInEx.Configuration.ConfigEntry<bool> entry, bool value)
+        {
+            Set(entry, value);
+            if (!value)
+            {
+                if (entry == Plugin.VoiceEnabled) OpenAiRealtimeVoiceClient.AbortAllStreamingVoices();
+                else OpenAiRealtimeVoiceClient.AbortRemoteStreamingVoices();
+            }
         }
 
         private static void SaveKey()

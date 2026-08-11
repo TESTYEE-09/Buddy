@@ -37,7 +37,7 @@ Get-ChildItem $root -Recurse -File | Where-Object {
     $_.FullName -notmatch '[\\/](bin|obj|\.git)[\\/]' -and $binaryExtensions -notcontains $_.Extension.ToLowerInvariant()
 } | ForEach-Object {
     $text = Get-Content $_.FullName -Raw -ErrorAction SilentlyContinue
-    if ($text -match $secretPattern) { throw "Possible Groq API key embedded in $($_.FullName)" }
+    if ($text -match $secretPattern) { throw "Possible provider API key embedded in $($_.FullName)" }
 }
 
 & $dotnetCommand restore $project
@@ -59,7 +59,7 @@ $bytes = [IO.File]::ReadAllBytes($dll)
 $ascii = [Text.Encoding]::ASCII.GetString($bytes)
 $utf16 = [Text.Encoding]::Unicode.GetString($bytes)
 if ($ascii -match $secretPattern -or $utf16 -match $secretPattern) {
-    throw "Possible Groq API key embedded in compiled DLL"
+    throw "Possible provider API key embedded in compiled DLL"
 }
 
 $staging = Join-Path $root "_ts_staging"
