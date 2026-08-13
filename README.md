@@ -4,6 +4,8 @@
 
 **Buddy** is a voice-first AI crewmate for **Lethal Company v81**. He is not a menu of scripted voice commands. Talk to him naturally and the Realtime model receives fresh host-side game context, decides whether to answer or use one of Buddy's bounded game tools, then reacts to the real result.
 
+[Download Buddy on Thunderstore](https://thunderstore.io/c/lethal-company/p/nomae/Buddy/)
+
 He can follow or wait, scout ahead, fetch scrap, return items to the ship, inspect ship and crew state, check moons and the store, buy equipment, and operate supported facility and ship controls. You do not need to memorize exact phrases or command syntax.
 
 Typed Lethal Company chat remains normal game chat and **does not trigger Buddy or use API credit**. Hold **B** to talk to him. Compatible remote players can use voice when the host's lobby policy allows it.
