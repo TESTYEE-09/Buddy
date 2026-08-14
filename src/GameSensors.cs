@@ -25,7 +25,14 @@ namespace LethalAICrewmate
                     return sb.ToString();
                 }
 
-                bool inSpace = sor.inShipPhase || !sor.shipHasLanded;
+                // A registered live Buddy body is stronger phase evidence than transient round
+                // flags. Spawn is itself gated on a fully landed, settled ship, while some modded
+                // lobbies briefly leave inShipPhase stale after landing.
+                bool hasBody = CrewmateSpawner.IsBuddyPresent;
+                bool inSpace = !hasBody && (sor.inShipPhase || !sor.shipHasLanded);
+                sb.Append("Phase authority: ").Append(inSpace
+                    ? "ORBIT. You are only a voice in the ship and have no body"
+                    : "LANDED. You have a physical body on the moon").AppendLine(".");
                 sb.Append("Where: ").Append(inSpace ? "in orbit, aboard the ship" : "landed on the moon").AppendLine(".");
 
                 string moon = sor.currentLevel != null

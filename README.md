@@ -12,7 +12,7 @@ Typed Lethal Company chat remains normal game chat and **does not trigger Buddy 
 
 ## Project status
 
-Active development is **paused** as of August 2026, with 5.1.3 as the intended stable release.
+Active development is **paused** as of August 2026, with 5.1.4 as the intended stable release.
 The mod is feature-complete for what it set out to do and is not abandoned - it is simply not
 being worked on day to day.
 

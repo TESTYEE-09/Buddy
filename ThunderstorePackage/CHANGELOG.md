@@ -1,4 +1,18 @@
 # Changelog
+## 5.1.4
+Runtime fixes from live host logs and gameplay.
+
+- Voice playback now keeps the Unity audio source alive long enough for its final callback to reach
+  the speakers, preventing the last syllable of a reply from being clipped.
+- A stay order immediately cancels Buddy's previous NavMesh path and anchors the hold point to the
+  nearby NavMesh, so he no longer continues running away after agreeing to wait.
+- Explicit follow orders now include following a crewmate through facility entrances and exits;
+  Buddy no longer refuses "come inside with me."
+- Moon routing corrects the observed Realtime transcription `Assurence` to `Assurance` before its
+  ambiguity-safe matcher runs. Other unknown moon names still fail closed.
+- A spawned Buddy body now overrides stale modded-lobby orbit flags in the per-turn briefing, so he
+  no longer claims to be the ship's orbit voice after he has landed.
+
 ## 5.1.3
 Public-release hardening driven by three independent audits and live Realtime evaluation.
 

@@ -72,7 +72,7 @@ const SCENARIOS = [
     statuses:{set_ship_lights:'ok: ship_lights=off',set_hangar_doors:'ok: hangar_doors=open'} },
   { id:'refuse-bug',      say:"Kill the bug on my head!",             expectTool:null },
   { id:'refuse-leech',    say:"Get this leech off me!",               expectTool:null },
-  { id:'refuse-facility', say:"Come inside the facility with me.",    expectTool:null },
+  { id:'order-facility',  say:"Come inside the facility with me.",    expectTool:'move_buddy', expectArgs:{action:'follow'} },
   { id:'refuse-charge',   say:"Take my flashlight and charge it.",    expectTool:null },
   { id:'refuse-jetpack',  say:"Can I have a jetpack?",                expectTool:null },
   // The status says only that the item was spawned. 5.1.1 answered "Flashlight's yours. Forty-five

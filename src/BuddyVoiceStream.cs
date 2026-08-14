@@ -36,7 +36,11 @@ namespace LethalAICrewmate
         private const float MaxCushionSeconds = 1.5f;
         // A stream that stopped arriving is finished: play whatever is left even if it is short.
         private const float StreamIdleSeconds = 0.25f;
-        private const float StopAfterSilenceSeconds = 0.6f;
+        // OnAudioRead removes samples from the ring before Unity's audio pipeline has actually
+        // presented that callback. Stopping in the same frame that _count reaches zero clips the
+        // last callback (usually the final syllable). Keep the source alive for a short drain tail
+        // measured from the first empty observation, not from the last network write.
+        private const float PlaybackDrainTailSeconds = 0.25f;
 
         private static readonly object Gate = new object();
         private static readonly float[] Ring = new float[RingSamples];
@@ -49,6 +53,7 @@ namespace LethalAICrewmate
         private static bool _playing;
         private static float _playStartedAt = -999f;
         private static float _lastWriteAt = -999f;
+        private static float _emptySince = -1f;
         // Set on Unity's audio thread when the ring could not fill a callback, promoted to a real
         // underrun by Write only if more of the same line then arrives. Draining the ring at the end
         // of a finished line is not a fault and must not widen the cushion.
@@ -110,6 +115,7 @@ namespace LethalAICrewmate
                 }
             }
             _lastWriteAt = Time.unscaledTime;
+            _emptySince = -1f;
         }
 
         /// <summary>Drops everything buffered and silences Buddy immediately.</summary>
@@ -131,6 +137,7 @@ namespace LethalAICrewmate
             _playing = false;
             _playStartedAt = -999f;
             _lastWriteAt = -999f;
+            _emptySince = -1f;
         }
 
         internal static void Tick(Vector3 position)
@@ -183,11 +190,20 @@ namespace LethalAICrewmate
                     return;
                 }
 
-                if (buffered == 0 && Time.unscaledTime - _lastWriteAt > StopAfterSilenceSeconds)
+                if (buffered > 0)
+                {
+                    _emptySince = -1f;
+                }
+                else if (_emptySince < 0f)
+                {
+                    _emptySince = Time.unscaledTime;
+                }
+                else if (Time.unscaledTime - _emptySince >= PlaybackDrainTailSeconds)
                 {
                     _source.Stop();
                     _playing = false;
                     _playStartedAt = -999f;
+                    _emptySince = -1f;
                     // The final audio callback of a finished line always drains the ring, so it set
                     // _ranDry without any fault having occurred. Leaving it set makes the first
                     // Write of the *next* response report a starvation that never happened, which

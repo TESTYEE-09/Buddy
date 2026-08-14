@@ -22,5 +22,6 @@
     <Compile Include="..\..\src\PromptSafety.cs" Link="PromptSafety.cs" />
     <Compile Include="..\..\src\DeferredActionGate.cs" Link="DeferredActionGate.cs" />
     <Compile Include="..\..\src\DeterministicNameMatchPolicy.cs" Link="DeterministicNameMatchPolicy.cs" />
+    <Compile Include="..\..\src\MoonSpeechAliasPolicy.cs" Link="MoonSpeechAliasPolicy.cs" />
   </ItemGroup>
 </Project>

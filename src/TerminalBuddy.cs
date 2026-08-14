@@ -136,7 +136,8 @@ namespace LethalAICrewmate
                 levelIndices.Add(i);
             }
 
-            int match = DeterministicNameMatchPolicy.Resolve(moonQuery, levelNames);
+            string resolvedMoonQuery = MoonSpeechAliasPolicy.Resolve(moonQuery);
+            int match = DeterministicNameMatchPolicy.Resolve(resolvedMoonQuery, levelNames);
             if (match == DeterministicNameMatchPolicy.Missing)
                 return $"Don't know moon '{moonQuery}'.";
             if (match == DeterministicNameMatchPolicy.Ambiguous)

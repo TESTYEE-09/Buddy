@@ -1289,6 +1289,18 @@ namespace LethalAICrewmate
                     break;
                 case BuddyMovementActionKind.Stay:
                     CrewmateRegistry.SetState(data, CrewmateState.Stay);
+                    // A stay order must cancel the previous follow/fetch path in the same tool
+                    // dispatch. Waiting for the next 120 ms AI tick lets a fast agent keep running
+                    // and can carry it far enough that the raw transform anchor is re-sampled onto
+                    // a different NavMesh point.
+                    StopMoving(data.Enemy);
+                    if (data.Enemy != null)
+                    {
+                        Vector3 anchor = data.Enemy.transform.position;
+                        if (NavMesh.SamplePosition(anchor, out var hit, 1.5f, NavMesh.AllAreas))
+                            anchor = hit.position;
+                        data.StayPosition = anchor;
+                    }
                     break;
                 case BuddyMovementActionKind.ReturnToShip:
                     CrewmateRegistry.SetState(data, CrewmateState.ReturnToShip);

@@ -82,6 +82,10 @@ static class Program
         Check(DeterministicNameMatchPolicy.Resolve("exper", new[] { "41 Experimentation", "419 Experiment" }) ==
               DeterministicNameMatchPolicy.Ambiguous,
               "ambiguous moon abbreviations are rejected");
+        Check(MoonSpeechAliasPolicy.Resolve("Assurence") == "Assurance",
+              "the common Realtime spelling of Assurance is corrected before deterministic routing");
+        Check(MoonSpeechAliasPolicy.Resolve("Titan") == "Titan",
+              "unrecognized moon speech is preserved instead of fuzzy-routed");
 
         Check(LobbyVisibilityPolicy.Parse(" public ") == LobbyVisibility.Public, "parse public lobby visibility");
         Check(LobbyVisibilityPolicy.Parse("FRIENDS") == LobbyVisibility.Friends, "parse friends lobby visibility");

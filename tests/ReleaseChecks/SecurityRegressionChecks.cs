@@ -80,6 +80,10 @@ internal static class SecurityRegressionChecks
                 voiceStream.Contains("_cushionSeconds", StringComparison.Ordinal) &&
                 voiceStream.Contains("CushionGrowthSeconds", StringComparison.Ordinal),
                 "playback must detect buffer starvation and widen its cushion instead of cutting speech");
+        Require(voiceStream.Contains("_emptySince", StringComparison.Ordinal) &&
+                voiceStream.Contains("PlaybackDrainTailSeconds", StringComparison.Ordinal) &&
+                !voiceStream.Contains("Time.unscaledTime - _lastWriteAt > StopAfterSilenceSeconds", StringComparison.Ordinal),
+                "playback must let Unity present the final audio callback before stopping the source");
         Require(realtime.Contains("firstChunkBytes", StringComparison.Ordinal) &&
                 realtime.Contains("streamChunkBytes", StringComparison.Ordinal),
                 "the opening audio chunk must stay small so Buddy starts talking promptly");
@@ -109,8 +113,8 @@ internal static class SecurityRegressionChecks
         Require(prompt.Contains("You cannot fight", StringComparison.Ordinal) &&
                 prompt.Contains("not a bug, not a leech, not a player", StringComparison.Ordinal),
                 "the contract must state plainly that Buddy never attacks anything");
-        Require(!prompt.Contains("enter the facility, and return to the ship", StringComparison.Ordinal),
-                "the contract must not advertise a facility-entry action no tool implements");
+        Require(prompt.Contains("Following someone includes following them through a facility entrance or exit", StringComparison.Ordinal),
+                "the contract must allow follow orders to continue through facility transitions");
         Require(prompt.Contains("Disinterest is never a reason to skip an action you can perform", StringComparison.Ordinal),
                 "a stronger personality must never become a licence to refuse supported work");
 
@@ -173,13 +177,9 @@ internal static class SecurityRegressionChecks
         Require(!realtime.Contains("Realtime response completed without audio.\"", StringComparison.Ordinal) &&
                 realtime.Contains("without audio or text", StringComparison.Ordinal),
                 "a reply that arrives as text must not discard the turn and leave Buddy silent");
-        // Live probe, 5.1.1: "Come inside the facility with me." called move_buddy(follow) and
-        // Buddy answered "Right behind you." The refusal existed only in the contract prose; the
-        // tool description, which is what the call decision actually reads, never mentioned the
-        // facility - and the request is lexically almost identical to "Come with me.", which is a
-        // legitimate follow. The constraint has to live on the tool.
-        Require(realtime.Contains("Going into the facility is never one of these moves", StringComparison.Ordinal),
-                "move_buddy's own description must refuse being ordered into the facility");
+        Require(realtime.Contains("Following includes going with the speaker through a facility entrance or exit", StringComparison.Ordinal) &&
+                !realtime.Contains("Going into the facility is never one of these moves", StringComparison.Ordinal),
+                "move_buddy must treat an explicit facility-entry follow request as a real follow order");
         // Same run: status state=holding_position came straight back as "Holding position." The
         // contract forbade parroting in the abstract but never showed what parroting looks like.
         Require(prompt.Contains("A state name is not a phrase to hand back", StringComparison.Ordinal),
@@ -250,6 +250,10 @@ internal static class SecurityRegressionChecks
                 crewmate.Contains("ok: state=fetching_scrap", StringComparison.Ordinal) &&
                 !crewmate.Contains("\"Holding position.\"", StringComparison.Ordinal),
                 "movement results must read as status data the model cannot mistake for dialogue");
+        Require(crewmate.Contains("case BuddyMovementActionKind.Stay:", StringComparison.Ordinal) &&
+                crewmate.Contains("StopMoving(data.Enemy);", StringComparison.Ordinal) &&
+                crewmate.Contains("data.StayPosition = anchor;", StringComparison.Ordinal),
+                "stay must synchronously cancel the old path and anchor Buddy at a valid nearby position");
 
         string settingsPath = Path.Combine(root, "src", "BuddySettingsMenu.cs");
         string settings = File.ReadAllText(settingsPath);
@@ -284,12 +288,21 @@ internal static class SecurityRegressionChecks
         Require(manifest.Contains("willis81808-LethalSettings-1.4.1", StringComparison.Ordinal),
                 "Thunderstore package must declare the native settings dependency");
 
+        string terminalSource = File.ReadAllText(Path.Combine(root, "src", "TerminalBuddy.cs"));
+        Require(terminalSource.Contains("MoonSpeechAliasPolicy.Resolve(moonQuery)", StringComparison.Ordinal),
+                "moon routing must correct bounded speech aliases before deterministic matching");
+
         string spawnerPath = Path.Combine(root, "src", "CrewmateSpawner.cs");
         string spawner = File.ReadAllText(spawnerPath);
         Require(spawner.Contains("IsLandingSettled()", StringComparison.Ordinal) &&
                 spawner.Contains("outsideAINodes", StringComparison.Ordinal) &&
                 spawner.Contains("CanTalkToBuddy", StringComparison.Ordinal),
                 "Buddy must be voice-only in orbit and physically spawn outside after landing settles");
+        string gameSensors = File.ReadAllText(Path.Combine(root, "src", "GameSensors.cs"));
+        Require(gameSensors.Contains("bool hasBody = CrewmateSpawner.IsBuddyPresent", StringComparison.Ordinal) &&
+                gameSensors.Contains("Phase authority:", StringComparison.Ordinal) &&
+                gameSensors.Contains("LANDED. You have a physical body on the moon", StringComparison.Ordinal),
+                "a spawned Buddy body must override stale orbit flags in every turn's live context");
 
         string clientVoicePath = Path.Combine(root, "src", "BuddyClientVoice.cs");
         string clientVoice = File.ReadAllText(clientVoicePath);
