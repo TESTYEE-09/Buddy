@@ -1,4 +1,22 @@
 # Changelog
+## 5.1.5
+Bug fixes from live host logs and player reports.
+
+- Remote push-to-talk now works in friends/private lobbies. Privacy is read from the game's own
+  `HostSettings.isLobbyPublic` instead of the `joinable` lobby-data key, which Lethal Company uses
+  as a boolean late-join flag ("true"/"false"), not the lobby's visibility. Public lobbies still
+  require the separate `AllowRemoteVoiceInPublicLobby` opt-in, off by default, and visibility that
+  cannot be detected still fails closed.
+- A tool turn whose forced post-action reply comes back empty no longer throws
+  "Realtime response completed without audio or text." The preamble is discarded by design and the
+  model occasionally has nothing left to add after the action; the action was already performed, so
+  the turn now finishes with an info log instead of a scary player-facing error.
+- Responses are no longer cut off mid-sentence by the output-token ceiling. `max_output_tokens`
+  is now `inf` (gpt-realtime-2.1-mini's full 32k maximum) instead of a 1200-token budget shared
+  between reasoning and speech, which could be exhausted by reasoning alone and return an empty
+  response. The terminal `response.status` / `status_details.reason` is now logged whenever a
+  response ends in any state other than "completed".
+
 ## 5.1.4
 Runtime fixes from live host logs and gameplay.
 

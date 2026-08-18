@@ -639,6 +639,14 @@ namespace LethalAICrewmate
                 int toolCalls = 0;
                 int toolResponseRounds = 0;
                 bool responseComplete = false;
+                // The terminal state of the final response this turn, so an incomplete response
+                // (e.g. max_output_tokens) is logged as what it is instead of a generic failure.
+                string lastResponseStatus = null;
+                string lastStatusReason = null;
+                // True once the model has called a tool this turn. The preamble is discarded by
+                // design and the forced post-result reply occasionally arrives empty when the model
+                // has nothing left to add; the action has already happened, so that is not a failure.
+                bool actedThisTurn = false;
                 byte[] receive = new byte[32768];
                 // Bounded by silence, not by wall clock: a response that is still streaming audio
                 // must never be cut off mid-sentence, but a socket that stops talking must not hang.
@@ -718,8 +726,17 @@ namespace LethalAICrewmate
                             turn.JournalId = 0;
                             return;
                         }
+                        int responseIndex = message.IndexOf("\"response\"", StringComparison.Ordinal);
+                        if (responseIndex >= 0)
+                        {
+                            lastResponseStatus = ReadJsonString(message, "status", responseIndex) ?? lastResponseStatus;
+                            int detailIndex = message.IndexOf("\"status_details\"", responseIndex, StringComparison.Ordinal);
+                            if (detailIndex >= 0)
+                                lastStatusReason = ReadJsonString(message, "reason", detailIndex);
+                        }
                         if (pendingToolCalls.Count > 0)
                         {
+                            actedThisTurn = true;
                             if (++toolResponseRounds > 6)
                                 throw new InvalidOperationException("Realtime tool-response round limit reached for one turn.");
 
@@ -793,6 +810,14 @@ namespace LethalAICrewmate
                     throw new IOException("Realtime response ended before completion.");
                 }
 
+                if (!string.IsNullOrWhiteSpace(lastResponseStatus) &&
+                    !string.Equals(lastResponseStatus, "completed", StringComparison.Ordinal))
+                {
+                    Plugin.Log?.LogWarning(
+                        "Realtime response ended " + lastResponseStatus +
+                        (string.IsNullOrWhiteSpace(lastStatusReason) ? "." : " (reason=" + lastStatusReason + ")."));
+                }
+
                 if (streamedAudio)
                 {
                     byte[] tail = audio.ToArray();
@@ -832,11 +857,29 @@ namespace LethalAICrewmate
                     // already performed - and surfaced as Buddy going silent after doing what he was
                     // asked. Keep the text, log it, and only fail when there is genuinely nothing.
                     if (string.IsNullOrWhiteSpace(assistantTranscript))
-                        throw new InvalidOperationException("Realtime response completed without audio or text.");
-                    Plugin.Log?.LogWarning(
-                        "Realtime response returned text without audio; delivered as chat only: " + assistantTranscript);
+                    {
+                        if (actedThisTurn)
+                        {
+                            // A tool turn keeps speaking and acting separate: the model's preamble
+                            // is discarded by design and its forced post-result reply occasionally
+                            // arrives empty when it has nothing left to add. The action was already
+                            // performed, so this is success, not a broken turn - and certainly not
+                            // the "Realtime error" players saw from this guard before.
+                            Plugin.Log?.LogInfo(
+                                "Realtime tool turn completed without a spoken confirmation; action already performed.");
+                        }
+                        else
+                        {
+                            throw new InvalidOperationException("Realtime response completed without audio or text.");
+                        }
+                    }
+                    else
+                    {
+                        Plugin.Log?.LogWarning(
+                            "Realtime response returned text without audio; delivered as chat only: " + assistantTranscript);
+                    }
                 }
-                if (!expectAudio && string.IsNullOrWhiteSpace(assistantTranscript))
+                if (!expectAudio && string.IsNullOrWhiteSpace(assistantTranscript) && !actedThisTurn)
                     throw new InvalidOperationException("Realtime response completed without text.");
             }
             ResponseJournal.Discard(turn.JournalId);
@@ -933,9 +976,13 @@ namespace LethalAICrewmate
                    BuddyAiArchitecture.SanitizeRealtimeVoice(Plugin.RealtimeVoiceName?.Value) + "\"}}," +
                    "\"reasoning\":{\"effort\":\"" +
                    BuddyAiArchitecture.SanitizeReasoningEffort(Plugin.ReasoningEffort?.Value) + "\"}," +
-                   // Reasoning and audio both draw on this budget. The old 384 could end a reply
-                   // mid-word; the cap only bounds a runaway response, it is not a per-turn charge.
-                   "\"max_output_tokens\":1200," +
+                   // Reasoning and audio both draw on this budget. The old 384 and then 1200 caps
+                   // ended replies mid-word, and when reasoning consumed the whole budget the model
+                   // returned an empty response the client surfaced as an error. The Realtime API
+                   // only accepts integers up to 4096, so the full gpt-realtime-2.1-mini ceiling
+                   // (32k) is requested as "inf": the cap is no longer a per-turn charge, it is the
+                   // model's own maximum, so it only guards against a genuinely runaway response.
+                   "\"max_output_tokens\":\"inf\"," +
                    // Drop a fifth of the window whenever the conversation overflows instead of
                    // trimming the minimum every turn: one cache miss per truncation, not many.
                    "\"truncation\":{\"type\":\"retention_ratio\",\"retention_ratio\":0.8," +

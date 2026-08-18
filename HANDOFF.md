@@ -1,8 +1,8 @@
-# HANDOFF — Buddy v5.1.4
+# HANDOFF — Buddy v5.1.5
 
 ## Current status
 
-Buddy is a BepInEx 5 mod for **Lethal Company v81** adding a host-authoritative AI crewmate named Buddy. The release candidate is v5.1.4. It uses voice-only conversational input with concise 2-14 word spoken replies.
+Buddy is a BepInEx 5 mod for **Lethal Company v81** adding a host-authoritative AI crewmate named Buddy. The current release is v5.1.5, a bugfix release on top of the pre-pause stable v5.1.4. It uses voice-only conversational input with concise 2-14 word spoken replies.
 
 Release gates remain:
 
@@ -30,7 +30,7 @@ Release gates remain:
 - Model: `gpt-realtime-2.1-mini`.
 - One persistent host WebSocket session handles voice understanding, reasoning, native voice output and bounded host-side tool calls.
 - Reasoning effort is the host setting `[AI] ReasoningEffort` (`minimal`/`low`/`medium`/`high`), default `low`. It is validated against that list before it reaches the session config.
-- Normal spoken replies target 2-14 words and are capped at 1200 output tokens, shared between reasoning and audio.
+- Normal spoken replies target 2-14 words and run to the model's full output ceiling (`inf`, gpt-realtime-2.1-mini's 32k maximum) shared between reasoning and audio, so a reply is never truncated mid-sentence by a token budget.
 - Periodic unsolicited observations default to off with `ObservationIntervalSeconds = 0`; confirmed danger and important event callouts remain separate.
 - Normal message audio begins playback after Realtime identifies the output item as a message. Tool-call output remains buffered until the host executes the game action and returns the real result, preventing false success audio.
 - The static prompt prefix remains stable for input caching. Live game context is refreshed per turn.
@@ -81,5 +81,5 @@ Generated DLLs and ZIPs are ignored by Git. CI validates the release package, so
 3. Run build, release checks and `pack.ps1`.
 4. Commit the release changes and push the release branch to `main`.
 5. Wait for the main workflow to pass.
-6. Create and push the matching immutable version tag (for example `v5.1.4`).
+6. Create and push the matching immutable version tag (for example `v5.1.5`).
 7. Verify the generated GitHub release ZIP and `SHA256SUMS.txt`.

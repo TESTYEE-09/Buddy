@@ -118,7 +118,7 @@ function run(sc) {
     ws.onopen = () => {
       ws.send(JSON.stringify({ type:'session.update', session:{ type:'realtime', model:MODEL,
         instructions:CONTRACT, tools:TOOLS, tool_choice:'auto', output_modalities:['text'],
-        max_output_tokens:1200,
+        max_output_tokens:'inf',
         audio:{ input:{ format:{ type:'audio/pcm', rate:24000 }, turn_detection:null } } } }));
       ws.send(JSON.stringify({ type:'conversation.item.create', item:{ type:'message', role:'system',
         content:[{ type:'input_text', text:TURN_CONTEXT }] } }));

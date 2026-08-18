@@ -43,10 +43,12 @@ internal static class SecurityRegressionChecks
                 "Realtime must expose game tools, execute them on the host, and return results to the model");
             Require(!realtime.Contains("OpenAiTranscriptionModel", StringComparison.Ordinal) &&
                     !realtime.Contains("input_audio_transcription", StringComparison.Ordinal) &&
-                    realtime.Contains("max_output_tokens\\\":1200", StringComparison.Ordinal),
-                    "Realtime must use only gpt-realtime-2.1-mini and keep a bounded voice response ceiling");
-            // 384 tokens had to cover reasoning plus audio, which ended replies mid-word. The
-            // ceiling only bounds a runaway response, so it must stay present but not that tight.
+                    realtime.Contains("max_output_tokens\\\":\\\"inf", StringComparison.Ordinal),
+                    "Realtime must use only gpt-realtime-2.1-mini and run output to the model's own ceiling");
+            // 384 then 1200 tokens shared between reasoning and audio ended replies mid-word and,
+            // when reasoning consumed the whole budget, produced empty responses the client
+            // surfaced as errors. The ceiling is now "inf", the model's full 32k maximum, so it
+            // still exists but can never truncate a reply: it only bounds a runaway response.
             Require(realtime.Contains("retention_ratio\\\":0.8", StringComparison.Ordinal) &&
                     realtime.Contains("post_instructions\\\":8000", StringComparison.Ordinal),
                     "long sessions must stay bounded by an explicit cache-friendly truncation policy");

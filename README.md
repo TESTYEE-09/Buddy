@@ -12,7 +12,9 @@ Typed Lethal Company chat remains normal game chat and **does not trigger Buddy 
 
 ## Project status
 
-Active development is **paused** as of August 2026, with 5.1.4 as the intended stable release.
+Active development is **paused** as of August 2026. 5.1.4 was the pre-pause stable; 5.1.5 is a
+post-pause bugfix release from live host logs and player reports (remote voice in friends lobbies,
+and Realtime replies being cut off or failing with a spurious error).
 The mod is feature-complete for what it set out to do and is not abandoned - it is simply not
 being worked on day to day.
 
@@ -65,7 +67,7 @@ gpt-realtime-2.1-mini
 host game state -> real tool result -> Buddy's spoken reply
 ```
 
-Thinking level defaults to **low** and is selectable in Buddy's settings (`minimal`, `low`, `medium`, `high`): lower answers faster and costs less, higher judges tool requests better but pauses longer before speaking. Spoken replies target **2-14 words**: concise but not clipped. Responses are capped at 1200 output tokens, which reasoning and speech share. Ordinary message audio starts as soon as Realtime identifies the output as a message. Tool-call audio remains buffered until the real host-side game result returns, so Buddy cannot announce a false success.
+Thinking level defaults to **low** and is selectable in Buddy's settings (`minimal`, `low`, `medium`, `high`): lower answers faster and costs less, higher judges tool requests better but pauses longer before speaking. Spoken replies target **2-14 words**: concise but not clipped. Responses run to the model's full output ceiling (max_output_tokens `inf`, gpt-realtime-2.1-mini's 32k maximum) shared between reasoning and speech, so a reply is never cut off mid-sentence by a token budget. Ordinary message audio starts as soon as Realtime identifies the output as a message. Tool-call audio remains buffered until the real host-side game result returns, so Buddy cannot announce a false success.
 
 The Realtime session stays connected during play for conversational continuity, supplemented by bounded in-memory context. That lets Buddy remember the current session without turning into permanent chat storage. Typed chat never enters this model path. Context resets with the gameplay/session lifecycle.
 
